@@ -1,0 +1,619 @@
+openapi: 3.0.3
+info:
+  title: Medical Agent MVP API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /uploads/presign:
+    post:
+      summary: Create pre-signed upload URL
+      operationId: createUploadPresign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, contentType, size]
+              properties:
+                fileName:
+                  type: string
+                contentType:
+                  type: string
+                size:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Presigned URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePresign'
+
+  /assets/complete:
+    post:
+      summary: Confirm uploaded object and register asset
+      operationId: completeAssetUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [objectKey, checksum, diseaseProfileId, reportDate]
+              properties:
+                objectKey:
+                  type: string
+                checksum:
+                  type: string
+                recordId:
+                  type: string
+                  format: uuid
+                diseaseProfileId:
+                  type: string
+                  format: uuid
+                reportDate:
+                  type: string
+                  format: date
+                title:
+                  type: string
+      responses:
+        '200':
+          description: Asset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAsset'
+
+  /parse-jobs:
+    post:
+      summary: Create async parse job
+      operationId: createParseJob
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assetIds, recordId]
+              properties:
+                assetIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                recordId:
+                  type: string
+                  format: uuid
+      responses:
+        '202':
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseParseJobCreate'
+
+  /disease-profiles:
+    get:
+      summary: List disease profiles
+      operationId: listDiseaseProfiles
+      responses:
+        '200':
+          description: Disease profiles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDiseaseProfiles'
+    post:
+      summary: Create disease profile
+      operationId: createDiseaseProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Disease profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDiseaseProfile'
+
+  /parse-jobs/{jobId}:
+    get:
+      summary: Get parse job status
+      operationId: getParseJob
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseParseJobStatus'
+
+  /records/{recordId}:
+    get:
+      summary: Get record details and latest outputs
+      operationId: getRecord
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Record details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecord'
+
+  /timeline:
+    get:
+      summary: Get reverse-chronological timeline by batches
+      operationId: getTimeline
+      responses:
+        '200':
+          description: Timeline list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTimeline'
+
+  /timeline/{batchId}:
+    get:
+      summary: Get batch detail with related materials and outputs
+      operationId: getTimelineBatchDetail
+      parameters:
+        - in: path
+          name: batchId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Batch detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTimelineBatch'
+
+  /records/{recordId}/structured-result:
+    patch:
+      summary: Revise structured extraction result
+      operationId: patchStructuredResult
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, payload]
+              properties:
+                version:
+                  type: integer
+                payload:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Revision saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseStructuredResult'
+
+  /records/{recordId}/generate-summary:
+    post:
+      summary: Generate summary draft
+      operationId: generateSummary
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Generation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseGenerateAccepted'
+
+  /records/{recordId}/generate-medication-plan:
+    post:
+      summary: Generate medication plan draft
+      operationId: generateMedicationPlan
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Generation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseGenerateAccepted'
+
+  /records/{recordId}/export-requests:
+    post:
+      summary: Create data export request
+      operationId: createExportRequest
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Export request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDataRequestAccepted'
+
+  /records/{recordId}/export-requests/{requestId}:
+    get:
+      summary: Query data export request status
+      operationId: getExportRequestStatus
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export request status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDataRequestStatus'
+
+  /records/{recordId}/export-requests/{requestId}/download:
+    get:
+      summary: Get data export download information
+      operationId: getExportRequestDownload
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export download available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseExportDownload'
+
+  /records/{recordId}/delete-requests:
+    post:
+      summary: Create data deletion request
+      operationId: createDeleteRequest
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Delete request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDataRequestAccepted'
+
+  /records/{recordId}/delete-requests/{requestId}:
+    get:
+      summary: Query data deletion request status
+      operationId: getDeleteRequestStatus
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Delete request status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDataRequestStatus'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiMeta:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+    ParseJobStatus:
+      type: string
+      enum: [QUEUED, PROCESSING, SUCCESS, FAILED, RETRYING, DEAD_LETTER]
+    ApiResponsePresign:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                uploadUrl:
+                  type: string
+                objectKey:
+                  type: string
+                expireAt:
+                  type: string
+                  format: date-time
+    ApiResponseAsset:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                assetId:
+                  type: string
+                  format: uuid
+    ApiResponseParseJobCreate:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                jobId:
+                  type: string
+                  format: uuid
+                status:
+                  $ref: '#/components/schemas/ParseJobStatus'
+    ApiResponseParseJobStatus:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  $ref: '#/components/schemas/ParseJobStatus'
+                progress:
+                  type: integer
+                errorCode:
+                  type: string
+                  nullable: true
+                resultId:
+                  type: string
+                  format: uuid
+                  nullable: true
+    ApiResponseRecord:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+    ApiResponseStructuredResult:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                resultId:
+                  type: string
+                  format: uuid
+                revision:
+                  type: integer
+    ApiResponseGenerateAccepted:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                taskId:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [QUEUED]
+    ApiResponseTimeline:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                batches:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      batchId:
+                        type: string
+                      diseaseName:
+                        type: string
+                      recordCount:
+                        type: integer
+                      latestRecordAt:
+                        type: string
+                        format: date-time
+    ApiResponseTimelineBatch:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+    ApiResponseDataRequestAccepted:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                requestId:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [REQUESTED]
+    ApiResponseDataRequestStatus:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                requestId:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [REQUESTED, PROCESSING, COMPLETED, REJECTED, FAILED]
+                updatedAt:
+                  type: string
+                  format: date-time
+    ApiResponseExportDownload:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                requestId:
+                  type: string
+                  format: uuid
+                downloadUrl:
+                  type: string
+                expireAt:
+                  type: string
+                  format: date-time
+    ApiResponseDiseaseProfiles:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                profiles:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+    ApiResponseDiseaseProfile:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                diseaseProfileId:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
