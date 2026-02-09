@@ -135,6 +135,87 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponseDiseaseProfile'
 
+  /report-categories:
+    get:
+      summary: List report categories
+      operationId: listReportCategories
+      responses:
+        '200':
+          description: Report categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategories'
+    post:
+      summary: Create report category
+      operationId: createReportCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Report category created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategory'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategory'
+
+  /report-categories/{reportCategoryId}:
+    delete:
+      summary: Delete report category only when empty
+      operationId: deleteReportCategory
+      parameters:
+        - in: path
+          name: reportCategoryId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: onlyIfEmpty
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Report category deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategoryDelete'
+        '400':
+          description: Invalid category id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategoryDelete'
+        '404':
+          description: Report category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategoryDelete'
+        '409':
+          description: Category has associated records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseReportCategoryDelete'
+
   /disease-profiles/{diseaseProfileId}:
     delete:
       summary: Delete disease profile with all related records and assets
@@ -248,7 +329,6 @@ paths:
               properties:
                 sourceType:
                   type: string
-                  enum: [UPLOAD, LAB, IMAGING, OUTPATIENT, DISCHARGE, OTHER]
       responses:
         '200':
           description: Source type updated
@@ -305,6 +385,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseRecordAnalysis'
+
+  /records/{recordId}/trend:
+    get:
+      summary: Get trend snapshots for current record and previous reports in same disease and category
+      operationId: getRecordTrend
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 6
+            default: 6
+      responses:
+        '200':
+          description: Trend data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordTrend'
+        '400':
+          description: Invalid record id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordTrend'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordTrend'
 
   /timeline:
     get:
@@ -681,6 +800,51 @@ components:
                   type: boolean
                 version:
                   type: integer
+    ApiResponseRecordTrend:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                recordId:
+                  type: string
+                  format: uuid
+                sourceType:
+                  type: string
+                diseaseProfileId:
+                  type: string
+                limit:
+                  type: integer
+                snapshots:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      recordId:
+                        type: string
+                        format: uuid
+                      recordDate:
+                        type: string
+                        format: date
+                      title:
+                        type: string
+                      sourceType:
+                        type: string
+                      fields:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            value:
+                              type: string
+                            unit:
+                              type: string
+                            referenceRange:
+                              type: string
     ApiResponseGenerateAccepted:
       allOf:
         - $ref: '#/components/schemas/ApiMeta'
@@ -822,6 +986,56 @@ components:
                   type: integer
                 deletedAssetCount:
                   type: integer
+                reason:
+                  type: string
+                linkedRecordCount:
+                  type: integer
+    ApiResponseReportCategories:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                categories:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      recordCount:
+                        type: integer
+    ApiResponseReportCategory:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                reportCategoryId:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+    ApiResponseReportCategoryDelete:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                reportCategoryId:
+                  type: string
+                  format: uuid
+                deleted:
+                  type: boolean
                 reason:
                   type: string
                 linkedRecordCount:

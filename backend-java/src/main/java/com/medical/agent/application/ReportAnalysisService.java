@@ -47,6 +47,9 @@ public class ReportAnalysisService {
     if (context.isEmpty()) {
       throw new IllegalArgumentException("record not found");
     }
+    if (!isParseResultReadyForAnalysis(context)) {
+      throw new AnalysisNotReadyException("parse result is not ready for analysis");
+    }
     Map<String, Object> sanitizedContext = sanitizeAnalysisContext(context);
     Map<String, Object> generated = generateFromAgent(recordId, sanitizedContext);
     String content = truncateToMaxCharacters(String.valueOf(generated.getOrDefault("content", "")).trim());
@@ -60,6 +63,12 @@ public class ReportAnalysisService {
         "content", content,
         "cached", false,
         "version", version);
+  }
+
+  public static final class AnalysisNotReadyException extends IllegalStateException {
+    public AnalysisNotReadyException(String message) {
+      super(message);
+    }
   }
 
   private Map<String, Object> generateFromAgent(UUID recordId, Map<String, Object> context) {
@@ -134,6 +143,23 @@ public class ReportAnalysisService {
         "sourceType", context.get("sourceType"),
         "diseaseName", context.get("diseaseName"),
         "structuredResult", compactResult);
+  }
+
+  private boolean isParseResultReadyForAnalysis(Map<String, Object> context) {
+    String parseStatus = String.valueOf(context.getOrDefault("parseStatus", "NOT_PARSED"));
+    if (!"SUCCESS".equalsIgnoreCase(parseStatus)) {
+      return false;
+    }
+    Object structuredResultRaw = context.get("structuredResult");
+    if (!(structuredResultRaw instanceof Map<?, ?> structuredResult)) {
+      return false;
+    }
+    Object payloadRaw = structuredResult.get("payload");
+    if (!(payloadRaw instanceof Map<?, ?> payload)) {
+      return false;
+    }
+    Object fieldsRaw = payload.get("fields");
+    return fieldsRaw instanceof List<?> fields && !fields.isEmpty();
   }
 
   private String truncateToMaxCharacters(String content) {

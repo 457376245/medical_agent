@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -59,6 +60,12 @@ public class RecordController {
           "message", "record not found",
           "requestId", RequestIdUtil.newRequestId(),
           "data", Map.of("recordId", recordId)));
+    } catch (ReportAnalysisService.AnalysisNotReadyException error) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+          "code", "ANALYSIS_NOT_READY",
+          "message", "analysis requires successful parse result with non-empty fields",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
     } catch (IllegalStateException error) {
       return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
           "code", "ANALYSIS_PROVIDER_FAILED",
@@ -72,6 +79,40 @@ public class RecordController {
         "message", "success",
         "requestId", RequestIdUtil.newRequestId(),
         "data", analysis));
+  }
+
+  @GetMapping("/{recordId}/trend")
+  public ResponseEntity<Map<String, Object>> getRecordTrend(
+      @PathVariable("recordId") String recordId,
+      @RequestParam(name = "limit", required = false) Integer limit) {
+    UUID recordUuid;
+    try {
+      recordUuid = UUID.fromString(recordId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_RECORD_ID",
+          "message", "recordId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
+
+    int normalizedLimit = limit == null ? 6 : Math.max(1, Math.min(limit, 6));
+    Map<String, Object> trendData;
+    try {
+      trendData = persistenceService.fetchRecordTrend(recordUuid, normalizedLimit);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+          "code", "NOT_FOUND",
+          "message", "record not found",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
+
+    return ResponseEntity.ok(Map.of(
+        "code", "OK",
+        "message", "success",
+        "requestId", RequestIdUtil.newRequestId(),
+        "data", trendData));
   }
 
   @DeleteMapping("/{recordId}")

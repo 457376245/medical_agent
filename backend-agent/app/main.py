@@ -53,7 +53,7 @@ async def startup_event() -> None:
             and os.getenv("OSS_ACCESS_KEY_ID")
             and os.getenv("OSS_ACCESS_KEY_SECRET")
         ),
-        bool(os.getenv("GOOGLE_API_KEY")),
+        bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
     )
     if os.getenv("MQ_CONSUMER_ENABLED", "true").lower() == "true":
         try:

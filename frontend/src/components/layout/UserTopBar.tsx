@@ -7,16 +7,14 @@ import { useQuery } from "@tanstack/react-query";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
-const REPORT_CATEGORY_OPTIONS = [
-  { value: "UPLOAD", label: "常规检查" },
-  { value: "LAB", label: "检验报告" },
-  { value: "IMAGING", label: "影像报告" },
-  { value: "OUTPATIENT", label: "门诊记录" },
-  { value: "DISCHARGE", label: "出院小结" },
-  { value: "OTHER", label: "其他" },
-];
 
 type DiseaseProfile = {
+  id: string;
+  name: string;
+  recordCount: number;
+};
+
+type ReportCategory = {
   id: string;
   name: string;
   recordCount: number;
@@ -39,46 +37,24 @@ export function UserTopBar() {
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedDiseaseId, setSelectedDiseaseId] = useState("");
   const [prefilledDiseaseName, setPrefilledDiseaseName] = useState("");
-  const [reportCategory, setReportCategory] = useState("UPLOAD");
+  const [reportCategory, setReportCategory] = useState("");
   const [newDiseaseName, setNewDiseaseName] = useState("");
+  const [newReportCategoryName, setNewReportCategoryName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<NoticeState>({ tone: "neutral", text: "" });
   const [uploadStage, setUploadStage] = useState<string>("");
   const [diseaseMenuOpen, setDiseaseMenuOpen] = useState(false);
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
   const [isInlineCreatingDisease, setIsInlineCreatingDisease] = useState(false);
+  const [isInlineCreatingReportCategory, setIsInlineCreatingReportCategory] = useState(false);
   const [isCreatingDisease, setIsCreatingDisease] = useState(false);
+  const [isCreatingReportCategory, setIsCreatingReportCategory] = useState(false);
   const [deletingDiseaseId, setDeletingDiseaseId] = useState<string | null>(null);
+  const [deletingReportCategoryId, setDeletingReportCategoryId] = useState<string | null>(null);
   const [pendingDeleteDisease, setPendingDeleteDisease] = useState<DiseaseProfile | null>(null);
+  const [pendingDeleteReportCategory, setPendingDeleteReportCategory] = useState<ReportCategory | null>(null);
   const diseaseSelectRef = useRef<HTMLDivElement | null>(null);
   const reportSelectRef = useRef<HTMLDivElement | null>(null);
-
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  const waitForParseTerminalStatus = async (jobId: string) => {
-    for (let attempt = 0; attempt < 45; attempt += 1) {
-      const statusResp = await fetch(`${API_BASE}/parse-jobs/${jobId}`);
-      if (!statusResp.ok) {
-        const message = await statusResp.text();
-        throw new Error(`查询解析状态失败：${message || "请稍后重试。"}`);
-      }
-      const statusPayload = await statusResp.json();
-      const status = String(statusPayload.data?.status ?? "").toUpperCase();
-      const progress = Number(statusPayload.data?.progress ?? 0);
-      const errorCode = statusPayload.data?.errorCode as string | undefined;
-
-      if (status === "SUCCESS") {
-        return { status, progress, errorCode };
-      }
-      if (status === "FAILED") {
-        return { status, progress, errorCode };
-      }
-
-      setUploadStage(`解析中... ${Math.max(0, Math.min(progress, 100))}%`);
-      await sleep(2000);
-    }
-    return { status: "TIMEOUT", progress: 0, errorCode: "PARSE_TIMEOUT" };
-  };
 
   const fileToBase64 = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -126,9 +102,34 @@ export function UserTopBar() {
     retry: false,
   });
 
+  const reportCategoryQuery = useQuery<ReportCategory[]>({
+    queryKey: ["header-report-categories"],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/report-categories`);
+      if (!response.ok) {
+        throw new Error("加载报告分类失败，请稍后重试。");
+      }
+      const payload = await response.json();
+      const categories = (payload.data?.categories ?? []) as Array<{
+        id?: string;
+        name?: string;
+        recordCount?: number;
+        record_count?: number;
+      }>;
+      return categories
+        .filter((item) => item.id && item.name)
+        .map((item) => ({
+          id: item.id as string,
+          name: item.name as string,
+          recordCount: Number(item.recordCount ?? item.record_count ?? 0),
+        }));
+    },
+    retry: false,
+  });
+
   const canSubmit = useMemo(() => {
-    return Boolean(selectedFile) && Boolean(selectedDiseaseId) && !isSubmitting;
-  }, [selectedDiseaseId, selectedFile, isSubmitting]);
+    return Boolean(selectedFile) && Boolean(selectedDiseaseId) && Boolean(reportCategory) && !isSubmitting;
+  }, [reportCategory, selectedDiseaseId, selectedFile, isSubmitting]);
 
   const selectedDiseaseName = useMemo(() => {
     const matchedName = (diseaseQuery.data ?? []).find((profile) => profile.id === selectedDiseaseId)?.name ?? "";
@@ -138,14 +139,15 @@ export function UserTopBar() {
     return prefilledDiseaseName;
   }, [diseaseQuery.data, prefilledDiseaseName, selectedDiseaseId]);
 
-  const selectedReportCategoryLabel = useMemo(
-    () => REPORT_CATEGORY_OPTIONS.find((option) => option.value === reportCategory)?.label ?? "其他",
-    [reportCategory],
-  );
+  const selectedReportCategoryLabel = useMemo(() => {
+    const matchedName = (reportCategoryQuery.data ?? []).find((item) => item.name === reportCategory)?.name ?? "";
+    return matchedName || reportCategory;
+  }, [reportCategory, reportCategoryQuery.data]);
   const computedReportTitle = useMemo(() => {
     const diseasePart = selectedDiseaseName || "未分类疾病";
+    const categoryPart = selectedReportCategoryLabel || "待选择分类";
     const datePart = reportDate || new Date().toISOString().slice(0, 10);
-    return `${diseasePart}-${selectedReportCategoryLabel}-${datePart}`;
+    return `${diseasePart}-${categoryPart}-${datePart}`;
   }, [reportDate, selectedDiseaseName, selectedReportCategoryLabel]);
   const openDialog = useCallback((detail?: OpenUploadDialogDetail) => {
     const diseaseProfileId = detail?.diseaseProfileId;
@@ -155,6 +157,9 @@ export function UserTopBar() {
     setDiseaseMenuOpen(false);
     setReportMenuOpen(false);
     setIsInlineCreatingDisease(false);
+    setIsInlineCreatingReportCategory(false);
+    setReportCategory("");
+    setNewReportCategoryName("");
     setNotice({ tone: "neutral", text: "" });
     if (diseaseProfileId && diseaseProfileId !== "unknown") {
       setSelectedDiseaseId(diseaseProfileId);
@@ -169,6 +174,7 @@ export function UserTopBar() {
     setDiseaseMenuOpen(false);
     setReportMenuOpen(false);
     setIsInlineCreatingDisease(false);
+    setIsInlineCreatingReportCategory(false);
   };
 
   useEffect(() => {
@@ -240,6 +246,37 @@ export function UserTopBar() {
     }
   };
 
+  const createReportCategory = async () => {
+    const categoryName = newReportCategoryName.trim();
+    if (!categoryName) {
+      setNotice({ tone: "error", text: "请先输入报告分类名称。" });
+      return;
+    }
+
+    setIsCreatingReportCategory(true);
+    try {
+      const response = await fetch(`${API_BASE}/report-categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: categoryName }),
+      });
+      if (!response.ok) {
+        throw new Error("新增报告分类失败，请检查名称后重试。");
+      }
+
+      await reportCategoryQuery.refetch();
+      setReportCategory(categoryName);
+      setNewReportCategoryName("");
+      setIsInlineCreatingReportCategory(false);
+      setReportMenuOpen(false);
+      setNotice({ tone: "success", text: "已新增报告分类并自动选中。" });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "新增报告分类失败，请稍后重试。" });
+    } finally {
+      setIsCreatingReportCategory(false);
+    }
+  };
+
   const promptDeleteDiseaseProfile = (profile: DiseaseProfile) => {
     if (profile.recordCount > 0) {
       setNotice({ tone: "error", text: `“${profile.name}”下已有 ${profile.recordCount} 份报告，无法删除。` });
@@ -248,11 +285,26 @@ export function UserTopBar() {
     setPendingDeleteDisease(profile);
   };
 
+  const promptDeleteReportCategory = (category: ReportCategory) => {
+    if (category.recordCount > 0) {
+      setNotice({ tone: "error", text: `“${category.name}”下已有 ${category.recordCount} 份报告，无法删除。` });
+      return;
+    }
+    setPendingDeleteReportCategory(category);
+  };
+
   const closeDeleteDiseaseDialog = () => {
     if (deletingDiseaseId) {
       return;
     }
     setPendingDeleteDisease(null);
+  };
+
+  const closeDeleteReportCategoryDialog = () => {
+    if (deletingReportCategoryId) {
+      return;
+    }
+    setPendingDeleteReportCategory(null);
   };
 
   const deleteDiseaseProfile = async () => {
@@ -292,6 +344,39 @@ export function UserTopBar() {
     }
   };
 
+  const deleteReportCategory = async () => {
+    if (!pendingDeleteReportCategory) {
+      return;
+    }
+    const category = pendingDeleteReportCategory;
+    setDeletingReportCategoryId(category.id);
+    try {
+      const response = await fetch(`${API_BASE}/report-categories/${category.id}?onlyIfEmpty=true`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        const linkedCount = Number(payload?.data?.linkedRecordCount ?? category.recordCount ?? 0);
+        setNotice({ tone: "error", text: `“${category.name}”下已有 ${linkedCount} 份报告，无法删除。` });
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("删除报告分类失败，请稍后重试。");
+      }
+
+      if (reportCategory === category.name) {
+        setReportCategory("");
+      }
+      await reportCategoryQuery.refetch();
+      setPendingDeleteReportCategory(null);
+      setNotice({ tone: "success", text: `已删除报告分类“${category.name}”。` });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "删除报告分类失败，请稍后重试。" });
+    } finally {
+      setDeletingReportCategoryId(null);
+    }
+  };
+
   const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -302,6 +387,11 @@ export function UserTopBar() {
 
     if (!selectedDiseaseId) {
       setNotice({ tone: "error", text: "请先选择疾病分类。" });
+      return;
+    }
+
+    if (!reportCategory) {
+      setNotice({ tone: "error", text: "请先选择报告分类。" });
       return;
     }
 
@@ -404,23 +494,13 @@ export function UserTopBar() {
       const parsePayload = await parseResp.json();
       const jobId = parsePayload.data?.jobId as string | undefined;
       setSelectedFile(null);
-      if (jobId) {
-        setUploadStage("解析任务已创建，正在等待结果...");
-        const terminal = await waitForParseTerminalStatus(jobId);
-        if (terminal.status === "SUCCESS") {
-          setNotice({ tone: "success", text: `上传并解析完成（任务号：${jobId}）。` });
-          setUploadStage("已完成");
-        } else if (terminal.status === "FAILED") {
-          throw new Error(
-            `解析失败（任务号：${jobId}，错误码：${terminal.errorCode ?? "UNKNOWN"}）。请检查后端 Agent 与 OSS/LLM 配置。`,
-          );
-        } else {
-          throw new Error(`解析超时（任务号：${jobId}）。请稍后在时间线页刷新查看最终状态。`);
-        }
-      } else {
-        setNotice({ tone: "success", text: "上传成功，已创建解析任务。" });
-        setUploadStage("已完成");
+      if (!jobId) {
+        throw new Error("解析任务创建失败：未返回任务号。");
       }
+      setNotice({ tone: "success", text: `上传成功，解析任务已在后台执行（任务号：${jobId}）。` });
+      closeDialog();
+      void reportCategoryQuery.refetch();
+      void diseaseQuery.refetch();
       router.refresh();
     } catch (error) {
       setUploadStage("");
@@ -612,36 +692,112 @@ export function UserTopBar() {
                 <label className="dialog-field">
                   <span>报告分类</span>
                   <div className="dialog-disease-select" ref={reportSelectRef}>
-                    <button
-                      className="dialog-select-trigger"
-                      type="button"
-                      aria-haspopup="listbox"
-                      aria-expanded={reportMenuOpen}
-                      onClick={() => {
-                        setReportMenuOpen((prev) => !prev);
-                        setDiseaseMenuOpen(false);
-                      }}
-                    >
-                      <span>{selectedReportCategoryLabel}</span>
-                      <span className="dialog-select-caret" aria-hidden="true" />
-                    </button>
+                    {isInlineCreatingReportCategory ? (
+                      <div className="dialog-select-inline-create">
+                        <input
+                          className="dialog-select-inline-input"
+                          placeholder="输入报告分类名称"
+                          value={newReportCategoryName}
+                          onChange={(event) => setNewReportCategoryName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createReportCategory();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <div className="dialog-select-inline-actions">
+                          <button
+                            className="btn btn-primary btn-small"
+                            type="button"
+                            onClick={createReportCategory}
+                            disabled={isCreatingReportCategory}
+                          >
+                            {isCreatingReportCategory ? "新增中..." : "新增"}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-small"
+                            type="button"
+                            onClick={() => {
+                              if (isCreatingReportCategory) {
+                                return;
+                              }
+                              setIsInlineCreatingReportCategory(false);
+                              setNewReportCategoryName("");
+                            }}
+                            disabled={isCreatingReportCategory}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className={`dialog-select-trigger ${!reportCategory ? "dialog-select-empty" : ""}`}
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={reportMenuOpen}
+                        onClick={() => {
+                          setReportMenuOpen((prev) => !prev);
+                          setDiseaseMenuOpen(false);
+                        }}
+                      >
+                        <span>{selectedReportCategoryLabel || "请选择报告分类"}</span>
+                        <span className="dialog-select-caret" aria-hidden="true" />
+                      </button>
+                    )}
 
-                    {reportMenuOpen && (
+                    {reportMenuOpen && !isInlineCreatingReportCategory && (
                       <ul className="dialog-select-menu" role="listbox" aria-label="报告分类选项">
-                        {REPORT_CATEGORY_OPTIONS.map((option) => (
-                          <li key={option.value}>
-                            <button
-                              className={`dialog-select-option ${reportCategory === option.value ? "active" : ""}`}
-                              type="button"
-                              onClick={() => {
-                                setReportCategory(option.value);
-                                setReportMenuOpen(false);
-                              }}
-                            >
-                              {option.label}
-                            </button>
-                          </li>
-                        ))}
+                        {(reportCategoryQuery.data ?? []).map((category) => {
+                          const active = reportCategory === category.name;
+                          const deletable = category.recordCount === 0;
+                          const deletingThis = deletingReportCategoryId === category.id;
+                          return (
+                            <li className="dialog-select-option-row" key={category.id}>
+                              <button
+                                className={`dialog-select-option dialog-select-option-main ${active ? "active" : ""}`}
+                                type="button"
+                                onClick={() => {
+                                  setReportCategory(category.name);
+                                  setNotice({ tone: "neutral", text: "" });
+                                  setReportMenuOpen(false);
+                                }}
+                              >
+                                <span>{category.name}</span>
+                                {category.recordCount > 0 ? <small>{category.recordCount} 份报告</small> : null}
+                              </button>
+                              <button
+                                className="dialog-select-option-delete"
+                                type="button"
+                                aria-label={`删除报告分类 ${category.name}`}
+                                title={deletable ? `删除 ${category.name}` : `${category.name} 下有报告，不能删除`}
+                                onClick={() => promptDeleteReportCategory(category)}
+                                disabled={!deletable || deletingThis}
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z" />
+                                </svg>
+                              </button>
+                            </li>
+                          );
+                        })}
+                        <li className="dialog-select-divider" role="presentation" />
+                        <li>
+                          <button
+                            className="dialog-select-option dialog-select-option-create"
+                            type="button"
+                            onClick={() => {
+                              setIsInlineCreatingReportCategory(true);
+                              setNotice({ tone: "neutral", text: "" });
+                              setReportMenuOpen(false);
+                              setNewReportCategoryName("");
+                            }}
+                          >
+                            + 在下拉框中新增报告分类
+                          </button>
+                        </li>
                       </ul>
                     )}
                   </div>
@@ -666,6 +822,7 @@ export function UserTopBar() {
 
               <div className="dialog-status-stack">
                 {diseaseQuery.isFetching && <p className="status-text">正在加载疾病分类...</p>}
+                {reportCategoryQuery.isFetching && <p className="status-text">正在加载报告分类...</p>}
                 {isSubmitting && uploadStage && <p className="status-text">{uploadStage}</p>}
                 {notice.text && (
                   <p className={`status-text ${notice.tone === "error" ? "error" : ""} ${notice.tone === "success" ? "success" : ""}`}>
@@ -696,6 +853,16 @@ export function UserTopBar() {
         loading={deletingDiseaseId !== null}
         onCancel={closeDeleteDiseaseDialog}
         onConfirm={deleteDiseaseProfile}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteReportCategory)}
+        title="确认删除报告分类"
+        description={`确认删除“${pendingDeleteReportCategory?.name ?? ""}”吗？仅空报告分类允许删除。`}
+        confirmText="确认删除"
+        tone="danger"
+        loading={deletingReportCategoryId !== null}
+        onCancel={closeDeleteReportCategoryDialog}
+        onConfirm={deleteReportCategory}
       />
     </>
   );

@@ -38,15 +38,17 @@ export default async function HomePage() {
     const response = await fetch(`${API_BASE}/timeline`, { cache: "no-store" });
     if (response.ok) {
       const payload = (await response.json()) as TimelineResponse;
-      batches = (payload.data?.batches ?? []).map((item) => ({
-        batchId: item.batchId ?? item.batch_id ?? "unknown-batch",
-        diseaseName: item.diseaseName ?? item.disease_name ?? "未分类疾病",
-        recordCount: item.recordCount ?? item.record_count ?? 0,
-        latestRecordAt: item.latestRecordAt ?? item.latest_record_at,
-        latestRecordId: item.latestRecordId ?? item.latest_record_id,
-        latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title,
-        latestParseStatus: item.latestParseStatus ?? item.latest_parse_status,
-      }));
+      batches = (payload.data?.batches ?? [])
+        .map((item) => ({
+          batchId: item.batchId ?? item.batch_id ?? "unknown-batch",
+          diseaseName: item.diseaseName ?? item.disease_name ?? "未分类疾病",
+          recordCount: item.recordCount ?? item.record_count ?? 0,
+          latestRecordAt: item.latestRecordAt ?? item.latest_record_at,
+          latestRecordId: item.latestRecordId ?? item.latest_record_id,
+          latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title,
+          latestParseStatus: item.latestParseStatus ?? item.latest_parse_status,
+        }))
+        .filter((item) => item.batchId !== "unknown" && item.diseaseName !== "Unassigned");
     }
   } catch {
     batches = [];

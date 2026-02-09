@@ -32,6 +32,7 @@ public class ParseJobController {
     @SuppressWarnings("unchecked")
     List<String> rawAssetIds = (List<String>) body.getOrDefault("assetIds", List.of());
     List<UUID> assetIds = rawAssetIds.stream().map(UUID::fromString).toList();
+    persistenceService.bindParseJobAssets(jobId, assetIds);
     List<Map<String, Object>> assetRefs = persistenceService.listAssetRefs(assetIds);
     Map<String, String> context = persistenceService.parseJobContext(jobId);
 

@@ -17,7 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function toNumeric(value: string): number | null {
-  const match = value.match(/-?\d+(?:\.\d+)?/);
+  const match = value.match(/[+-]?\d+(?:\.\d+)?/);
   if (!match) {
     return null;
   }
@@ -25,9 +25,17 @@ function toNumeric(value: string): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function extractRangeNumbers(value: string): number[] {
+  const matches = value.match(/\d+(?:\.\d+)?/g);
+  if (!matches) {
+    return [];
+  }
+  return matches.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+}
+
 function parseRangeBounds(referenceRange: string): RangeBounds | null {
-  const normalized = referenceRange.replace(/\s+/g, "").replace("～", "~");
-  const numbers = Array.from(normalized.matchAll(/-?\d+(?:\.\d+)?/g)).map((item) => Number(item[0]));
+  const normalized = referenceRange.replace(/\s+/g, "").replace(/～/g, "~");
+  const numbers = extractRangeNumbers(normalized);
   if (numbers.length === 0) {
     return null;
   }

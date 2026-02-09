@@ -7,13 +7,16 @@ import io
 import json
 import logging
 import os
+import random
 import re
+import ssl
 import time
+import warnings
 from typing import Any, TypeVar, cast
 
 import fitz  # type: ignore[import-not-found]
 import oss2  # type: ignore[import-not-found]
-from langchain.agents import create_agent  # type: ignore[import-not-found]
+from langchain_core.messages import HumanMessage  # type: ignore[import-not-found]
 from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import-not-found]
 from pydantic import BaseModel, ConfigDict, Field
 from pypdf import PdfReader  # type: ignore[import-not-found]
@@ -50,6 +53,12 @@ class GenerateAgentOutput(BaseModel):
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 LOGGER = logging.getLogger(__name__)
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    module=r"pydantic\.main",
+    message=r"Pydantic serializer warnings:.*",
+)
 
 
 @dataclass
@@ -68,6 +77,31 @@ class ProviderGateway:
             "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash"
         ).strip()
         self._gemini_temperature = float(os.getenv("GEMINI_TEMPERATURE", "0"))
+        self._gemini_request_timeout_seconds = self._read_float_env(
+            "GEMINI_REQUEST_TIMEOUT_SECONDS", 90.0, 1.0
+        )
+        self._gemini_sdk_retries = self._read_int_env("GEMINI_SDK_RETRIES", 2, 0)
+        self._gemini_base_url = os.getenv("GEMINI_BASE_URL", "").strip()
+        # Default to bypassing ambient proxy settings to avoid intermittent TLS EOF
+        # failures caused by unstable system proxy chains.
+        self._gemini_trust_env = self._to_bool(
+            os.getenv("GEMINI_TRUST_ENV", "false")
+        )
+        self._gemini_proxy = os.getenv("GEMINI_PROXY", "").strip()
+        self._gemini_retry_with_env_proxy = self._to_bool(
+            os.getenv("GEMINI_RETRY_WITH_ENV_PROXY", "true")
+        )
+        self._gemini_http2 = self._to_bool(os.getenv("GEMINI_HTTP2", "false"))
+        self._provider_max_attempts = self._read_int_env("PROVIDER_MAX_ATTEMPTS", 4, 1)
+        self._provider_backoff_base_seconds = self._read_float_env(
+            "PROVIDER_BACKOFF_BASE_SECONDS", 1.0, 0.1
+        )
+        self._provider_backoff_factor = self._read_float_env(
+            "PROVIDER_BACKOFF_FACTOR", 2.0, 1.0
+        )
+        self._provider_backoff_jitter_seconds = self._read_float_env(
+            "PROVIDER_BACKOFF_JITTER_SECONDS", 0.3, 0.0
+        )
 
         endpoint = os.getenv("OSS_ENDPOINT", os.getenv("S3_ENDPOINT", "")).strip()
         if endpoint and not endpoint.startswith(("http://", "https://")):
@@ -84,8 +118,7 @@ class ProviderGateway:
     def execute_with_resilience(
         self, operation: str, payload: dict[str, Any]
     ) -> ProviderResponse:
-        max_attempts = 3
-        backoff_seconds = 0.5
+        max_attempts = self._provider_max_attempts
         for attempt in range(1, max_attempts + 1):
             try:
                 simulation = str(payload.get("simulate", ""))
@@ -103,7 +136,7 @@ class ProviderGateway:
                         operation,
                         attempt,
                     )
-                    parsed = self._parse_with_langchain(payload, model_name)
+                    parsed = self._parse_with_langchain(payload, model_name, attempt)
                     LOGGER.info(
                         "Provider call succeeded: operation=%s attempt=%s",
                         operation,
@@ -118,7 +151,9 @@ class ProviderGateway:
                         operation,
                         attempt,
                     )
-                    generated = self._generate_with_langchain(payload, model_name)
+                    generated = self._generate_with_langchain(
+                        payload, model_name, attempt
+                    )
                     LOGGER.info(
                         "Provider call succeeded: operation=%s attempt=%s",
                         operation,
@@ -156,7 +191,7 @@ class ProviderGateway:
                         error_code="EXT_TIMEOUT",
                         attempts=attempt,
                     )
-                time.sleep(backoff_seconds * attempt)
+                self._sleep_before_retry(attempt)
             except (ConnectionError, oss2.exceptions.OssError) as exc:
                 LOGGER.warning(
                     "Provider connectivity error: operation=%s attempt=%s error=%s",
@@ -175,8 +210,40 @@ class ProviderGateway:
                         ),
                         attempts=attempt,
                     )
-                time.sleep(backoff_seconds * attempt)
+                self._sleep_before_retry(attempt)
             except Exception as exc:  # pragma: no cover - defensive fallback
+                if self._is_timeout_error(exc):
+                    LOGGER.warning(
+                        "Provider timeout: operation=%s attempt=%s message=%s",
+                        operation,
+                        attempt,
+                        str(exc),
+                    )
+                    if attempt >= max_attempts:
+                        return ProviderResponse(
+                            success=False,
+                            payload={"operation": operation, "input": payload},
+                            error_code="EXT_TIMEOUT",
+                            attempts=attempt,
+                        )
+                    self._sleep_before_retry(attempt)
+                    continue
+                if self._is_connectivity_error(exc):
+                    LOGGER.warning(
+                        "Provider connectivity error: operation=%s attempt=%s error=%s",
+                        operation,
+                        attempt,
+                        str(exc),
+                    )
+                    if attempt >= max_attempts:
+                        return ProviderResponse(
+                            success=False,
+                            payload={"operation": operation, "input": payload},
+                            error_code="EXT_PROVIDER_UNAVAILABLE",
+                            attempts=attempt,
+                        )
+                    self._sleep_before_retry(attempt)
+                    continue
                 LOGGER.exception(
                     "Provider unexpected error: operation=%s attempt=%s",
                     operation,
@@ -193,7 +260,7 @@ class ProviderGateway:
                         ),
                         attempts=attempt,
                     )
-                time.sleep(backoff_seconds * attempt)
+                self._sleep_before_retry(attempt)
 
         return ProviderResponse(
             success=False,
@@ -203,7 +270,7 @@ class ProviderGateway:
         )
 
     def _parse_with_langchain(
-        self, payload: dict[str, Any], model_name: str
+        self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
         asset_refs = payload.get("assetRefs")
         if not isinstance(asset_refs, list) or not asset_refs:
@@ -218,29 +285,24 @@ class ProviderGateway:
         content = self._download_object_bytes(object_key)
         user_content = self._build_parse_content(file_type, object_key, content)
 
-        parse_agent = create_agent(
-            model=self._chat_model(model_name),
-            tools=[],
-            system_prompt=(
-                "You are a medical report extraction agent. "
-                "Return strictly structured fields with source evidence."
-            ),
-            response_format=ParseAgentOutput,
+        parse_llm = self._chat_model(model_name, attempt).with_structured_output(
+            ParseAgentOutput, method="json_schema"
         )
-        result = parse_agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": user_content,
-                    }
-                ]
-            }
-        )
-        structured = cast(
-            ParseAgentOutput,
-            self._coerce_structured_response(result, ParseAgentOutput),
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=UserWarning,
+                message=r"Pydantic serializer warnings:.*PydanticSerializationUnexpectedValue.*",
+            )
+            result = parse_llm.invoke([HumanMessage(content=user_content)])
+        if isinstance(result, ParseAgentOutput):
+            structured = result
+        elif isinstance(result, BaseModel):
+            structured = ParseAgentOutput.model_validate(result.model_dump())
+        elif isinstance(result, dict):
+            structured = ParseAgentOutput.model_validate(result)
+        else:
+            raise ValueError("BIZ_INVALID_LLM_OUTPUT")
         normalized_fields = [
             self._normalize_field(
                 field.model_dump(by_alias=True, exclude_none=True),
@@ -269,7 +331,7 @@ class ProviderGateway:
         }
 
     def _generate_with_langchain(
-        self, payload: dict[str, Any], model_name: str
+        self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
         output_type = str(payload.get("type", "SUMMARY")).upper()
         system_prompt = (
@@ -311,19 +373,25 @@ class ProviderGateway:
             "Context (JSON): "
             f"{json.dumps(safe_context, ensure_ascii=True)}"
         )
-        generate_agent = create_agent(
-            model=self._chat_model(model_name),
-            tools=[],
-            system_prompt=system_prompt,
-            response_format=GenerateAgentOutput,
+        generate_llm = self._chat_model(model_name, attempt).with_structured_output(
+            GenerateAgentOutput, method="json_schema"
         )
-        result = generate_agent.invoke(
-            {"messages": [{"role": "user", "content": user_prompt}]}
-        )
-        structured = cast(
-            GenerateAgentOutput,
-            self._coerce_structured_response(result, GenerateAgentOutput),
-        )
+        prompt = f"{system_prompt}\n{user_prompt}"
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=UserWarning,
+                message=r"Pydantic serializer warnings:.*PydanticSerializationUnexpectedValue.*",
+            )
+            result = generate_llm.invoke([HumanMessage(content=prompt)])
+        if isinstance(result, GenerateAgentOutput):
+            structured = result
+        elif isinstance(result, BaseModel):
+            structured = GenerateAgentOutput.model_validate(result.model_dump())
+        elif isinstance(result, dict):
+            structured = GenerateAgentOutput.model_validate(result)
+        else:
+            raise ValueError("BIZ_INVALID_LLM_OUTPUT")
         content = structured.content.strip()
         if not content:
             raise ValueError("BIZ_EMPTY_GENERATION")
@@ -338,15 +406,39 @@ class ProviderGateway:
             },
         }
 
-    def _chat_model(self, model_name: str) -> ChatGoogleGenerativeAI:
-        if self._google_api_key and not os.getenv("GOOGLE_API_KEY"):
-            os.environ["GOOGLE_API_KEY"] = self._google_api_key
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("BIZ_GEMINI_NOT_CONFIGURED")
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=self._gemini_temperature,
+    def _chat_model(self, model_name: str, attempt: int) -> ChatGoogleGenerativeAI:
+        api_key = (
+            self._google_api_key
+            or os.getenv("GOOGLE_API_KEY", "").strip()
+            or os.getenv("GEMINI_API_KEY", "").strip()
         )
+        if not api_key:
+            raise ValueError("BIZ_GEMINI_NOT_CONFIGURED")
+        trust_env = self._gemini_trust_env
+        if self._gemini_retry_with_env_proxy and not self._gemini_proxy and attempt >= 2:
+            # Alternate between baseline trust_env and the opposite on retries so that
+            # we can recover from one-side proxy path flakiness.
+            trust_env = (
+                not self._gemini_trust_env if attempt % 2 == 0 else self._gemini_trust_env
+            )
+
+        client_args: dict[str, Any] = {
+            "trust_env": trust_env,
+            "http2": self._gemini_http2,
+        }
+        if self._gemini_proxy:
+            client_args["proxy"] = self._gemini_proxy
+        model_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "api_key": api_key,
+            "temperature": self._gemini_temperature,
+            "retries": self._gemini_sdk_retries,
+            "request_timeout": self._gemini_request_timeout_seconds,
+            "client_args": client_args,
+        }
+        if self._gemini_base_url:
+            model_kwargs["base_url"] = self._gemini_base_url
+        return ChatGoogleGenerativeAI(**model_kwargs)
 
     def _build_parse_content(
         self, file_type: str, object_key: str, content: bytes
@@ -545,11 +637,101 @@ class ProviderGateway:
         return self._gemini_fallback_model
 
     def _is_timeout_error(self, exc: Exception) -> bool:
-        text = str(exc).lower()
-        return "timeout" in text or "deadline" in text
+        timeout_markers = (
+            "timeout",
+            "timed out",
+            "deadline",
+            "read operation timed out",
+            "readtimeout",
+            "connecttimeout",
+        )
+        for current in self._iter_exception_chain(exc):
+            type_name = type(current).__name__.lower()
+            if "timeout" in type_name:
+                return True
+            text = str(current).lower()
+            if any(marker in text for marker in timeout_markers):
+                return True
+        return False
+
+    def _is_connectivity_error(self, exc: Exception) -> bool:
+        connectivity_markers = (
+            "unexpected eof while reading",
+            "eof occurred in violation of protocol",
+            "connection reset by peer",
+            "connection aborted",
+            "connection refused",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "network is unreachable",
+            "proxy error",
+            "tls",
+            "ssl",
+        )
+        connectivity_type_names = {
+            "connecterror",
+            "networkerror",
+            "remoteprotocolerror",
+            "proxyerror",
+            "sslerror",
+            "tlserror",
+        }
+        for current in self._iter_exception_chain(exc):
+            if isinstance(current, (ConnectionError, ssl.SSLError)):
+                return True
+            type_name = type(current).__name__.lower()
+            if type_name in connectivity_type_names:
+                return True
+            text = str(current).lower()
+            if any(marker in text for marker in connectivity_markers):
+                return True
+        return False
+
+    def _iter_exception_chain(self, exc: Exception) -> list[BaseException]:
+        chain: list[BaseException] = []
+        seen: set[int] = set()
+        current: BaseException | None = exc
+        while current is not None and id(current) not in seen:
+            chain.append(current)
+            seen.add(id(current))
+            current = current.__cause__ or current.__context__
+        return chain
 
     def _extract_biz_code(self, message: str) -> str:
         match = re.search(r"BIZ_[A-Z0-9_]+", message)
         if match:
             return match.group(0)
         return "BIZ_PROVIDER_FAILED"
+
+    def _sleep_before_retry(self, attempt: int) -> None:
+        if attempt >= self._provider_max_attempts:
+            return
+        exp = self._provider_backoff_factor ** (attempt - 1)
+        jitter = random.uniform(0, self._provider_backoff_jitter_seconds)
+        sleep_seconds = (self._provider_backoff_base_seconds * exp) + jitter
+        time.sleep(sleep_seconds)
+
+    def _to_bool(self, value: str) -> bool:
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _read_float_env(self, key: str, default: float, minimum: float) -> float:
+        raw = os.getenv(key, "").strip()
+        if not raw:
+            return default
+        try:
+            parsed = float(raw)
+        except ValueError:
+            LOGGER.warning("Invalid float env %s=%s, fallback to %s", key, raw, default)
+            return default
+        return max(minimum, parsed)
+
+    def _read_int_env(self, key: str, default: int, minimum: int) -> int:
+        raw = os.getenv(key, "").strip()
+        if not raw:
+            return default
+        try:
+            parsed = int(raw)
+        except ValueError:
+            LOGGER.warning("Invalid int env %s=%s, fallback to %s", key, raw, default)
+            return default
+        return max(minimum, parsed)

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
 import { DeleteRecordButton } from "./DeleteRecordButton";
+import { TrendComparisonPanel } from "./TrendComparisonPanel";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
@@ -24,10 +25,7 @@ type TimelineRecord = {
 };
 
 type TimelineRecordDetail = {
-  id: string;
-  summary: string;
-  schemaVersion: string;
-  revision: number;
+  parseStatus: string;
   payload: unknown;
 };
 
@@ -47,6 +45,29 @@ type RecordAnalysis = {
   cached: boolean;
 };
 
+type TrendField = {
+  name: string;
+  value: string;
+  unit?: string;
+  referenceRange?: string;
+};
+
+type TrendSnapshot = {
+  recordId: string;
+  recordDate: string;
+  title: string;
+  sourceType: string;
+  fields: TrendField[];
+};
+
+type TrendData = {
+  recordId: string;
+  sourceType: string;
+  diseaseProfileId: string;
+  limit: number;
+  snapshots: TrendSnapshot[];
+};
+
 function normalizeCategory(raw?: string): string {
   const value = (raw ?? "UPLOAD").trim().toUpperCase();
   return value || "UPLOAD";
@@ -59,6 +80,14 @@ function categoryLabel(categoryValue: string): string {
 function categoryOrder(categoryValue: string): number {
   const index = REPORT_CATEGORY_OPTIONS.findIndex((item) => item.value === categoryValue);
   return index >= 0 ? index : REPORT_CATEGORY_OPTIONS.length + 1;
+}
+
+function hasStructuredFields(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) {
+    return false;
+  }
+  const payloadRecord = payload as { fields?: unknown };
+  return Array.isArray(payloadRecord.fields) && payloadRecord.fields.length > 0;
 }
 
 export function DiseaseTimelineView({
@@ -83,6 +112,10 @@ export function DiseaseTimelineView({
   const [analysisCache, setAnalysisCache] = useState<Record<string, RecordAnalysis>>({});
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [trendOpen, setTrendOpen] = useState(false);
+  const [trendCache, setTrendCache] = useState<Record<string, TrendData>>({});
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState("");
   const categoryMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -148,6 +181,10 @@ export function DiseaseTimelineView({
     setAnalysisCache({});
     setAnalysisLoading(false);
     setAnalysisError("");
+    setTrendOpen(false);
+    setTrendCache({});
+    setTrendLoading(false);
+    setTrendError("");
   }, [batchId]);
 
   useEffect(() => {
@@ -161,6 +198,9 @@ export function DiseaseTimelineView({
       setCategoryUpdateError("");
       setAnalysisLoading(false);
       setAnalysisError("");
+      setTrendOpen(false);
+      setTrendLoading(false);
+      setTrendError("");
       return;
     }
 
@@ -173,6 +213,9 @@ export function DiseaseTimelineView({
       setCategoryUpdateError("");
       setAnalysisLoading(false);
       setAnalysisError("");
+      setTrendOpen(false);
+      setTrendLoading(false);
+      setTrendError("");
     }
   }, [groupedByDate, mutableRecords, selectedDate, selectedRecordId]);
 
@@ -214,6 +257,9 @@ export function DiseaseTimelineView({
     setCategoryUpdateError("");
     setAnalysisLoading(false);
     setAnalysisError("");
+    setTrendOpen(false);
+    setTrendLoading(false);
+    setTrendError("");
   };
 
   const loadRecordAnalysis = async (recordId: string) => {
@@ -229,6 +275,10 @@ export function DiseaseTimelineView({
       const response = await fetch(`${API_BASE}/records/${recordId}/analysis`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (String(payload?.code ?? "") === "ANALYSIS_NOT_READY") {
+          setAnalysisError("");
+          return;
+        }
         const message = String(payload?.message ?? "加载AI分析失败，请稍后重试。");
         throw new Error(message);
       }
@@ -264,7 +314,8 @@ export function DiseaseTimelineView({
     setCategoryMenuOpen(false);
     setCategoryUpdateError("");
     setAnalysisError("");
-    void loadRecordAnalysis(target.record.id);
+    setTrendOpen(false);
+    setTrendError("");
     setDetailLoading(true);
     try {
       const response = await fetch(`${API_BASE}/records/${target.record.id}`);
@@ -273,17 +324,68 @@ export function DiseaseTimelineView({
       }
       const payload = await response.json();
       const detail = payload?.data;
+      const parseStatus = String(detail?.parseStatus ?? "NOT_PARSED").toUpperCase();
+      const structuredPayload = detail?.structuredResult?.payload ?? {};
       setSelectedDetail({
-        id: target.record.id,
-        summary: String(detail?.summary ?? "暂无摘要。"),
-        schemaVersion: String(detail?.structuredResult?.schemaVersion ?? "v1"),
-        revision: Number(detail?.structuredResult?.revision ?? 0),
-        payload: detail?.structuredResult?.payload ?? {},
+        parseStatus,
+        payload: structuredPayload,
       });
+      if (parseStatus === "SUCCESS" && hasStructuredFields(structuredPayload)) {
+        void loadRecordAnalysis(target.record.id);
+      } else {
+        setAnalysisLoading(false);
+      }
     } catch (error) {
       setDetailError(error instanceof Error ? error.message : "加载报告详情失败，请稍后重试。");
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const loadRecordTrend = async (recordId: string) => {
+    const cached = trendCache[recordId];
+    if (cached) {
+      setTrendError("");
+      setTrendLoading(false);
+      return;
+    }
+    setTrendLoading(true);
+    setTrendError("");
+    try {
+      const response = await fetch(`${API_BASE}/records/${recordId}/trend?limit=6`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = String(payload?.message ?? "加载趋势对比失败，请稍后重试。");
+        throw new Error(message);
+      }
+      const data = payload?.data;
+      const snapshotsRaw = Array.isArray(data?.snapshots) ? data.snapshots : [];
+      const snapshots: TrendSnapshot[] = snapshotsRaw.map((snapshot: Record<string, unknown>) => ({
+        recordId: String(snapshot.recordId ?? ""),
+        recordDate: String(snapshot.recordDate ?? ""),
+        title: String(snapshot.title ?? "未命名报告"),
+        sourceType: String(snapshot.sourceType ?? ""),
+        fields: (Array.isArray(snapshot.fields) ? snapshot.fields : []).map((field: Record<string, unknown>) => ({
+          name: String(field.name ?? ""),
+          value: String(field.value ?? ""),
+          unit: field.unit ? String(field.unit) : undefined,
+          referenceRange: field.referenceRange ? String(field.referenceRange) : undefined,
+        })),
+      }));
+      setTrendCache((prev) => ({
+        ...prev,
+        [recordId]: {
+          recordId: String(data?.recordId ?? recordId),
+          sourceType: String(data?.sourceType ?? ""),
+          diseaseProfileId: String(data?.diseaseProfileId ?? ""),
+          limit: Number(data?.limit ?? 6),
+          snapshots,
+        },
+      }));
+    } catch (error) {
+      setTrendError(error instanceof Error ? error.message : "加载趋势对比失败，请稍后重试。");
+    } finally {
+      setTrendLoading(false);
     }
   };
 
@@ -327,6 +429,9 @@ export function DiseaseTimelineView({
       );
       setSelectedCategory(nextSourceType);
       setCategoryMenuOpen(false);
+      setTrendOpen(false);
+      setTrendCache({});
+      setTrendError("");
     } catch (error) {
       setCategoryUpdateError(error instanceof Error ? error.message : "修改报告分类失败，请稍后重试。");
     } finally {
@@ -459,18 +564,35 @@ export function DiseaseTimelineView({
                   ) : null}
                 </div>
                 <DeleteRecordButton recordId={selectedRecord.id} batchId={batchId} isSelected />
+                <button
+                  className="btn btn-ghost btn-small"
+                  type="button"
+                  onClick={() => {
+                    const nextOpen = !trendOpen;
+                    setTrendOpen(nextOpen);
+                    if (nextOpen) {
+                      void loadRecordTrend(selectedRecord.id);
+                    }
+                  }}
+                >
+                  {trendOpen ? "收起趋势" : "趋势对比"}
+                </button>
               </div>
 
               {categoryUpdateError ? <p className="status-text error mt-10">{categoryUpdateError}</p> : null}
-              <p className="muted mt-10">结构版本 {selectedDetail.schemaVersion} | 修订版本 {selectedDetail.revision}</p>
-              <div className="summary-block mt-10">
-                <h4 className="summary-heading">摘要</h4>
-                <p className="paragraph-relaxed">{selectedDetail.summary}</p>
-              </div>
+              {trendOpen ? (
+                <TrendComparisonPanel
+                  loading={trendLoading}
+                  error={trendError}
+                  data={selectedRecord ? trendCache[selectedRecord.id] : undefined}
+                />
+              ) : null}
               <div className="summary-block mt-10">
                 <h4 className="summary-heading">AI分析与建议（300字内）</h4>
                 {analysisLoading ? (
                   <p className="status-text">正在生成分析建议...</p>
+                ) : selectedDetail.parseStatus !== "SUCCESS" || !hasStructuredFields(selectedDetail.payload) ? (
+                  <p className="muted">解析成功且提取到有效结构化字段后，系统会自动生成分析建议。</p>
                 ) : analysisError ? (
                   <p className="status-text error">{analysisError}</p>
                 ) : analysisCache[selectedRecord.id]?.content ? (
