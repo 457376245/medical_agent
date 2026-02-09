@@ -269,6 +269,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponseRecordSourceTypeUpdate'
 
+  /records/{recordId}/analysis:
+    get:
+      summary: Get cached report analysis or generate and persist one from structured result
+      operationId: getRecordAnalysis
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordAnalysis'
+        '400':
+          description: Invalid record id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordAnalysis'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordAnalysis'
+        '502':
+          description: Upstream LLM provider failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordAnalysis'
+
   /timeline:
     get:
       summary: Get reverse-chronological timeline by batches
@@ -626,6 +663,24 @@ components:
                   format: date
                 diseaseName:
                   type: string
+    ApiResponseRecordAnalysis:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                recordId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                  description: Analysis and suggestion text in Chinese, capped at 300 characters.
+                cached:
+                  type: boolean
+                version:
+                  type: integer
     ApiResponseGenerateAccepted:
       allOf:
         - $ref: '#/components/schemas/ApiMeta'

@@ -42,6 +42,11 @@ type GroupedDateItem = {
   categories: GroupedCategory[];
 };
 
+type RecordAnalysis = {
+  content: string;
+  cached: boolean;
+};
+
 function normalizeCategory(raw?: string): string {
   const value = (raw ?? "UPLOAD").trim().toUpperCase();
   return value || "UPLOAD";
@@ -75,6 +80,9 @@ export function DiseaseTimelineView({
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [categoryUpdating, setCategoryUpdating] = useState(false);
   const [categoryUpdateError, setCategoryUpdateError] = useState("");
+  const [analysisCache, setAnalysisCache] = useState<Record<string, RecordAnalysis>>({});
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const categoryMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -137,6 +145,9 @@ export function DiseaseTimelineView({
     setDetailLoading(false);
     setCategoryMenuOpen(false);
     setCategoryUpdateError("");
+    setAnalysisCache({});
+    setAnalysisLoading(false);
+    setAnalysisError("");
   }, [batchId]);
 
   useEffect(() => {
@@ -148,6 +159,8 @@ export function DiseaseTimelineView({
       setDetailError("");
       setCategoryMenuOpen(false);
       setCategoryUpdateError("");
+      setAnalysisLoading(false);
+      setAnalysisError("");
       return;
     }
 
@@ -158,6 +171,8 @@ export function DiseaseTimelineView({
       setDetailError("");
       setCategoryMenuOpen(false);
       setCategoryUpdateError("");
+      setAnalysisLoading(false);
+      setAnalysisError("");
     }
   }, [groupedByDate, mutableRecords, selectedDate, selectedRecordId]);
 
@@ -197,6 +212,40 @@ export function DiseaseTimelineView({
     setDetailError("");
     setCategoryMenuOpen(false);
     setCategoryUpdateError("");
+    setAnalysisLoading(false);
+    setAnalysisError("");
+  };
+
+  const loadRecordAnalysis = async (recordId: string) => {
+    const cached = analysisCache[recordId];
+    if (cached) {
+      setAnalysisError("");
+      setAnalysisLoading(false);
+      return;
+    }
+    setAnalysisLoading(true);
+    setAnalysisError("");
+    try {
+      const response = await fetch(`${API_BASE}/records/${recordId}/analysis`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = String(payload?.message ?? "加载AI分析失败，请稍后重试。");
+        throw new Error(message);
+      }
+      const content = String(payload?.data?.content ?? "").trim();
+      const cachedFlag = Boolean(payload?.data?.cached);
+      setAnalysisCache((prev) => ({
+        ...prev,
+        [recordId]: {
+          content,
+          cached: cachedFlag,
+        },
+      }));
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "加载AI分析失败，请稍后重试。");
+    } finally {
+      setAnalysisLoading(false);
+    }
   };
 
   const onSelectCategory = async (categoryValue: string) => {
@@ -214,6 +263,8 @@ export function DiseaseTimelineView({
     setDetailError("");
     setCategoryMenuOpen(false);
     setCategoryUpdateError("");
+    setAnalysisError("");
+    void loadRecordAnalysis(target.record.id);
     setDetailLoading(true);
     try {
       const response = await fetch(`${API_BASE}/records/${target.record.id}`);
@@ -411,16 +462,22 @@ export function DiseaseTimelineView({
               </div>
 
               {categoryUpdateError ? <p className="status-text error mt-10">{categoryUpdateError}</p> : null}
-              <p className="muted mt-10">
-                报告名称：{selectedRecord.title}
-              </p>
-              <p className="muted muted-tight">
-                记录 ID：<span className="mono">{selectedDetail.id}</span> | 结构版本 {selectedDetail.schemaVersion} | 修订版本{" "}
-                {selectedDetail.revision}
-              </p>
+              <p className="muted mt-10">结构版本 {selectedDetail.schemaVersion} | 修订版本 {selectedDetail.revision}</p>
               <div className="summary-block mt-10">
                 <h4 className="summary-heading">摘要</h4>
                 <p className="paragraph-relaxed">{selectedDetail.summary}</p>
+              </div>
+              <div className="summary-block mt-10">
+                <h4 className="summary-heading">AI分析与建议（300字内）</h4>
+                {analysisLoading ? (
+                  <p className="status-text">正在生成分析建议...</p>
+                ) : analysisError ? (
+                  <p className="status-text error">{analysisError}</p>
+                ) : analysisCache[selectedRecord.id]?.content ? (
+                  <p className="paragraph-relaxed">{analysisCache[selectedRecord.id].content}</p>
+                ) : (
+                  <p className="muted">暂无分析建议。</p>
+                )}
               </div>
               <h4 className="summary-heading">结构化解析结果</h4>
               <StructuredResultTable payload={selectedDetail.payload} />

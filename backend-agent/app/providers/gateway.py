@@ -281,16 +281,30 @@ class ProviderGateway:
                 "Generate a medication plan draft in Chinese, with clear steps, "
                 "missing information reminders, and a reconfirmation warning."
             )
+        elif output_type == "REPORT_ANALYSIS":
+            task_prompt = (
+                "You will receive structured lab/report fields. "
+                "Generate Chinese analysis and advice in at most 300 Chinese characters. "
+                "Focus on abnormalities, possible risk direction, and practical follow-up suggestions. "
+                "Do not provide definitive diagnosis or medication decisions. "
+                "Must include a short disclaimer that this is for reference only."
+            )
         else:
             task_prompt = (
                 "Generate a concise medical report summary draft in Chinese. "
                 "Highlight key findings and explicitly mention unknown fields."
             )
 
+        analysis_context = (
+            payload.get("analysisContext")
+            if isinstance(payload.get("analysisContext"), dict)
+            else {}
+        )
         safe_context = {
             "recordId": payload.get("recordId"),
             "type": output_type,
             "traceId": payload.get("traceId"),
+            "analysisContext": analysis_context if output_type == "REPORT_ANALYSIS" else {},
         }
         user_prompt = (
             f"{task_prompt}\n"

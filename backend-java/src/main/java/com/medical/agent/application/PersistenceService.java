@@ -39,7 +39,7 @@ public class PersistenceService {
 
   public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title, String sourceType) {
     UUID finalRecordId = recordId == null ? UUID.randomUUID() : recordId;
-    UUID finalDiseaseProfileId = diseaseProfileId == null ? ensureDefaultDiseaseProfile() : diseaseProfileId;
+    UUID finalDiseaseProfileId = diseaseProfileId;
     LocalDate finalReportDate = reportDate == null ? LocalDate.now() : reportDate;
     String finalTitle = title == null || title.isBlank() ? "Imported record" : title;
     String normalizedSourceType = sourceType == null || sourceType.isBlank() ? null : sourceType.trim().toUpperCase();
@@ -275,6 +275,63 @@ public class PersistenceService {
             "revision", results.get(0).get("revision"),
             "payload", parsePayload(String.valueOf(results.get(0).get("payload_json"))));
     return Map.of("recordId", recordId.toString(), "summary", summary, "structuredResult", latestResult);
+  }
+
+  public Map<String, Object> fetchLatestGeneratedOutput(UUID recordId, String type) {
+    try {
+      Map<String, Object> row = jdbcTemplate.queryForMap(
+          "select version, content, model_meta "
+              + "from generated_outputs where record_id = ? and type = ? "
+              + "order by version desc limit 1",
+          recordId,
+          type);
+      return Map.of(
+          "recordId", recordId.toString(),
+          "type", type,
+          "version", row.get("version"),
+          "content", String.valueOf(row.get("content")),
+          "modelMeta", row.get("model_meta") == null
+              ? Map.of()
+              : parsePayload(String.valueOf(row.get("model_meta"))));
+    } catch (EmptyResultDataAccessException ignored) {
+      return Map.of();
+    }
+  }
+
+  public Map<String, Object> fetchRecordAnalysisContext(UUID recordId) {
+    Map<String, Object> record;
+    try {
+      record = jdbcTemplate.queryForMap(
+          "select r.id, r.title, r.record_date, r.source_type, coalesce(dp.name, '未分类疾病') as disease_name "
+              + "from records r "
+              + "left join disease_profiles dp on dp.id = r.disease_profile_id "
+              + "where r.id = ? and r.tenant_id = ? and r.user_id = ?",
+          recordId,
+          DEFAULT_TENANT_ID,
+          DEFAULT_USER_ID);
+    } catch (EmptyResultDataAccessException ignored) {
+      return Map.of();
+    }
+
+    List<Map<String, Object>> results = jdbcTemplate.queryForList(
+        "select schema_version, revision, payload_json "
+            + "from structured_results where record_id = ? "
+            + "order by revision desc limit 1",
+        recordId);
+    Map<String, Object> latestResult = results.isEmpty()
+        ? Map.of("schemaVersion", "v1", "revision", 0, "payload", Map.of("fields", List.of()))
+        : Map.of(
+            "schemaVersion", String.valueOf(results.get(0).get("schema_version")),
+            "revision", results.get(0).get("revision"),
+            "payload", parsePayload(String.valueOf(results.get(0).get("payload_json"))));
+
+    return Map.of(
+        "recordId", String.valueOf(record.get("id")),
+        "title", record.get("title") == null ? "未命名报告" : String.valueOf(record.get("title")),
+        "recordDate", String.valueOf(record.get("record_date")),
+        "sourceType", String.valueOf(record.get("source_type")),
+        "diseaseName", String.valueOf(record.get("disease_name")),
+        "structuredResult", latestResult);
   }
 
   public UUID createDiseaseProfile(String name) {
@@ -527,6 +584,12 @@ public class PersistenceService {
   }
 
   public List<Map<String, Object>> listRecordsByBatch(String batchId) {
+    if ("unknown".equalsIgnoreCase(batchId)) {
+      return jdbcTemplate.queryForList(
+          "select id, title, record_date, source_type from records "
+              + "where disease_profile_id is null and tenant_id = ? order by record_date desc",
+          DEFAULT_TENANT_ID);
+    }
     return jdbcTemplate.queryForList(
         "select id, title, record_date, source_type from records where disease_profile_id::text = ? order by record_date desc",
         batchId);
@@ -615,10 +678,6 @@ public class PersistenceService {
     jdbcTemplate.update("delete from assets where record_id = ?", recordId);
     int deleted = jdbcTemplate.update("delete from records where id = ?", recordId);
     return deleted > 0;
-  }
-
-  private UUID ensureDefaultDiseaseProfile() {
-    return createDiseaseProfile("General");
   }
 
   private static String sourceTypeLabel(String sourceType) {

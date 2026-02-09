@@ -1,6 +1,7 @@
 package com.medical.agent.api;
 
 import com.medical.agent.application.PersistenceService;
+import com.medical.agent.application.ReportAnalysisService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -18,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/records")
 public class RecordController {
   private final PersistenceService persistenceService;
+  private final ReportAnalysisService reportAnalysisService;
 
-  public RecordController(PersistenceService persistenceService) {
+  public RecordController(PersistenceService persistenceService, ReportAnalysisService reportAnalysisService) {
     this.persistenceService = persistenceService;
+    this.reportAnalysisService = reportAnalysisService;
   }
 
   @GetMapping("/{recordId}")
@@ -32,6 +35,43 @@ public class RecordController {
         "message", "success",
         "requestId", RequestIdUtil.newRequestId(),
         "data", record);
+  }
+
+  @GetMapping("/{recordId}/analysis")
+  public ResponseEntity<Map<String, Object>> getRecordAnalysis(@PathVariable("recordId") String recordId) {
+    UUID recordUuid;
+    try {
+      recordUuid = UUID.fromString(recordId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_RECORD_ID",
+          "message", "recordId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
+
+    Map<String, Object> analysis;
+    try {
+      analysis = reportAnalysisService.getOrGenerate(recordUuid);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+          "code", "NOT_FOUND",
+          "message", "record not found",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    } catch (IllegalStateException error) {
+      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
+          "code", "ANALYSIS_PROVIDER_FAILED",
+          "message", "report analysis generation failed",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
+
+    return ResponseEntity.ok(Map.of(
+        "code", "OK",
+        "message", "success",
+        "requestId", RequestIdUtil.newRequestId(),
+        "data", analysis));
   }
 
   @DeleteMapping("/{recordId}")
