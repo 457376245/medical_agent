@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -47,5 +49,59 @@ public class RecordController {
         "message", "deleted",
         "requestId", RequestIdUtil.newRequestId(),
         "data", Map.of("recordId", recordId, "deleted", true)));
+  }
+
+  @PatchMapping("/{recordId}/source-type")
+  public ResponseEntity<Map<String, Object>> updateRecordSourceType(
+      @PathVariable("recordId") String recordId,
+      @RequestBody Map<String, Object> body) {
+    String sourceType = String.valueOf(body.getOrDefault("sourceType", "")).trim();
+    if (sourceType.isEmpty()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_REQUEST",
+          "message", "sourceType is required",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "updated", false)));
+    }
+
+    UUID recordUuid;
+    try {
+      recordUuid = UUID.fromString(recordId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_RECORD_ID",
+          "message", "recordId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "updated", false)));
+    }
+
+    Map<String, Object> updated;
+    try {
+      updated = persistenceService.updateRecordSourceType(recordUuid, sourceType);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_SOURCE_TYPE",
+          "message", error.getMessage(),
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "updated", false)));
+    }
+    if (!Boolean.TRUE.equals(updated.get("updated"))) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+          "code", "NOT_FOUND",
+          "message", "record not found",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "updated", false)));
+    }
+    return ResponseEntity.ok(Map.of(
+        "code", "OK",
+        "message", "updated",
+        "requestId", RequestIdUtil.newRequestId(),
+        "data", Map.of(
+            "recordId", recordId,
+            "updated", true,
+            "sourceType", updated.get("sourceType"),
+            "title", updated.get("title"),
+            "recordDate", updated.get("recordDate"),
+            "diseaseName", updated.get("diseaseName"))));
   }
 }

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 public class PersistenceService {
   private static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
   private static final UUID DEFAULT_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
+  private static final Set<String> ALLOWED_SOURCE_TYPES =
+      Set.of("UPLOAD", "LAB", "IMAGING", "OUTPATIENT", "DISCHARGE", "OTHER");
 
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -525,8 +528,83 @@ public class PersistenceService {
 
   public List<Map<String, Object>> listRecordsByBatch(String batchId) {
     return jdbcTemplate.queryForList(
-        "select id, title, record_date from records where disease_profile_id::text = ? order by record_date desc",
+        "select id, title, record_date, source_type from records where disease_profile_id::text = ? order by record_date desc",
         batchId);
+  }
+
+  public String getDiseaseNameByBatch(String batchId) {
+    try {
+      UUID diseaseProfileId = UUID.fromString(batchId);
+      String diseaseName = jdbcTemplate.queryForObject(
+          "select name from disease_profiles where id = ? and tenant_id = ? and user_id = ?",
+          String.class,
+          diseaseProfileId,
+          DEFAULT_TENANT_ID,
+          DEFAULT_USER_ID);
+      if (diseaseName != null && !diseaseName.isBlank()) {
+        return diseaseName;
+      }
+    } catch (IllegalArgumentException | EmptyResultDataAccessException ignored) {
+      // fallback to record-based resolution for legacy/unknown batches
+    }
+
+    try {
+      return jdbcTemplate.queryForObject(
+          "select coalesce(dp.name, '未分类疾病') "
+              + "from records r "
+              + "left join disease_profiles dp on dp.id = r.disease_profile_id "
+              + "where coalesce(dp.id::text, 'unknown') = ? and r.tenant_id = ? "
+              + "order by r.record_date desc, r.updated_at desc, r.created_at desc "
+              + "limit 1",
+          String.class,
+          batchId,
+          DEFAULT_TENANT_ID);
+    } catch (EmptyResultDataAccessException ignored) {
+      return "未分类疾病";
+    }
+  }
+
+  public Map<String, Object> updateRecordSourceType(UUID recordId, String sourceType) {
+    String normalizedSourceType = sourceType == null ? "" : sourceType.trim().toUpperCase();
+    if (!ALLOWED_SOURCE_TYPES.contains(normalizedSourceType)) {
+      throw new IllegalArgumentException("Invalid sourceType: " + sourceType);
+    }
+
+    Map<String, Object> record;
+    try {
+      record = jdbcTemplate.queryForMap(
+          "select r.record_date, coalesce(dp.name, '未分类疾病') as disease_name "
+              + "from records r "
+              + "left join disease_profiles dp on dp.id = r.disease_profile_id "
+              + "where r.id = ? and r.tenant_id = ? and r.user_id = ?",
+          recordId,
+          DEFAULT_TENANT_ID,
+          DEFAULT_USER_ID);
+    } catch (EmptyResultDataAccessException ignored) {
+      return Map.of("updated", false);
+    }
+
+    Object recordDateValue = record.get("record_date");
+    String recordDate = recordDateValue == null ? LocalDate.now().toString() : String.valueOf(recordDateValue);
+    String diseaseName = String.valueOf(record.get("disease_name"));
+    String nextTitle = diseaseName + "-" + sourceTypeLabel(normalizedSourceType) + "-" + recordDate;
+    int updated = jdbcTemplate.update(
+        "update records set source_type = ?, title = ?, updated_at = ? where id = ? and tenant_id = ? and user_id = ?",
+        normalizedSourceType,
+        nextTitle,
+        now(),
+        recordId,
+        DEFAULT_TENANT_ID,
+        DEFAULT_USER_ID);
+    if (updated <= 0) {
+      return Map.of("updated", false);
+    }
+    return Map.of(
+        "updated", true,
+        "sourceType", normalizedSourceType,
+        "title", nextTitle,
+        "recordDate", recordDate,
+        "diseaseName", diseaseName);
   }
 
   public boolean deleteRecord(UUID recordId) {
@@ -541,6 +619,17 @@ public class PersistenceService {
 
   private UUID ensureDefaultDiseaseProfile() {
     return createDiseaseProfile("General");
+  }
+
+  private static String sourceTypeLabel(String sourceType) {
+    return switch (sourceType) {
+      case "UPLOAD" -> "常规检查";
+      case "LAB" -> "检验报告";
+      case "IMAGING" -> "影像报告";
+      case "OUTPATIENT" -> "门诊记录";
+      case "DISCHARGE" -> "出院小结";
+      default -> "其他";
+    };
   }
 
   private void insertStructuredResultIfMissing(UUID jobId, UUID recordId) {

@@ -73,14 +73,6 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
     return { processing, parsed, needAttention };
   }, [batches]);
 
-  const recentItems = useMemo(
-    () =>
-      batches
-        .filter((item) => item.latestRecordAt || item.latestRecordId)
-        .sort((a, b) => String(b.latestRecordAt ?? "").localeCompare(String(a.latestRecordAt ?? ""))),
-    [batches],
-  );
-
   const openUploadDialog = (diseaseProfileId?: string, diseaseName?: string) => {
     window.dispatchEvent(
       new CustomEvent("open-upload-dialog", {
@@ -159,7 +151,10 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
                   </div>
 
                   <div className="disease-focus-actions">
-                    <Link className="btn btn-primary" href={`/timeline/${item.batchId}`}>
+                    <Link
+                      className="btn btn-primary"
+                      href={`/timeline?batchId=${encodeURIComponent(item.batchId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
+                    >
                       进入疾病报告
                     </Link>
                     <button
@@ -205,9 +200,6 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
           <button className="btn btn-primary" type="button" onClick={() => openUploadDialog()}>
             上传报告
           </button>
-          <Link className="btn btn-ghost" href="/timeline">
-            查看全部时间线
-          </Link>
         </div>
 
         <div className="hero-stats">
@@ -226,40 +218,6 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
         </div>
       </section>
 
-      <section className="timeline-section">
-        <div className="timeline-section-head">
-          <h3>最近更新（辅助）</h3>
-        </div>
-        {recentItems.length === 0 ? (
-          <p className="empty-tip">暂无最近更新记录。</p>
-        ) : (
-          <ul className="timeline-list">
-            {recentItems.map((item) => {
-              const status = statusMeta(item.latestParseStatus);
-              return (
-                <li className="timeline-item" key={`${item.batchId}-${item.latestRecordId ?? "latest"}`}>
-                  <div>
-                    <Link
-                      className="timeline-node-link"
-                      href={
-                        item.latestRecordId
-                          ? `/timeline/${item.batchId}?recordId=${item.latestRecordId}`
-                          : `/timeline/${item.batchId}`
-                      }
-                    >
-                      <strong>{item.latestRecordTitle ?? `${item.diseaseName} 最新报告`}</strong>
-                    </Link>
-                    <p className="muted muted-tight">
-                      疾病：{item.diseaseName} · 日期：{formatDate(item.latestRecordAt)}
-                    </p>
-                  </div>
-                  <span className={`status-chip ${status.className}`}>{status.label}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
     </main>
   );
 }

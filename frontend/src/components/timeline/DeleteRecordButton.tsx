@@ -30,7 +30,7 @@ export function DeleteRecordButton({ recordId, batchId, isSelected }: DeleteReco
       }
       setConfirmOpen(false);
       if (isSelected) {
-        router.push(`/timeline/${batchId}`);
+        router.push(`/timeline?batchId=${batchId}`);
       }
       router.refresh();
     } catch {

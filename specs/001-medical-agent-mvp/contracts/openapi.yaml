@@ -226,12 +226,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseRecordDelete'
+
+  /records/{recordId}/source-type:
+    patch:
+      summary: Update record source type and sync report title
+      operationId: updateRecordSourceType
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceType]
+              properties:
+                sourceType:
+                  type: string
+                  enum: [UPLOAD, LAB, IMAGING, OUTPATIENT, DISCHARGE, OTHER]
+      responses:
+        '200':
+          description: Source type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordSourceTypeUpdate'
+        '400':
+          description: Invalid record id or source type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordSourceTypeUpdate'
         '404':
           description: Record not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResponseRecordDelete'
+                $ref: '#/components/schemas/ApiResponseRecordSourceTypeUpdate'
 
   /timeline:
     get:
@@ -568,6 +604,28 @@ components:
                   format: uuid
                 deleted:
                   type: boolean
+    ApiResponseRecordSourceTypeUpdate:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                recordId:
+                  type: string
+                  format: uuid
+                updated:
+                  type: boolean
+                sourceType:
+                  type: string
+                title:
+                  type: string
+                recordDate:
+                  type: string
+                  format: date
+                diseaseName:
+                  type: string
     ApiResponseGenerateAccepted:
       allOf:
         - $ref: '#/components/schemas/ApiMeta'

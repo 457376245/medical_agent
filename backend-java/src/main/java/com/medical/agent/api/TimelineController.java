@@ -30,10 +30,11 @@ public class TimelineController {
   @GetMapping("/{batchId}")
   public Map<String, Object> batch(@PathVariable("batchId") String batchId) {
     List<Map<String, Object>> records = timelineService.listBatchRecords(batchId);
+    String diseaseName = timelineService.diseaseNameByBatch(batchId);
     return Map.of(
         "code", "OK",
         "message", "success",
         "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("batchId", batchId, "records", records));
+        "data", Map.of("batchId", batchId, "diseaseName", diseaseName, "records", records));
   }
 }

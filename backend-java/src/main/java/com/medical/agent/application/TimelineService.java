@@ -19,4 +19,8 @@ public class TimelineService {
   public List<Map<String, Object>> listBatchRecords(String batchId) {
     return persistenceService.listRecordsByBatch(batchId);
   }
+
+  public String diseaseNameByBatch(String batchId) {
+    return persistenceService.getDiseaseNameByBatch(batchId);
+  }
 }

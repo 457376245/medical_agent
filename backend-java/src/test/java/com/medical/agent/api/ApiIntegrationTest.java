@@ -229,6 +229,34 @@ class ApiIntegrationTest {
     assertEquals("HAS_ASSOCIATED_RECORDS", String.valueOf(dataOf(deleteResp.getBody()).get("reason")));
   }
 
+  @Test
+  void updateRecordSourceTypeEndpointUpdatesCategoryAndTitle() {
+    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "高血压"));
+    assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
+    String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
+    UUID recordId = UUID.randomUUID();
+
+    postJson("/api/v1/assets/complete", Map.of(
+        "objectKey", "uploads/seed/source-type-update.pdf",
+        "checksum", "sha256:source-type-update",
+        "recordId", recordId.toString(),
+        "diseaseProfileId", diseaseProfileId,
+        "reportDate", "2026-02-09",
+        "sourceType", "UPLOAD",
+        "title", "原始标题",
+        "size", 10));
+
+    ResponseEntity<Map> updateResp = restTemplate.exchange(
+        "/api/v1/records/" + recordId + "/source-type",
+        HttpMethod.PATCH,
+        new HttpEntity<>(Map.of("sourceType", "LAB"), jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.OK, updateResp.getStatusCode());
+    assertEquals("true", String.valueOf(dataOf(updateResp.getBody()).get("updated")));
+    assertEquals("LAB", String.valueOf(dataOf(updateResp.getBody()).get("sourceType")));
+    assertTrue(String.valueOf(dataOf(updateResp.getBody()).get("title")).contains("检验报告"));
+  }
+
   private ResponseEntity<Map> postJson(String path, Map<String, Object> body) {
     return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(body, jsonHeaders()), Map.class);
   }

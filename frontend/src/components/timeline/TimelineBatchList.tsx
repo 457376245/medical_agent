@@ -17,7 +17,7 @@ export function TimelineBatchList({ batches }: { batches: TimelineBatch[] }) {
       {batches.map((batch) => (
         <li className="timeline-item" key={batch.batchId}>
           <div>
-            <Link className="timeline-node-link" href={`/timeline/${batch.batchId}`}>
+            <Link className="timeline-node-link" href={`/timeline?batchId=${batch.batchId}`}>
               <strong>{batch.diseaseName}</strong>
             </Link>
             <p className="muted muted-tight">
