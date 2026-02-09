@@ -4,6 +4,9 @@ import com.medical.agent.application.PersistenceService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,5 +30,22 @@ public class RecordController {
         "message", "success",
         "requestId", RequestIdUtil.newRequestId(),
         "data", record);
+  }
+
+  @DeleteMapping("/{recordId}")
+  public ResponseEntity<Map<String, Object>> deleteRecord(@PathVariable("recordId") String recordId) {
+    boolean deleted = persistenceService.deleteRecord(UUID.fromString(recordId));
+    if (!deleted) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+          "code", "NOT_FOUND",
+          "message", "record not found",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "deleted", false)));
+    }
+    return ResponseEntity.ok(Map.of(
+        "code", "OK",
+        "message", "deleted",
+        "requestId", RequestIdUtil.newRequestId(),
+        "data", Map.of("recordId", recordId, "deleted", true)));
   }
 }

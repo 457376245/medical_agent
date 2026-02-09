@@ -20,10 +20,10 @@ export function TimelineBatchList({ batches }: { batches: TimelineBatch[] }) {
             <Link className="timeline-node-link" href={`/timeline/${batch.batchId}`}>
               <strong>{batch.diseaseName}</strong>
             </Link>
-            <p className="muted" style={{ margin: "4px 0 0" }}>
+            <p className="muted muted-tight">
               最近报告日期：{batch.latestRecordAt ?? "暂无"}
             </p>
-            <p className="muted mono" style={{ margin: "4px 0 0" }}>
+            <p className="muted mono muted-tight">
               分组编号：{batch.batchId}
             </p>
           </div>

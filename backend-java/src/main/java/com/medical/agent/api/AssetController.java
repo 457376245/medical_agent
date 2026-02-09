@@ -30,6 +30,7 @@ public class AssetController {
     String objectKey = String.valueOf(body.getOrDefault("objectKey", ""));
     String checksum = String.valueOf(body.getOrDefault("checksum", ""));
     String title = String.valueOf(body.getOrDefault("title", "Imported record"));
+    String sourceType = String.valueOf(body.getOrDefault("sourceType", "UPLOAD"));
     String fileType = objectKey.endsWith(".pdf") ? "PDF" : "IMAGE";
     long fileSize = Long.parseLong(String.valueOf(body.getOrDefault("size", 1)));
     UUID assetId = persistenceService.createAsset(
@@ -40,7 +41,8 @@ public class AssetController {
         fileSize,
         diseaseProfileId,
         reportDate,
-        title);
+        title,
+        sourceType);
     return Map.of(
         "code", "OK",
         "message", "success",

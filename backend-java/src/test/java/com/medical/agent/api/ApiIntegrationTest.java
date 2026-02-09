@@ -149,6 +149,86 @@ class ApiIntegrationTest {
     assertEquals(HttpStatus.BAD_REQUEST, missingHeaderResp.getStatusCode());
   }
 
+  @Test
+  void deleteRecordEndpointRemovesRecord() {
+    UUID recordId = UUID.randomUUID();
+    postJson("/api/v1/assets/complete", Map.of(
+        "objectKey", "uploads/seed/file-to-delete.pdf",
+        "checksum", "sha256:delete",
+        "recordId", recordId.toString(),
+        "size", 10));
+
+    ResponseEntity<Map> firstDelete = restTemplate.exchange(
+        "/api/v1/records/" + recordId,
+        HttpMethod.DELETE,
+        new HttpEntity<>(jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.OK, firstDelete.getStatusCode());
+    assertEquals("true", String.valueOf(dataOf(firstDelete.getBody()).get("deleted")));
+
+    ResponseEntity<Map> secondDelete = restTemplate.exchange(
+        "/api/v1/records/" + recordId,
+        HttpMethod.DELETE,
+        new HttpEntity<>(jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.NOT_FOUND, secondDelete.getStatusCode());
+    assertEquals("false", String.valueOf(dataOf(secondDelete.getBody()).get("deleted")));
+  }
+
+  @Test
+  void deleteDiseaseProfileEndpointRemovesProfileAndRecords() {
+    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "慢性肾病"));
+    assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
+    String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
+    UUID recordId = UUID.randomUUID();
+
+    postJson("/api/v1/assets/complete", Map.of(
+        "objectKey", "uploads/seed/disease-delete.pdf",
+        "checksum", "sha256:disease-delete",
+        "recordId", recordId.toString(),
+        "diseaseProfileId", diseaseProfileId,
+        "size", 10));
+
+    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+        "/api/v1/disease-profiles/" + diseaseProfileId,
+        HttpMethod.DELETE,
+        new HttpEntity<>(jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.OK, deleteResp.getStatusCode());
+    assertEquals("true", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
+
+    ResponseEntity<Map> profilesResp = restTemplate.getForEntity("/api/v1/disease-profiles", Map.class);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> profiles = (List<Map<String, Object>>) dataOf(profilesResp.getBody()).get("profiles");
+    boolean exists = profiles.stream()
+        .anyMatch(item -> diseaseProfileId.equals(String.valueOf(item.get("id"))));
+    assertFalse(exists);
+  }
+
+  @Test
+  void deleteDiseaseProfileOnlyIfEmptyRejectsWhenLinkedRecordsExist() {
+    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "糖尿病"));
+    assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
+    String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
+    UUID recordId = UUID.randomUUID();
+
+    postJson("/api/v1/assets/complete", Map.of(
+        "objectKey", "uploads/seed/disease-cannot-delete.pdf",
+        "checksum", "sha256:disease-cannot-delete",
+        "recordId", recordId.toString(),
+        "diseaseProfileId", diseaseProfileId,
+        "size", 10));
+
+    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+        "/api/v1/disease-profiles/" + diseaseProfileId + "?onlyIfEmpty=true",
+        HttpMethod.DELETE,
+        new HttpEntity<>(jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.CONFLICT, deleteResp.getStatusCode());
+    assertEquals("false", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
+    assertEquals("HAS_ASSOCIATED_RECORDS", String.valueOf(dataOf(deleteResp.getBody()).get("reason")));
+  }
+
   private ResponseEntity<Map> postJson(String path, Map<String, Object> body) {
     return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(body, jsonHeaders()), Map.class);
   }

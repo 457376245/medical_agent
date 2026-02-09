@@ -18,9 +18,9 @@ export function ParseJobStatusCard({ status, progress }: ParseJobStatusCardProps
   return (
     <section className="panel">
       <p className="hero-kicker">处理进度</p>
-      <h2 style={{ marginBottom: 6 }}>解析任务状态</h2>
+      <h2 className="panel-title">解析任务状态</h2>
       <div className={`status-chip ${stateClass}`}>{statusLabel}</div>
-      <p className="muted" style={{ margin: "10px 0 0" }}>
+      <p className="muted mt-10">
         进度：{progress}%
       </p>
       <div className="progress-wrap" aria-label="解析任务进度条">

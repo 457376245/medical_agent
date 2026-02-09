@@ -2,15 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
-const CREATE_DISEASE_OPTION = "__create_disease__";
+const REPORT_CATEGORY_OPTIONS = [
+  { value: "UPLOAD", label: "常规检查" },
+  { value: "LAB", label: "检验报告" },
+  { value: "IMAGING", label: "影像报告" },
+  { value: "OUTPATIENT", label: "门诊记录" },
+  { value: "DISCHARGE", label: "出院小结" },
+  { value: "OTHER", label: "其他" },
+];
 
 type DiseaseProfile = {
   id: string;
   name: string;
+  recordCount: number;
+};
+
+type OpenUploadDialogDetail = {
+  diseaseProfileId?: string;
+  diseaseName?: string;
 };
 
 type NoticeState = {
@@ -24,10 +38,20 @@ export function UserTopBar() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedDiseaseId, setSelectedDiseaseId] = useState("");
+  const [prefilledDiseaseName, setPrefilledDiseaseName] = useState("");
+  const [reportCategory, setReportCategory] = useState("UPLOAD");
   const [newDiseaseName, setNewDiseaseName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<NoticeState>({ tone: "neutral", text: "" });
   const [uploadStage, setUploadStage] = useState<string>("");
+  const [diseaseMenuOpen, setDiseaseMenuOpen] = useState(false);
+  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+  const [isInlineCreatingDisease, setIsInlineCreatingDisease] = useState(false);
+  const [isCreatingDisease, setIsCreatingDisease] = useState(false);
+  const [deletingDiseaseId, setDeletingDiseaseId] = useState<string | null>(null);
+  const [pendingDeleteDisease, setPendingDeleteDisease] = useState<DiseaseProfile | null>(null);
+  const diseaseSelectRef = useRef<HTMLDivElement | null>(null);
+  const reportSelectRef = useRef<HTMLDivElement | null>(null);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -77,7 +101,7 @@ export function UserTopBar() {
       reader.readAsDataURL(file);
     });
 
-  const diseaseQuery = useQuery({
+  const diseaseQuery = useQuery<DiseaseProfile[]>({
     queryKey: ["header-disease-profiles"],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/disease-profiles`);
@@ -85,30 +109,94 @@ export function UserTopBar() {
         throw new Error("加载疾病分类失败，请稍后重试。");
       }
       const payload = await response.json();
-      const profiles = (payload.data?.profiles ?? []) as Array<{ id?: string; name?: string }>;
+      const profiles = (payload.data?.profiles ?? []) as Array<{
+        id?: string;
+        name?: string;
+        recordCount?: number;
+        record_count?: number;
+      }>;
       return profiles
         .filter((item) => item.id && item.name)
-        .map((item) => ({ id: item.id as string, name: item.name as string }));
+        .map((item) => ({
+          id: item.id as string,
+          name: item.name as string,
+          recordCount: Number(item.recordCount ?? item.record_count ?? 0),
+        }));
     },
     retry: false,
   });
 
   const canSubmit = useMemo(() => {
-    return Boolean(selectedFile) && Boolean(selectedDiseaseId) && selectedDiseaseId !== CREATE_DISEASE_OPTION && !isSubmitting;
+    return Boolean(selectedFile) && Boolean(selectedDiseaseId) && !isSubmitting;
   }, [selectedDiseaseId, selectedFile, isSubmitting]);
 
-  const isCreateMode = selectedDiseaseId === CREATE_DISEASE_OPTION;
+  const selectedDiseaseName = useMemo(() => {
+    const matchedName = (diseaseQuery.data ?? []).find((profile) => profile.id === selectedDiseaseId)?.name ?? "";
+    if (matchedName) {
+      return matchedName;
+    }
+    return prefilledDiseaseName;
+  }, [diseaseQuery.data, prefilledDiseaseName, selectedDiseaseId]);
 
-  const openDialog = () => {
+  const selectedReportCategoryLabel = useMemo(
+    () => REPORT_CATEGORY_OPTIONS.find((option) => option.value === reportCategory)?.label ?? "其他",
+    [reportCategory],
+  );
+  const computedReportTitle = useMemo(() => {
+    const diseasePart = selectedDiseaseName || "未分类疾病";
+    const datePart = reportDate || new Date().toISOString().slice(0, 10);
+    return `${diseasePart}-${selectedReportCategoryLabel}-${datePart}`;
+  }, [reportDate, selectedDiseaseName, selectedReportCategoryLabel]);
+  const openDialog = useCallback((detail?: OpenUploadDialogDetail) => {
+    const diseaseProfileId = detail?.diseaseProfileId;
+    const diseaseName = detail?.diseaseName?.trim() ?? "";
     setDialogOpen(true);
     setUploadStage("");
+    setDiseaseMenuOpen(false);
+    setReportMenuOpen(false);
+    setIsInlineCreatingDisease(false);
     setNotice({ tone: "neutral", text: "" });
-  };
+    if (diseaseProfileId && diseaseProfileId !== "unknown") {
+      setSelectedDiseaseId(diseaseProfileId);
+      setPrefilledDiseaseName(diseaseName);
+      setNewDiseaseName("");
+    }
+  }, []);
 
   const closeDialog = () => {
     setDialogOpen(false);
     setUploadStage("");
+    setDiseaseMenuOpen(false);
+    setReportMenuOpen(false);
+    setIsInlineCreatingDisease(false);
   };
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<OpenUploadDialogDetail>).detail;
+      openDialog(detail);
+    };
+    window.addEventListener("open-upload-dialog", handler);
+    return () => window.removeEventListener("open-upload-dialog", handler);
+  }, [openDialog]);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+
+      if (diseaseSelectRef.current && !diseaseSelectRef.current.contains(target)) {
+        setDiseaseMenuOpen(false);
+      }
+      if (reportSelectRef.current && !reportSelectRef.current.contains(target)) {
+        setReportMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
 
   const createDiseaseProfile = async () => {
     const diseaseName = newDiseaseName.trim();
@@ -117,6 +205,7 @@ export function UserTopBar() {
       return;
     }
 
+    setIsCreatingDisease(true);
     try {
       const response = await fetch(`${API_BASE}/disease-profiles`, {
         method: "POST",
@@ -134,14 +223,72 @@ export function UserTopBar() {
 
       if (diseaseProfileId) {
         setSelectedDiseaseId(diseaseProfileId);
+        setPrefilledDiseaseName(diseaseName);
       } else {
         setSelectedDiseaseId("");
+        setPrefilledDiseaseName("");
       }
 
       setNewDiseaseName("");
+      setIsInlineCreatingDisease(false);
+      setDiseaseMenuOpen(false);
       setNotice({ tone: "success", text: "已新增疾病分类并自动选中。" });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "新增疾病分类失败，请稍后重试。" });
+    } finally {
+      setIsCreatingDisease(false);
+    }
+  };
+
+  const promptDeleteDiseaseProfile = (profile: DiseaseProfile) => {
+    if (profile.recordCount > 0) {
+      setNotice({ tone: "error", text: `“${profile.name}”下已有 ${profile.recordCount} 份报告，无法删除。` });
+      return;
+    }
+    setPendingDeleteDisease(profile);
+  };
+
+  const closeDeleteDiseaseDialog = () => {
+    if (deletingDiseaseId) {
+      return;
+    }
+    setPendingDeleteDisease(null);
+  };
+
+  const deleteDiseaseProfile = async () => {
+    if (!pendingDeleteDisease) {
+      return;
+    }
+    const profile = pendingDeleteDisease;
+
+    setDeletingDiseaseId(profile.id);
+    try {
+      const response = await fetch(`${API_BASE}/disease-profiles/${profile.id}?onlyIfEmpty=true`, {
+        method: "DELETE",
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        const linkedCount = Number(payload?.data?.linkedRecordCount ?? profile.recordCount ?? 0);
+        setNotice({ tone: "error", text: `“${profile.name}”下已有 ${linkedCount} 份报告，无法删除。` });
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("删除疾病失败，请稍后重试。");
+      }
+
+      if (selectedDiseaseId === profile.id) {
+        setSelectedDiseaseId("");
+        setPrefilledDiseaseName("");
+      }
+
+      await diseaseQuery.refetch();
+      setPendingDeleteDisease(null);
+      setNotice({ tone: "success", text: `已删除疾病分类“${profile.name}”。` });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "删除疾病失败，请稍后重试。" });
+    } finally {
+      setDeletingDiseaseId(null);
     }
   };
 
@@ -153,7 +300,7 @@ export function UserTopBar() {
       return;
     }
 
-    if (!selectedDiseaseId || selectedDiseaseId === CREATE_DISEASE_OPTION) {
+    if (!selectedDiseaseId) {
       setNotice({ tone: "error", text: "请先选择疾病分类。" });
       return;
     }
@@ -222,8 +369,9 @@ export function UserTopBar() {
           checksum: `sha256:${selectedFile.size}`,
           recordId,
           diseaseProfileId: selectedDiseaseId,
+          sourceType: reportCategory,
           reportDate,
-          title: selectedFile.name,
+          title: computedReportTitle,
           size: selectedFile.size,
         }),
       });
@@ -282,6 +430,13 @@ export function UserTopBar() {
     }
   };
 
+  const formatFileSize = (size: number) => {
+    if (size < 1024 * 1024) {
+      return `${Math.max(1, Math.round(size / 1024))} KB`;
+    }
+    return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
   return (
     <>
       <header className="top-header">
@@ -292,7 +447,7 @@ export function UserTopBar() {
         </div>
 
         <div className="header-actions">
-          <button className="action-btn action-btn-upload" type="button" onClick={openDialog}>
+          <button className="action-btn action-btn-upload" type="button" onClick={() => openDialog()}>
             上传
           </button>
           <Link className="action-btn action-btn-agent" href="/agent">
@@ -322,14 +477,174 @@ export function UserTopBar() {
 
             <form className="dialog-form" onSubmit={handleUpload}>
               <div className="dialog-grid">
-                <label className="dialog-field">
+                <label className="dialog-field dialog-field-full dialog-file-field">
                   <span>病历文件</span>
                   <input
+                    className="dialog-file-input"
                     type="file"
                     accept=".pdf,image/*"
                     onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                     required
                   />
+                  <p className="dialog-file-tip">支持 PDF、图片（PNG/JPG/WebP）。建议文件大小小于 20MB。</p>
+                  {selectedFile && (
+                    <p className="dialog-file-meta">
+                      已选择：<strong>{selectedFile.name}</strong>（{formatFileSize(selectedFile.size)}）
+                    </p>
+                  )}
+                </label>
+
+                <label className="dialog-field">
+                  <span>疾病分类</span>
+                  <div className="dialog-disease-select" ref={diseaseSelectRef}>
+                    {isInlineCreatingDisease ? (
+                      <div className="dialog-select-inline-create">
+                        <input
+                          className="dialog-select-inline-input"
+                          placeholder="输入疾病名称"
+                          value={newDiseaseName}
+                          onChange={(event) => setNewDiseaseName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createDiseaseProfile();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <div className="dialog-select-inline-actions">
+                          <button
+                            className="btn btn-primary btn-small"
+                            type="button"
+                            onClick={createDiseaseProfile}
+                            disabled={isCreatingDisease}
+                          >
+                            {isCreatingDisease ? "新增中..." : "新增"}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-small"
+                            type="button"
+                            onClick={() => {
+                              if (isCreatingDisease) {
+                                return;
+                              }
+                              setIsInlineCreatingDisease(false);
+                              setNewDiseaseName("");
+                            }}
+                            disabled={isCreatingDisease}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className={`dialog-select-trigger ${!selectedDiseaseId ? "dialog-select-empty" : ""}`}
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={diseaseMenuOpen}
+                        onClick={() => {
+                          setDiseaseMenuOpen((prev) => !prev);
+                          setReportMenuOpen(false);
+                        }}
+                      >
+                        <span>{selectedDiseaseName || "请选择疾病分类"}</span>
+                        <span className="dialog-select-caret" aria-hidden="true" />
+                      </button>
+                    )}
+
+                    {diseaseMenuOpen && !isInlineCreatingDisease && (
+                      <ul className="dialog-select-menu" role="listbox" aria-label="疾病分类选项">
+                        {(diseaseQuery.data ?? []).map((profile) => {
+                          const active = selectedDiseaseId === profile.id;
+                          const deletable = profile.recordCount === 0;
+                          const deletingThis = deletingDiseaseId === profile.id;
+                          return (
+                            <li className="dialog-select-option-row" key={profile.id}>
+                              <button
+                                className={`dialog-select-option dialog-select-option-main ${active ? "active" : ""}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDiseaseId(profile.id);
+                                  setPrefilledDiseaseName("");
+                                  setNotice({ tone: "neutral", text: "" });
+                                  setDiseaseMenuOpen(false);
+                                }}
+                              >
+                                <span>{profile.name}</span>
+                                {profile.recordCount > 0 ? <small>{profile.recordCount} 份报告</small> : null}
+                              </button>
+                              <button
+                                className="dialog-select-option-delete"
+                                type="button"
+                                aria-label={`删除疾病 ${profile.name}`}
+                                title={deletable ? `删除 ${profile.name}` : `${profile.name} 下有报告，不能删除`}
+                                onClick={() => promptDeleteDiseaseProfile(profile)}
+                                disabled={!deletable || deletingThis}
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z" />
+                                </svg>
+                              </button>
+                            </li>
+                          );
+                        })}
+                        <li className="dialog-select-divider" role="presentation" />
+                        <li>
+                          <button
+                            className="dialog-select-option dialog-select-option-create"
+                            type="button"
+                            onClick={() => {
+                              setIsInlineCreatingDisease(true);
+                              setNotice({ tone: "neutral", text: "" });
+                              setDiseaseMenuOpen(false);
+                              setNewDiseaseName("");
+                            }}
+                          >
+                            + 在下拉框中新增疾病
+                          </button>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+                </label>
+
+                <label className="dialog-field">
+                  <span>报告分类</span>
+                  <div className="dialog-disease-select" ref={reportSelectRef}>
+                    <button
+                      className="dialog-select-trigger"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={reportMenuOpen}
+                      onClick={() => {
+                        setReportMenuOpen((prev) => !prev);
+                        setDiseaseMenuOpen(false);
+                      }}
+                    >
+                      <span>{selectedReportCategoryLabel}</span>
+                      <span className="dialog-select-caret" aria-hidden="true" />
+                    </button>
+
+                    {reportMenuOpen && (
+                      <ul className="dialog-select-menu" role="listbox" aria-label="报告分类选项">
+                        {REPORT_CATEGORY_OPTIONS.map((option) => (
+                          <li key={option.value}>
+                            <button
+                              className={`dialog-select-option ${reportCategory === option.value ? "active" : ""}`}
+                              type="button"
+                              onClick={() => {
+                                setReportCategory(option.value);
+                                setReportMenuOpen(false);
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </label>
 
                 <label className="dialog-field">
@@ -343,52 +658,27 @@ export function UserTopBar() {
                 </label>
 
                 <label className="dialog-field dialog-field-full">
-                  <span>疾病分类</span>
-                  <select
-                    value={selectedDiseaseId}
-                    onChange={(event) => {
-                      setSelectedDiseaseId(event.target.value);
-                      setNotice({ tone: "neutral", text: "" });
-                    }}
-                    required
-                  >
-                    <option value="">请选择疾病分类</option>
-                    {(diseaseQuery.data ?? []).map((profile: DiseaseProfile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                    <option value={CREATE_DISEASE_OPTION}>+ 在下拉框中新增疾病</option>
-                  </select>
+                  <span>报告名称</span>
+                  <input type="text" value={computedReportTitle} readOnly />
                 </label>
 
-                {isCreateMode && (
-                  <div className="dialog-inline-create">
-                    <input
-                      placeholder="请输入新疾病名称，例如：高血压"
-                      value={newDiseaseName}
-                      onChange={(event) => setNewDiseaseName(event.target.value)}
-                    />
-                    <button className="btn-secondary" type="button" onClick={createDiseaseProfile}>
-                      新增并选中
-                    </button>
-                  </div>
+              </div>
+
+              <div className="dialog-status-stack">
+                {diseaseQuery.isFetching && <p className="status-text">正在加载疾病分类...</p>}
+                {isSubmitting && uploadStage && <p className="status-text">{uploadStage}</p>}
+                {notice.text && (
+                  <p className={`status-text ${notice.tone === "error" ? "error" : ""} ${notice.tone === "success" ? "success" : ""}`}>
+                    {notice.text}
+                  </p>
                 )}
               </div>
 
-              {diseaseQuery.isFetching && <p className="status-text">正在加载疾病分类...</p>}
-              {isSubmitting && uploadStage && <p className="status-text">{uploadStage}</p>}
-              {notice.text && (
-                <p className={`status-text ${notice.tone === "error" ? "error" : ""} ${notice.tone === "success" ? "success" : ""}`}>
-                  {notice.text}
-                </p>
-              )}
-
               <div className="dialog-actions">
-                <button className="btn-secondary" type="button" onClick={closeDialog}>
+                <button className="btn btn-ghost" type="button" onClick={closeDialog}>
                   取消
                 </button>
-                <button className="btn-primary-solid" type="submit" disabled={!canSubmit}>
+                <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
                   {isSubmitting ? "上传中..." : "上传并开始解析"}
                 </button>
               </div>
@@ -396,6 +686,17 @@ export function UserTopBar() {
           </section>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteDisease)}
+        title="确认删除疾病分类"
+        description={`确认删除“${pendingDeleteDisease?.name ?? ""}”吗？仅空疾病分类允许删除。`}
+        confirmText="确认删除"
+        tone="danger"
+        loading={deletingDiseaseId !== null}
+        onCancel={closeDeleteDiseaseDialog}
+        onConfirm={deleteDiseaseProfile}
+      />
     </>
   );
 }

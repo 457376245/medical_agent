@@ -85,6 +85,25 @@ public class OssPresignService {
     }
   }
 
+  public void deleteObject(String objectKey) {
+    if (!ossEnabled) {
+      return;
+    }
+    assertConfigured();
+    if (isBlank(objectKey)) {
+      return;
+    }
+
+    OSS client = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+    try {
+      if (client.doesObjectExist(bucket, objectKey)) {
+        client.deleteObject(bucket, objectKey);
+      }
+    } finally {
+      client.shutdown();
+    }
+  }
+
   private void assertConfigured() {
     if (isBlank(endpoint) || isBlank(bucket) || isBlank(accessKeyId) || isBlank(accessKeySecret)) {
       throw new IllegalStateException("OSS is enabled but endpoint/bucket/access-key is not fully configured");

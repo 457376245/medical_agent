@@ -8,17 +8,17 @@ export function SourceEvidencePanel({ evidence }: { evidence: SourceEvidence }) 
   return (
     <section className="panel">
       <p className="hero-kicker">证据追踪</p>
-      <h3 style={{ marginBottom: 8 }}>来源证据</h3>
-      <p className="muted" style={{ margin: "4px 0" }}>
+      <h3 className="panel-title-small">来源证据</h3>
+      <p className="muted muted-tight">
         文件：<span className="mono">{evidence.sourceFile}</span>
       </p>
       {evidence.page !== undefined && (
-        <p className="muted" style={{ margin: "4px 0" }}>
+        <p className="muted muted-tight">
           页码：{evidence.page}
         </p>
       )}
       {evidence.snippet && (
-        <pre className="json-box" style={{ marginTop: 10, fontFamily: "var(--font-body)" }}>
+        <pre className="json-box json-box-readable mt-10">
           {evidence.snippet}
         </pre>
       )}

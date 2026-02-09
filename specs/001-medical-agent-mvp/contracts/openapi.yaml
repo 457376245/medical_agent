@@ -135,6 +135,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResponseDiseaseProfile'
 
+  /disease-profiles/{diseaseProfileId}:
+    delete:
+      summary: Delete disease profile with all related records and assets
+      operationId: deleteDiseaseProfile
+      parameters:
+        - in: path
+          name: diseaseProfileId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: onlyIfEmpty
+          required: false
+          schema:
+            type: boolean
+          description: When true, deletion is allowed only if this disease has no associated records.
+      responses:
+        '200':
+          description: Disease profile deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDiseaseProfileDelete'
+        '409':
+          description: Disease profile has associated records and cannot be deleted in onlyIfEmpty mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDiseaseProfileDelete'
+        '404':
+          description: Disease profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseDiseaseProfileDelete'
+
   /parse-jobs/{jobId}:
     get:
       summary: Get parse job status
@@ -172,6 +209,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseRecord'
+    delete:
+      summary: Delete one record and related artifacts
+      operationId: deleteRecord
+      parameters:
+        - in: path
+          name: recordId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Record deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordDelete'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecordDelete'
 
   /timeline:
     get:
@@ -495,6 +555,19 @@ components:
                   format: uuid
                 revision:
                   type: integer
+    ApiResponseRecordDelete:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                recordId:
+                  type: string
+                  format: uuid
+                deleted:
+                  type: boolean
     ApiResponseGenerateAccepted:
       allOf:
         - $ref: '#/components/schemas/ApiMeta'
@@ -604,6 +677,8 @@ components:
                         format: uuid
                       name:
                         type: string
+                      recordCount:
+                        type: integer
     ApiResponseDiseaseProfile:
       allOf:
         - $ref: '#/components/schemas/ApiMeta'
@@ -617,3 +692,24 @@ components:
                   format: uuid
                 name:
                   type: string
+    ApiResponseDiseaseProfileDelete:
+      allOf:
+        - $ref: '#/components/schemas/ApiMeta'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                diseaseProfileId:
+                  type: string
+                  format: uuid
+                deleted:
+                  type: boolean
+                deletedRecordCount:
+                  type: integer
+                deletedAssetCount:
+                  type: integer
+                reason:
+                  type: string
+                linkedRecordCount:
+                  type: integer

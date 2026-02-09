@@ -40,22 +40,22 @@ export default async function TimelinePage() {
     <main className="page-stack">
       <section className="panel reveal">
         <p className="hero-kicker">时间线总览</p>
-        <h2 style={{ fontFamily: "var(--font-heading)", marginTop: 0 }}>全部疾病分组</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <h2 className="panel-title">全部疾病分组</h2>
+        <p className="muted panel-subtitle">
           这里展示系统内全部疾病记录分组，默认按最近报告日期排序。点击疾病名称可进入详细记录页。
         </p>
       </section>
 
       <section className="panel reveal reveal-delay-1">
-        <h3 style={{ marginBottom: 10 }}>分组列表</h3>
-        <div className="meta-row" style={{ marginTop: 0, marginBottom: 10 }}>
+        <h3 className="panel-title-small">分组列表</h3>
+        <div className="meta-row">
           <span className="badge">疾病分组：{batches.length}</span>
           <span className="badge">排序：最近报告优先</span>
         </div>
         <TimelineBatchList batches={batches} />
 
         {batches.length > 0 && (
-          <div style={{ marginTop: 14 }}>
+          <div className="mt-14">
             <Link className="btn btn-ghost" href={`/timeline/${batches[0].batchId}`}>
               查看最新疾病分组
             </Link>

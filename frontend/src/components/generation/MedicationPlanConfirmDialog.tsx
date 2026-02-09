@@ -1,25 +1,25 @@
+"use client";
+
+import { ConfirmDialog } from "../common/ConfirmDialog";
+
 export function MedicationPlanConfirmDialog({
   open,
   onConfirm,
+  onCancel,
 }: {
   open: boolean;
   onConfirm: () => void;
+  onCancel?: () => void;
 }) {
-  if (!open) return null;
-  return (
-    <dialog
-      open
-      style={{
-        border: "1px solid #cfe0ea",
-        borderRadius: 14,
-        padding: 16,
-        boxShadow: "0 20px 40px rgba(18,39,53,.15)",
-      }}
-    >
-      <p>AI 生成内容仅供参考，请在保存前再次人工确认。</p>
-      <button className="btn btn-primary" type="button" onClick={onConfirm}>
-        确认并保存
-      </button>
-    </dialog>
-  );
+  const handleCancel = onCancel ?? (() => {});
+  return open ? (
+    <ConfirmDialog
+      open={open}
+      title="确认保存用药方案"
+      description="AI 生成内容仅供参考，请在保存前再次人工确认。"
+      confirmText="确认并保存"
+      onCancel={handleCancel}
+      onConfirm={onConfirm}
+    />
+  ) : null;
 }

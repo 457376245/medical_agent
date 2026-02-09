@@ -27,14 +27,20 @@ public class PersistenceService {
   }
 
   public UUID ensureRecord(UUID recordId) {
-    return ensureRecord(recordId, null, null, null);
+    return ensureRecord(recordId, null, null, null, null);
   }
 
   public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title) {
+    return ensureRecord(recordId, diseaseProfileId, reportDate, title, null);
+  }
+
+  public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title, String sourceType) {
     UUID finalRecordId = recordId == null ? UUID.randomUUID() : recordId;
     UUID finalDiseaseProfileId = diseaseProfileId == null ? ensureDefaultDiseaseProfile() : diseaseProfileId;
     LocalDate finalReportDate = reportDate == null ? LocalDate.now() : reportDate;
     String finalTitle = title == null || title.isBlank() ? "Imported record" : title;
+    String normalizedSourceType = sourceType == null || sourceType.isBlank() ? null : sourceType.trim().toUpperCase();
+    String finalSourceType = normalizedSourceType == null ? "UPLOAD" : normalizedSourceType;
     Integer exists = jdbcTemplate.queryForObject(
         "select count(1) from records where id = ?",
         Integer.class,
@@ -49,15 +55,16 @@ public class PersistenceService {
           finalDiseaseProfileId,
           finalReportDate,
           finalTitle,
-          "UPLOAD",
+          finalSourceType,
           now(),
           now());
     } else {
       jdbcTemplate.update(
-          "update records set disease_profile_id = coalesce(?, disease_profile_id), record_date = coalesce(?, record_date), title = coalesce(?, title), updated_at = ? where id = ?",
+          "update records set disease_profile_id = coalesce(?, disease_profile_id), record_date = coalesce(?, record_date), title = coalesce(?, title), source_type = coalesce(?, source_type), updated_at = ? where id = ?",
           diseaseProfileId,
           reportDate,
           title == null || title.isBlank() ? null : title,
+          normalizedSourceType,
           now(),
           finalRecordId);
     }
@@ -72,14 +79,15 @@ public class PersistenceService {
       long fileSize,
       UUID diseaseProfileId,
       LocalDate reportDate,
-      String title) {
+      String title,
+      String sourceType) {
     UUID assetId = UUID.randomUUID();
     jdbcTemplate.update(
         "insert into assets (id, tenant_id, record_id, object_key, file_type, file_size, checksum, created_at) "
             + "values (?, ?, ?, ?, ?, ?, ?, ?)",
         assetId,
         DEFAULT_TENANT_ID,
-        ensureRecord(recordId, diseaseProfileId, reportDate, title),
+        ensureRecord(recordId, diseaseProfileId, reportDate, title, sourceType),
         objectKey,
         fileType,
         fileSize,
@@ -294,9 +302,101 @@ public class PersistenceService {
 
   public List<Map<String, Object>> listDiseaseProfiles() {
     return jdbcTemplate.queryForList(
-        "select id, name, updated_at from disease_profiles where tenant_id = ? and user_id = ? order by updated_at desc, name asc",
+        "select dp.id, dp.name, dp.updated_at, count(r.id) as record_count "
+            + "from disease_profiles dp "
+            + "left join records r on r.disease_profile_id = dp.id and r.tenant_id = dp.tenant_id "
+            + "where dp.tenant_id = ? and dp.user_id = ? "
+            + "group by dp.id, dp.name, dp.updated_at "
+            + "order by dp.updated_at desc, dp.name asc",
         DEFAULT_TENANT_ID,
         DEFAULT_USER_ID);
+  }
+
+  public boolean diseaseProfileExists(UUID diseaseProfileId) {
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(1) from disease_profiles where id = ? and tenant_id = ? and user_id = ?",
+        Integer.class,
+        diseaseProfileId,
+        DEFAULT_TENANT_ID,
+        DEFAULT_USER_ID);
+    return count != null && count > 0;
+  }
+
+  public List<String> listAssetObjectKeysByDiseaseProfile(UUID diseaseProfileId) {
+    return jdbcTemplate.queryForList(
+        "select a.object_key "
+            + "from assets a join records r on r.id = a.record_id "
+            + "where r.disease_profile_id = ? and r.tenant_id = ?",
+        String.class,
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+  }
+
+  public int countRecordsByDiseaseProfile(UUID diseaseProfileId) {
+    Integer count = jdbcTemplate.queryForObject(
+        "select count(1) from records where disease_profile_id = ? and tenant_id = ?",
+        Integer.class,
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    return count == null ? 0 : count;
+  }
+
+  public boolean deleteDiseaseProfileIfEmpty(UUID diseaseProfileId) {
+    int deleted = jdbcTemplate.update(
+        "delete from disease_profiles "
+            + "where id = ? and tenant_id = ? and user_id = ? "
+            + "and not exists ("
+            + "  select 1 from records r where r.disease_profile_id = ? and r.tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID,
+        DEFAULT_USER_ID,
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    return deleted > 0;
+  }
+
+  public int deleteDiseaseProfileCascade(UUID diseaseProfileId) {
+    jdbcTemplate.update(
+        "delete from data_rights_requests where record_id in ("
+            + "select id from records where disease_profile_id = ? and tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    jdbcTemplate.update(
+        "delete from structured_results where record_id in ("
+            + "select id from records where disease_profile_id = ? and tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    jdbcTemplate.update(
+        "delete from generated_outputs where record_id in ("
+            + "select id from records where disease_profile_id = ? and tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    jdbcTemplate.update(
+        "delete from parse_jobs where record_id in ("
+            + "select id from records where disease_profile_id = ? and tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    jdbcTemplate.update(
+        "delete from assets where record_id in ("
+            + "select id from records where disease_profile_id = ? and tenant_id = ?"
+            + ")",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    int deletedRecords = jdbcTemplate.update(
+        "delete from records where disease_profile_id = ? and tenant_id = ?",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID);
+    jdbcTemplate.update(
+        "delete from disease_profiles where id = ? and tenant_id = ? and user_id = ?",
+        diseaseProfileId,
+        DEFAULT_TENANT_ID,
+        DEFAULT_USER_ID);
+    return deletedRecords;
   }
 
   public int createGeneratedOutput(UUID recordId, String type, String content) {
@@ -395,10 +495,31 @@ public class PersistenceService {
 
   public List<Map<String, Object>> listTimelineBatches() {
     return jdbcTemplate.queryForList(
-        "select coalesce(dp.id::text, 'unknown') as batch_id, coalesce(dp.name, 'Unassigned') as disease_name, "
-            + "count(*) as record_count, max(r.record_date) as latest_record_at "
-            + "from records r left join disease_profiles dp on dp.id = r.disease_profile_id "
-            + "group by coalesce(dp.id::text, 'unknown'), coalesce(dp.name, 'Unassigned') "
+        "with latest_parse as ("
+            + "  select pj.record_id, pj.status, "
+            + "         row_number() over (partition by pj.record_id order by pj.created_at desc, pj.updated_at desc) as rn "
+            + "  from parse_jobs pj"
+            + "), ranked as ("
+            + "  select coalesce(dp.id::text, 'unknown') as batch_id, "
+            + "         coalesce(dp.name, 'Unassigned') as disease_name, "
+            + "         r.id as record_id, "
+            + "         r.title as record_title, "
+            + "         r.record_date as record_date, "
+            + "         row_number() over ("
+            + "           partition by coalesce(dp.id::text, 'unknown') "
+            + "           order by r.record_date desc, r.updated_at desc, r.created_at desc"
+            + "         ) as rn "
+            + "  from records r left join disease_profiles dp on dp.id = r.disease_profile_id"
+            + ") "
+            + "select ranked.batch_id, ranked.disease_name, "
+            + "       count(*) as record_count, "
+            + "       max(ranked.record_date) as latest_record_at, "
+            + "       max(case when ranked.rn = 1 then ranked.record_id::text end) as latest_record_id, "
+            + "       max(case when ranked.rn = 1 then ranked.record_title end) as latest_record_title, "
+            + "       max(case when ranked.rn = 1 then coalesce(lp.status, 'NOT_PARSED') end) as latest_parse_status "
+            + "from ranked "
+            + "left join latest_parse lp on lp.record_id = ranked.record_id and lp.rn = 1 "
+            + "group by ranked.batch_id, ranked.disease_name "
             + "order by latest_record_at desc");
   }
 
@@ -406,6 +527,16 @@ public class PersistenceService {
     return jdbcTemplate.queryForList(
         "select id, title, record_date from records where disease_profile_id::text = ? order by record_date desc",
         batchId);
+  }
+
+  public boolean deleteRecord(UUID recordId) {
+    jdbcTemplate.update("delete from data_rights_requests where record_id = ?", recordId);
+    jdbcTemplate.update("delete from structured_results where record_id = ?", recordId);
+    jdbcTemplate.update("delete from generated_outputs where record_id = ?", recordId);
+    jdbcTemplate.update("delete from parse_jobs where record_id = ?", recordId);
+    jdbcTemplate.update("delete from assets where record_id = ?", recordId);
+    int deleted = jdbcTemplate.update("delete from records where id = ?", recordId);
+    return deleted > 0;
   }
 
   private UUID ensureDefaultDiseaseProfile() {
