@@ -837,6 +837,127 @@ a {
   margin-bottom: 12px;
 }
 
+.trend-panel {
+  border: 1px solid #d9e5ef;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f9fcff;
+}
+
+.trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trend-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.trend-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.trend-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #c5d8e5;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #eef5fb;
+}
+
+.trend-mode-btn {
+  border: 0;
+  background: transparent;
+  color: #466272;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.trend-mode-btn.active {
+  background: #2f6f9f;
+  color: #fff;
+}
+
+.trend-mode-btn:not(.active):hover {
+  background: #ddeaf4;
+}
+
+.trend-state-legend {
+  margin: 8px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trend-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.trend-state-normal {
+  color: #166534;
+  background: #ecfdf3;
+  border-color: #a7f3d0;
+}
+
+.trend-state-high {
+  color: #9f1239;
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.trend-state-low {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.trend-state-unknown {
+  color: #485668;
+  background: #f3f6f9;
+  border-color: #d5dde6;
+}
+
+.trend-chart {
+  width: 100%;
+  height: 340px;
+  border: 1px solid #d6e4ea;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.trend-selectors {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.trend-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #36515d;
+  font-size: 0.9rem;
+}
+
 .summary-heading {
   margin: 0 0 8px;
   font-size: 1rem;
@@ -1331,5 +1452,22 @@ a {
     width: 10px;
     height: 10px;
     margin-top: 14px;
+  }
+
+  .trend-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .trend-mode-toggle {
+    max-width: 100%;
+  }
+
+  .trend-mode-btn {
+    padding: 6px 10px;
+  }
+
+  .trend-chart {
+    height: 300px;
   }
 }
