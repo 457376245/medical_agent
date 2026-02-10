@@ -8,9 +8,18 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.ReportAnalysisService;
 import com.medical.agent.application.service.RecordService;
-import java.util.Map;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.UpdateRecordSourceTypeRequest;
+import com.medical.agent.domain.dto.response.RecordSourceTypeUpdateResponseData;
+import com.medical.agent.domain.dto.response.RecordViewResponseData;
+import com.medical.agent.domain.vo.RecordDetail;
+import com.medical.agent.domain.vo.RecordTrendData;
+import com.medical.agent.domain.vo.StructuredResultData;
+import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,20 +48,17 @@ class RecordControllerTest {
   @Test
   void getRecordReturnsSuccessWithDefaultView() {
     UUID recordId = UUID.randomUUID();
-    when(recordService.fetchRecord(recordId)).thenReturn(Map.of(
-        "recordId", recordId.toString(),
-        "summary", "test summary",
-        "parseStatus", "SUCCESS",
-        "structuredResult", Map.of()));
+    StructuredResultData structured = new StructuredResultData("v1", 1, new ObjectMapper().createObjectNode());
+    when(recordService.fetchRecord(recordId)).thenReturn(
+        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured));
 
-    ResponseEntity<Map<String, Object>> response = controller.getRecord(recordId.toString());
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    ResponseEntity<ApiResponse<?>> response = controller.getRecord(recordId.toString());
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
-    assertEquals("OK", response.getBody().get("code"));
-    assertEquals("PARSED_RESULT", data.get("defaultView"));
-    assertNotNull(response.getBody().get("requestId"));
+    assertEquals("OK", response.getBody().code());
+    RecordViewResponseData data = (RecordViewResponseData) response.getBody().data();
+    assertEquals("PARSED_RESULT", data.defaultView());
+    assertNotNull(response.getBody().requestId());
   }
 
   @Test
@@ -60,26 +66,27 @@ class RecordControllerTest {
     UUID recordId = UUID.randomUUID();
     when(recordService.fetchRecord(recordId)).thenThrow(new IllegalArgumentException("record not found"));
 
-    ResponseEntity<Map<String, Object>> response = controller.getRecord(recordId.toString());
+    ResponseEntity<ApiResponse<?>> response = controller.getRecord(recordId.toString());
 
     assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-    assertEquals("NOT_FOUND", response.getBody().get("code"));
+    assertEquals("NOT_FOUND", response.getBody().code());
   }
 
   @Test
   void getRecordAnalysisReturnsBadRequestWhenRecordIdInvalid() {
-    ResponseEntity<Map<String, Object>> response = controller.getRecordAnalysis("invalid-id");
+    ResponseEntity<ApiResponse<?>> response = controller.getRecordAnalysis("invalid-id");
 
     assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-    assertEquals("INVALID_RECORD_ID", response.getBody().get("code"));
+    assertEquals("INVALID_RECORD_ID", response.getBody().code());
   }
 
   @Test
   void getRecordTrendNormalizesLimitToSix() {
     UUID recordId = UUID.randomUUID();
-    when(recordService.fetchTrend(recordId, 6)).thenReturn(Map.of("snapshots", java.util.List.of()));
+    when(recordService.fetchTrend(recordId, 6)).thenReturn(
+        new RecordTrendData(recordId.toString(), "LAB", "unknown", 6, List.of()));
 
-    ResponseEntity<Map<String, Object>> response = controller.getRecordTrend(recordId.toString(), 99);
+    ResponseEntity<ApiResponse<?>> response = controller.getRecordTrend(recordId.toString(), 99);
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
     verify(recordService).fetchTrend(recordId, 6);
@@ -90,43 +97,45 @@ class RecordControllerTest {
     UUID recordId = UUID.randomUUID();
     when(recordService.deleteRecord(recordId)).thenReturn(false);
 
-    ResponseEntity<Map<String, Object>> response = controller.deleteRecord(recordId.toString());
+    ResponseEntity<?> response = controller.deleteRecord(recordId.toString());
 
     assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-    assertEquals("NOT_FOUND", response.getBody().get("code"));
+    @SuppressWarnings("unchecked")
+    ApiResponse<Object> body = (ApiResponse<Object>) response.getBody();
+    assertEquals("NOT_FOUND", body.code());
   }
 
   @Test
   void updateRecordSourceTypeReturnsBadRequestWhenSourceTypeMissing() {
     UUID recordId = UUID.randomUUID();
 
-    ResponseEntity<Map<String, Object>> response = controller.updateRecordSourceType(
+    ResponseEntity<ApiResponse<RecordSourceTypeUpdateResponseData>> response = controller.updateRecordSourceType(
         recordId.toString(),
-        Map.of("sourceType", " "));
+        new UpdateRecordSourceTypeRequest(" "));
 
     assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-    assertEquals("INVALID_REQUEST", response.getBody().get("code"));
+    assertEquals("INVALID_REQUEST", response.getBody().code());
   }
 
   @Test
   void updateRecordSourceTypeReturnsSuccessWhenUpdated() {
     UUID recordId = UUID.randomUUID();
-    when(recordService.updateSourceType(eq(recordId), eq("LAB"))).thenReturn(Map.of(
-        "updated", true,
-        "sourceType", "LAB",
-        "title", "高血压-检验报告-2026-02-10",
-        "recordDate", "2026-02-10",
-        "diseaseName", "高血压"));
+    when(recordService.updateSourceType(eq(recordId), eq("LAB"))).thenReturn(
+        new UpdateRecordSourceTypeResult(
+            true,
+            "LAB",
+            "高血压-检验报告-2026-02-10",
+            "2026-02-10",
+            "高血压"));
 
-    ResponseEntity<Map<String, Object>> response = controller.updateRecordSourceType(
+    ResponseEntity<ApiResponse<RecordSourceTypeUpdateResponseData>> response = controller.updateRecordSourceType(
         recordId.toString(),
-        Map.of("sourceType", "LAB"));
+        new UpdateRecordSourceTypeRequest("LAB"));
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
-    assertEquals("OK", response.getBody().get("code"));
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
-    assertTrue(Boolean.TRUE.equals(data.get("updated")));
+    assertEquals("OK", response.getBody().code());
+    RecordSourceTypeUpdateResponseData data = response.getBody().data();
+    assertTrue(data.updated());
     verify(recordService).updateSourceType(any(UUID.class), eq("LAB"));
   }
 }

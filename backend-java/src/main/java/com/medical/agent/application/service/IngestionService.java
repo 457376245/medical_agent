@@ -2,10 +2,17 @@ package com.medical.agent.application.service;
 
 import com.medical.agent.application.OssPresignService;
 import com.medical.agent.application.PersistenceService;
+import com.medical.agent.domain.dto.request.CompleteAssetRequest;
+import com.medical.agent.domain.dto.request.CreateParseJobRequest;
+import com.medical.agent.domain.dto.request.PresignRequest;
+import com.medical.agent.domain.dto.request.ProxyUploadRequest;
+import com.medical.agent.domain.dto.response.AssetCreatedResponseData;
+import com.medical.agent.domain.dto.response.ParseJobResponseData;
+import com.medical.agent.domain.dto.response.PresignResponseData;
+import com.medical.agent.domain.dto.response.ProxyUploadResponseData;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -28,24 +35,27 @@ public class IngestionService {
     this.parseJobService = parseJobService;
   }
 
-  public Map<String, Object> createPresign(Map<String, Object> body) {
-    String fileName = String.valueOf(body.getOrDefault("fileName", "upload.bin"));
-    String contentType = String.valueOf(body.getOrDefault("contentType", "application/octet-stream"));
+  public PresignResponseData createPresign(PresignRequest request) {
+    String fileName = request == null || request.fileName() == null || request.fileName().isBlank()
+        ? "upload.bin"
+        : request.fileName();
+    String contentType = request == null || request.contentType() == null || request.contentType().isBlank()
+        ? "application/octet-stream"
+        : request.contentType();
     String objectKey = "uploads/" + UUID.randomUUID() + "/" + fileName;
     OssPresignService.PresignResult signed = ossPresignService.presignPut(objectKey, contentType)
         .orElseGet(() -> new OssPresignService.PresignResult(
             uploadBaseUrl + "/" + objectKey,
             Instant.now().plusSeconds(900)));
-    return Map.of(
-        "uploadUrl", signed.uploadUrl(),
-        "objectKey", objectKey,
-        "expireAt", signed.expireAt().toString());
+    return new PresignResponseData(signed.uploadUrl(), objectKey, signed.expireAt().toString());
   }
 
-  public Map<String, Object> proxyUpload(Map<String, Object> body) {
-    String objectKey = String.valueOf(body.getOrDefault("objectKey", "")).trim();
-    String contentType = String.valueOf(body.getOrDefault("contentType", "application/octet-stream"));
-    String base64Data = String.valueOf(body.getOrDefault("base64Data", ""));
+  public ProxyUploadResponseData proxyUpload(ProxyUploadRequest request) {
+    String objectKey = request == null || request.objectKey() == null ? "" : request.objectKey().trim();
+    String contentType = request == null || request.contentType() == null || request.contentType().isBlank()
+        ? "application/octet-stream"
+        : request.contentType();
+    String base64Data = request == null || request.base64Data() == null ? "" : request.base64Data();
     if (objectKey.isEmpty()) {
       throw new IllegalArgumentException("objectKey is required");
     }
@@ -55,23 +65,23 @@ public class IngestionService {
 
     byte[] binary = Base64.getDecoder().decode(base64Data);
     ossPresignService.putObject(objectKey, contentType, binary);
-    return Map.of("objectKey", objectKey, "size", binary.length);
+    return new ProxyUploadResponseData(objectKey, binary.length);
   }
 
-  public Map<String, Object> completeAsset(Map<String, Object> body) {
-    UUID recordId = body.get("recordId") == null ? null : UUID.fromString(String.valueOf(body.get("recordId")));
-    UUID diseaseProfileId = body.get("diseaseProfileId") == null
+  public AssetCreatedResponseData completeAsset(CompleteAssetRequest request) {
+    UUID recordId = request == null || request.recordId() == null ? null : UUID.fromString(request.recordId());
+    UUID diseaseProfileId = request == null || request.diseaseProfileId() == null
         ? null
-        : UUID.fromString(String.valueOf(body.get("diseaseProfileId")));
-    LocalDate reportDate = body.get("reportDate") == null
+        : UUID.fromString(request.diseaseProfileId());
+    LocalDate reportDate = request == null || request.reportDate() == null
         ? null
-        : LocalDate.parse(String.valueOf(body.get("reportDate")));
-    String objectKey = String.valueOf(body.getOrDefault("objectKey", ""));
-    String checksum = String.valueOf(body.getOrDefault("checksum", ""));
-    String title = String.valueOf(body.getOrDefault("title", "Imported record"));
-    String sourceType = String.valueOf(body.getOrDefault("sourceType", ""));
+        : LocalDate.parse(request.reportDate());
+    String objectKey = request == null || request.objectKey() == null ? "" : request.objectKey();
+    String checksum = request == null || request.checksum() == null ? "" : request.checksum();
+    String title = request == null || request.title() == null || request.title().isBlank() ? "Imported record" : request.title();
+    String sourceType = request == null || request.sourceType() == null ? "" : request.sourceType();
     String fileType = objectKey.endsWith(".pdf") ? "PDF" : "IMAGE";
-    long fileSize = Long.parseLong(String.valueOf(body.getOrDefault("size", 1)));
+    long fileSize = request == null || request.size() == null ? 1L : request.size();
     UUID assetId = persistenceService.createAsset(
         objectKey,
         checksum,
@@ -82,10 +92,10 @@ public class IngestionService {
         reportDate,
         title,
         sourceType);
-    return Map.of("assetId", assetId.toString());
+    return new AssetCreatedResponseData(assetId.toString());
   }
 
-  public Map<String, Object> createParseJob(Map<String, Object> body, String idempotencyKey) {
-    return parseJobService.create(body, idempotencyKey);
+  public ParseJobResponseData createParseJob(CreateParseJobRequest request, String idempotencyKey) {
+    return parseJobService.create(request, idempotencyKey);
   }
 }

@@ -1,8 +1,14 @@
 package com.medical.agent.api;
 
 import com.medical.agent.application.PersistenceService;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.NameRequest;
+import com.medical.agent.domain.dto.response.ReportCategoryCreateResponseData;
+import com.medical.agent.domain.dto.response.ReportCategoryDeleteResponseData;
+import com.medical.agent.domain.dto.response.ReportCategoryListResponseData;
+import com.medical.agent.domain.dto.response.ReportCategoryRefResponseData;
+import com.medical.agent.domain.vo.ReportCategorySummary;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,91 +31,91 @@ public class ReportCategoryController {
   }
 
   @GetMapping
-  public Map<String, Object> list() {
-    List<Map<String, Object>> categories = persistenceService.listReportCategories();
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("categories", categories));
+  public ApiResponse<ReportCategoryListResponseData> list() {
+    List<ReportCategorySummary> categories = persistenceService.listReportCategories();
+    return new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new ReportCategoryListResponseData(categories));
   }
 
   @PostMapping
-  public ResponseEntity<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
-    String name = String.valueOf(body.getOrDefault("name", "")).trim();
+  public ResponseEntity<ApiResponse<?>> create(@RequestBody NameRequest request) {
+    String name = request == null || request.name() == null ? "" : request.name().trim();
     UUID categoryId;
     try {
       categoryId = persistenceService.createReportCategory(name);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_REQUEST",
-          "message", error.getMessage(),
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("name", name)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_REQUEST",
+          error.getMessage(),
+          RequestIdUtil.newRequestId(),
+          new ReportCategoryCreateResponseData(null, name)));
     }
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("reportCategoryId", categoryId.toString(), "name", name)));
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new ReportCategoryCreateResponseData(categoryId.toString(), name)));
   }
 
   @DeleteMapping("/{reportCategoryId}")
-  public ResponseEntity<Map<String, Object>> delete(
+  public ResponseEntity<ApiResponse<?>> delete(
       @PathVariable("reportCategoryId") String reportCategoryId,
       @RequestParam(value = "onlyIfEmpty", defaultValue = "true") boolean onlyIfEmpty) {
     UUID categoryId;
     try {
       categoryId = UUID.fromString(reportCategoryId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_CATEGORY_ID",
-          "message", "reportCategoryId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("reportCategoryId", reportCategoryId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_CATEGORY_ID",
+          "reportCategoryId is invalid",
+          RequestIdUtil.newRequestId(),
+          new ReportCategoryRefResponseData(reportCategoryId, false)));
     }
 
     if (!persistenceService.reportCategoryExists(categoryId)) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "report category not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("reportCategoryId", reportCategoryId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "report category not found",
+          RequestIdUtil.newRequestId(),
+          new ReportCategoryRefResponseData(reportCategoryId, false)));
     }
 
     int linkedCount = persistenceService.countRecordsByReportCategory(categoryId);
     if (onlyIfEmpty && linkedCount > 0) {
-      return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-          "code", "CONFLICT",
-          "message", "report category has associated records",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of(
-              "reportCategoryId", reportCategoryId,
-              "deleted", false,
-              "reason", "HAS_ASSOCIATED_RECORDS",
-              "linkedRecordCount", linkedCount)));
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(
+          "CONFLICT",
+          "report category has associated records",
+          RequestIdUtil.newRequestId(),
+          new ReportCategoryDeleteResponseData(
+              reportCategoryId,
+              false,
+              "HAS_ASSOCIATED_RECORDS",
+              linkedCount)));
     }
 
     boolean deleted = persistenceService.deleteReportCategoryIfEmpty(categoryId);
     if (!deleted) {
-      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-          "code", "DELETE_FAILED",
-          "message", "failed to delete report category",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of(
-              "reportCategoryId", reportCategoryId,
-              "deleted", false,
-              "reason", "DELETE_FAILED",
-              "linkedRecordCount", linkedCount)));
+      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiResponse<>(
+          "DELETE_FAILED",
+          "failed to delete report category",
+          RequestIdUtil.newRequestId(),
+          new ReportCategoryDeleteResponseData(
+              reportCategoryId,
+              false,
+              "DELETE_FAILED",
+              linkedCount)));
     }
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "deleted",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of(
-            "reportCategoryId", reportCategoryId,
-            "deleted", true,
-            "reason", "DELETED",
-            "linkedRecordCount", 0)));
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "deleted",
+        RequestIdUtil.newRequestId(),
+        new ReportCategoryDeleteResponseData(
+            reportCategoryId,
+            true,
+            "DELETED",
+            0)));
   }
 }

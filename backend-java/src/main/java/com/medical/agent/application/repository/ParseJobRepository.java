@@ -1,8 +1,9 @@
 package com.medical.agent.application.repository;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.ParseJobContext;
 
 public interface ParseJobRepository {
   record ParseApplyResult(UUID recordId, String finalStatus, boolean stateChanged) {}
@@ -13,9 +14,9 @@ public interface ParseJobRepository {
 
   void bindParseJobAssets(UUID jobId, List<UUID> assetIds);
 
-  List<Map<String, Object>> listAssetRefsByJobId(UUID jobId);
+  List<AssetRef> listAssetRefsByJobId(UUID jobId);
 
-  Map<String, String> parseJobContext(UUID jobId);
+  ParseJobContext parseJobContext(UUID jobId);
 
   ParseApplyResult applyParseResult(
       UUID jobId,

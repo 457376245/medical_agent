@@ -2,8 +2,17 @@ package com.medical.agent.api;
 
 import com.medical.agent.application.ReportAnalysisService;
 import com.medical.agent.application.service.RecordService;
-import java.util.HashMap;
-import java.util.Map;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.UpdateRecordSourceTypeRequest;
+import com.medical.agent.domain.dto.response.RecordDeleteResponseData;
+import com.medical.agent.domain.dto.response.RecordRefResponseData;
+import com.medical.agent.domain.dto.response.RecordSourceTypeUpdateResponseData;
+import com.medical.agent.domain.dto.response.RecordViewResponseData;
+import com.medical.agent.domain.vo.RecordDetail;
+import com.medical.agent.domain.vo.RecordTrendData;
+import com.medical.agent.domain.vo.ReportAnalysisResult;
+import com.medical.agent.domain.vo.StructuredResultData;
+import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,192 +37,193 @@ public class RecordController {
   }
 
   @GetMapping("/{recordId}")
-  public ResponseEntity<Map<String, Object>> getRecord(@PathVariable("recordId") String recordId) {
+  public ResponseEntity<ApiResponse<?>> getRecord(@PathVariable("recordId") String recordId) {
     UUID recordUuid;
     try {
       recordUuid = UUID.fromString(recordId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_RECORD_ID",
-          "message", "recordId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_ID",
+          "recordId is invalid",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
 
-    Map<String, Object> record;
+    RecordDetail record;
     try {
-      record = new HashMap<>(recordService.fetchRecord(recordUuid));
+      record = recordService.fetchRecord(recordUuid);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "record not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
-    record.put("defaultView", "PARSED_RESULT");
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", record));
+
+    StructuredResultData structured = record.structuredResult();
+    RecordViewResponseData.StructuredResultView structuredView = new RecordViewResponseData.StructuredResultView(
+        structured.schemaVersion(),
+        structured.revision(),
+        structured.payload());
+    RecordViewResponseData data = new RecordViewResponseData(
+        record.recordId(),
+        record.summary(),
+        record.parseStatus(),
+        structuredView,
+        "PARSED_RESULT");
+
+    return ResponseEntity.ok(new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data));
   }
 
   @GetMapping("/{recordId}/analysis")
-  public ResponseEntity<Map<String, Object>> getRecordAnalysis(@PathVariable("recordId") String recordId) {
+  public ResponseEntity<ApiResponse<?>> getRecordAnalysis(@PathVariable("recordId") String recordId) {
     UUID recordUuid;
     try {
       recordUuid = UUID.fromString(recordId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_RECORD_ID",
-          "message", "recordId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_ID",
+          "recordId is invalid",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
 
-    Map<String, Object> analysis;
+    ReportAnalysisResult analysis;
     try {
       analysis = reportAnalysisService.getOrGenerate(recordUuid);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "record not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     } catch (ReportAnalysisService.AnalysisNotReadyException error) {
-      return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-          "code", "ANALYSIS_NOT_READY",
-          "message", "analysis requires successful parse result with non-empty fields",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(
+          "ANALYSIS_NOT_READY",
+          "analysis requires successful parse result with non-empty fields",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     } catch (IllegalStateException error) {
-      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
-          "code", "ANALYSIS_PROVIDER_FAILED",
-          "message", "report analysis generation failed",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ApiResponse<>(
+          "ANALYSIS_PROVIDER_FAILED",
+          "report analysis generation failed",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
 
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", analysis));
+    return ResponseEntity.ok(new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), analysis));
   }
 
   @GetMapping("/{recordId}/trend")
-  public ResponseEntity<Map<String, Object>> getRecordTrend(
+  public ResponseEntity<ApiResponse<?>> getRecordTrend(
       @PathVariable("recordId") String recordId,
       @RequestParam(name = "limit", required = false) Integer limit) {
     UUID recordUuid;
     try {
       recordUuid = UUID.fromString(recordId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_RECORD_ID",
-          "message", "recordId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_ID",
+          "recordId is invalid",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
 
     int normalizedLimit = limit == null ? 6 : Math.max(1, Math.min(limit, 6));
-    Map<String, Object> trendData;
+    RecordTrendData trendData;
     try {
       trendData = recordService.fetchTrend(recordUuid, normalizedLimit);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "record not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found",
+          RequestIdUtil.newRequestId(),
+          new RecordRefResponseData(recordId)));
     }
 
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", trendData));
+    return ResponseEntity.ok(new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), trendData));
   }
 
   @DeleteMapping("/{recordId}")
-  public ResponseEntity<Map<String, Object>> deleteRecord(@PathVariable("recordId") String recordId) {
+  public ResponseEntity<ApiResponse<RecordDeleteResponseData>> deleteRecord(@PathVariable("recordId") String recordId) {
     UUID recordUuid;
     try {
       recordUuid = UUID.fromString(recordId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_RECORD_ID",
-          "message", "recordId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_ID",
+          "recordId is invalid",
+          RequestIdUtil.newRequestId(),
+          new RecordDeleteResponseData(recordId, false)));
     }
 
     boolean deleted = recordService.deleteRecord(recordUuid);
     if (!deleted) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "record not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found",
+          RequestIdUtil.newRequestId(),
+          new RecordDeleteResponseData(recordId, false)));
     }
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "deleted",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("recordId", recordId, "deleted", true)));
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "deleted",
+        RequestIdUtil.newRequestId(),
+        new RecordDeleteResponseData(recordId, true)));
   }
 
   @PatchMapping("/{recordId}/source-type")
-  public ResponseEntity<Map<String, Object>> updateRecordSourceType(
+  public ResponseEntity<ApiResponse<RecordSourceTypeUpdateResponseData>> updateRecordSourceType(
       @PathVariable("recordId") String recordId,
-      @RequestBody Map<String, Object> body) {
-    String sourceType = String.valueOf(body.getOrDefault("sourceType", "")).trim();
+      @RequestBody UpdateRecordSourceTypeRequest request) {
+    String sourceType = request == null || request.sourceType() == null ? "" : request.sourceType().trim();
     if (sourceType.isEmpty()) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_REQUEST",
-          "message", "sourceType is required",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "updated", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_REQUEST",
+          "sourceType is required",
+          RequestIdUtil.newRequestId(),
+          new RecordSourceTypeUpdateResponseData(recordId, false, null, null, null, null)));
     }
 
     UUID recordUuid;
     try {
       recordUuid = UUID.fromString(recordId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_RECORD_ID",
-          "message", "recordId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "updated", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_ID",
+          "recordId is invalid",
+          RequestIdUtil.newRequestId(),
+          new RecordSourceTypeUpdateResponseData(recordId, false, null, null, null, null)));
     }
 
-    Map<String, Object> updated;
+    UpdateRecordSourceTypeResult updated;
     try {
       updated = recordService.updateSourceType(recordUuid, sourceType);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_SOURCE_TYPE",
-          "message", error.getMessage(),
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "updated", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_SOURCE_TYPE",
+          error.getMessage(),
+          RequestIdUtil.newRequestId(),
+          new RecordSourceTypeUpdateResponseData(recordId, false, null, null, null, null)));
     }
-    if (!Boolean.TRUE.equals(updated.get("updated"))) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "record not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("recordId", recordId, "updated", false)));
+    if (!updated.updated()) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found",
+          RequestIdUtil.newRequestId(),
+          new RecordSourceTypeUpdateResponseData(recordId, false, null, null, null, null)));
     }
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "updated",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of(
-            "recordId", recordId,
-            "updated", true,
-            "sourceType", updated.get("sourceType"),
-            "title", updated.get("title"),
-            "recordDate", updated.get("recordDate"),
-            "diseaseName", updated.get("diseaseName"))));
+
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "updated",
+        RequestIdUtil.newRequestId(),
+        new RecordSourceTypeUpdateResponseData(
+            recordId,
+            true,
+            updated.sourceType(),
+            updated.title(),
+            updated.recordDate(),
+            updated.diseaseName())));
   }
 }

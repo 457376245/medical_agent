@@ -1,8 +1,9 @@
 package com.medical.agent.application.repository;
 
-import java.util.Map;
+import com.medical.agent.domain.vo.RecordAnalysisContext;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface StructuredResultRepository {
-  Map<String, Object> fetchRecordAnalysisContext(UUID recordId);
+  Optional<RecordAnalysisContext> fetchRecordAnalysisContext(UUID recordId);
 }

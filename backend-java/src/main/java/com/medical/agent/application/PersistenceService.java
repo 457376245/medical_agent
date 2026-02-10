@@ -4,9 +4,20 @@ import com.medical.agent.application.repository.GeneratedOutputRepository;
 import com.medical.agent.application.repository.ParseJobRepository;
 import com.medical.agent.application.repository.RecordRepository;
 import com.medical.agent.application.repository.StructuredResultRepository;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.DiseaseProfileSummary;
+import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
+import com.medical.agent.domain.vo.ParseJobContext;
+import com.medical.agent.domain.vo.RecordAnalysisContext;
+import com.medical.agent.domain.vo.RecordDetail;
+import com.medical.agent.domain.vo.RecordTrendData;
+import com.medical.agent.domain.vo.ReportCategorySummary;
+import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.vo.TimelineRecordSummary;
+import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,7 +78,7 @@ public class PersistenceService {
         sourceType);
   }
 
-  public List<Map<String, Object>> listAssetRefs(List<UUID> assetIds) {
+  public List<AssetRef> listAssetRefs(List<UUID> assetIds) {
     return recordRepository.listAssetRefs(assetIds);
   }
 
@@ -75,11 +86,11 @@ public class PersistenceService {
     parseJobRepository.bindParseJobAssets(jobId, assetIds);
   }
 
-  public List<Map<String, Object>> listAssetRefsByJobId(UUID jobId) {
+  public List<AssetRef> listAssetRefsByJobId(UUID jobId) {
     return parseJobRepository.listAssetRefsByJobId(jobId);
   }
 
-  public Map<String, String> parseJobContext(UUID jobId) {
+  public ParseJobContext parseJobContext(UUID jobId) {
     return parseJobRepository.parseJobContext(jobId);
   }
 
@@ -122,15 +133,15 @@ public class PersistenceService {
     parseJobRepository.markParseJobDeadLetter(jobId, errorCode);
   }
 
-  public Map<String, Object> fetchRecord(UUID recordId) {
+  public RecordDetail fetchRecord(UUID recordId) {
     return recordRepository.fetchRecord(recordId);
   }
 
-  public Map<String, Object> fetchLatestGeneratedOutput(UUID recordId, String type) {
+  public Optional<GeneratedOutputSnapshot> fetchLatestGeneratedOutput(UUID recordId, String type) {
     return generatedOutputRepository.fetchLatestGeneratedOutput(recordId, type);
   }
 
-  public Map<String, Object> fetchRecordAnalysisContext(UUID recordId) {
+  public Optional<RecordAnalysisContext> fetchRecordAnalysisContext(UUID recordId) {
     return structuredResultRepository.fetchRecordAnalysisContext(recordId);
   }
 
@@ -142,7 +153,7 @@ public class PersistenceService {
     return recordRepository.createReportCategory(name);
   }
 
-  public List<Map<String, Object>> listReportCategories() {
+  public List<ReportCategorySummary> listReportCategories() {
     return recordRepository.listReportCategories();
   }
 
@@ -158,7 +169,7 @@ public class PersistenceService {
     return recordRepository.deleteReportCategoryIfEmpty(reportCategoryId);
   }
 
-  public List<Map<String, Object>> listDiseaseProfiles() {
+  public List<DiseaseProfileSummary> listDiseaseProfiles() {
     return recordRepository.listDiseaseProfiles();
   }
 
@@ -191,11 +202,11 @@ public class PersistenceService {
     return generatedOutputRepository.createGeneratedOutputWithMeta(recordId, type, content, modelMetaJson);
   }
 
-  public List<Map<String, Object>> listTimelineBatches() {
+  public List<TimelineBatchSummary> listTimelineBatches() {
     return recordRepository.listTimelineBatches();
   }
 
-  public List<Map<String, Object>> listRecordsByBatch(String batchId) {
+  public List<TimelineRecordSummary> listRecordsByBatch(String batchId) {
     return recordRepository.listRecordsByBatch(batchId);
   }
 
@@ -203,11 +214,11 @@ public class PersistenceService {
     return recordRepository.getDiseaseNameByBatch(batchId);
   }
 
-  public Map<String, Object> updateRecordSourceType(UUID recordId, String sourceType) {
+  public UpdateRecordSourceTypeResult updateRecordSourceType(UUID recordId, String sourceType) {
     return recordRepository.updateRecordSourceType(recordId, sourceType);
   }
 
-  public Map<String, Object> fetchRecordTrend(UUID recordId, int limit) {
+  public RecordTrendData fetchRecordTrend(UUID recordId, int limit) {
     return recordRepository.fetchRecordTrend(recordId, limit);
   }
 

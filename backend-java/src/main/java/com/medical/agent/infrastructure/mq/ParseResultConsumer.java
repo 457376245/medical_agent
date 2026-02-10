@@ -4,12 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.PersistenceService;
-import java.util.List;
+import com.medical.agent.domain.vo.GenerateRequestEvent;
+import com.medical.agent.domain.vo.ParseJobContext;
+import com.medical.agent.domain.vo.RecordAnalysisContext;
+import com.medical.agent.domain.vo.StructuredResultData;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -60,41 +63,35 @@ public class ParseResultConsumer {
 
   private void triggerReportAnalysisGeneration(UUID recordId, UUID jobId) {
     try {
-      Map<String, Object> context = persistenceService.fetchRecordAnalysisContext(recordId);
-      if (!isAnalysisContextReady(context)) {
+      RecordAnalysisContext context = persistenceService.fetchRecordAnalysisContext(recordId).orElse(null);
+      if (context == null || !isAnalysisContextReady(context)) {
         LOGGER.info("Skipped report analysis generation due to parse context not ready: recordId={} jobId={}", recordId, jobId);
         return;
       }
-      Map<String, String> parseContext = persistenceService.parseJobContext(jobId);
-      generateRequestPublisher.publish(Map.of(
-          "taskId", UUID.randomUUID().toString(),
-          "tenantId", parseContext.get("tenantId"),
-          "recordId", recordId.toString(),
-          "type", "REPORT_ANALYSIS",
-          "traceId", UUID.randomUUID().toString().replace("-", ""),
-          "schemaVersion", "v1",
-          "analysisContext", context,
-          "idempotencyKey", "report-analysis-" + jobId));
+      ParseJobContext parseContext = persistenceService.parseJobContext(jobId);
+      generateRequestPublisher.publish(new GenerateRequestEvent(
+          UUID.randomUUID().toString(),
+          parseContext.tenantId(),
+          recordId.toString(),
+          "REPORT_ANALYSIS",
+          UUID.randomUUID().toString().replace("-", ""),
+          "v1",
+          context,
+          "report-analysis-" + jobId));
       LOGGER.info("Queued report analysis generation for recordId={} jobId={}", recordId, jobId);
     } catch (Exception ex) {
       LOGGER.warn("Failed to queue report analysis generation for recordId={} jobId={}", recordId, jobId, ex);
     }
   }
 
-  private boolean isAnalysisContextReady(Map<String, Object> context) {
-    String parseStatus = String.valueOf(context.getOrDefault("parseStatus", "NOT_PARSED"));
-    if (!"SUCCESS".equalsIgnoreCase(parseStatus)) {
+  private boolean isAnalysisContextReady(RecordAnalysisContext context) {
+    if (!"SUCCESS".equalsIgnoreCase(context.parseStatus())) {
       return false;
     }
-    Object structuredResultRaw = context.get("structuredResult");
-    if (!(structuredResultRaw instanceof Map<?, ?> structuredResult)) {
+    StructuredResultData structuredResult = context.structuredResult();
+    if (structuredResult == null || structuredResult.payload() == null) {
       return false;
     }
-    Object payloadRaw = structuredResult.get("payload");
-    if (!(payloadRaw instanceof Map<?, ?> payload)) {
-      return false;
-    }
-    Object fieldsRaw = payload.get("fields");
-    return fieldsRaw instanceof List<?> fields && !fields.isEmpty();
+    return structuredResult.payload().path("fields").isArray() && structuredResult.payload().path("fields").size() > 0;
   }
 }

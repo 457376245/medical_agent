@@ -1,7 +1,15 @@
 package com.medical.agent.api;
 
 import com.medical.agent.application.service.IngestionService;
-import java.util.Map;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.CompleteAssetRequest;
+import com.medical.agent.domain.dto.request.CreateParseJobRequest;
+import com.medical.agent.domain.dto.request.PresignRequest;
+import com.medical.agent.domain.dto.request.ProxyUploadRequest;
+import com.medical.agent.domain.dto.response.AssetCreatedResponseData;
+import com.medical.agent.domain.dto.response.ParseJobResponseData;
+import com.medical.agent.domain.dto.response.PresignResponseData;
+import com.medical.agent.domain.dto.response.ProxyUploadResponseData;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -18,44 +26,28 @@ public class IngestionController {
   }
 
   @PostMapping("/presign")
-  public Map<String, Object> createPresign(@RequestBody Map<String, Object> body) {
-    Map<String, Object> data = ingestionService.createPresign(body);
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", data);
+  public ApiResponse<PresignResponseData> createPresign(@RequestBody PresignRequest request) {
+    PresignResponseData data = ingestionService.createPresign(request);
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data);
   }
 
   @PostMapping("/proxy-upload")
-  public Map<String, Object> proxyUpload(@RequestBody Map<String, Object> body) {
-    Map<String, Object> data = ingestionService.proxyUpload(body);
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", data);
+  public ApiResponse<ProxyUploadResponseData> proxyUpload(@RequestBody ProxyUploadRequest request) {
+    ProxyUploadResponseData data = ingestionService.proxyUpload(request);
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data);
   }
 
   @PostMapping("/assets")
-  public Map<String, Object> completeAsset(@RequestBody Map<String, Object> body) {
-    Map<String, Object> data = ingestionService.completeAsset(body);
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", data);
+  public ApiResponse<AssetCreatedResponseData> completeAsset(@RequestBody CompleteAssetRequest request) {
+    AssetCreatedResponseData data = ingestionService.completeAsset(request);
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data);
   }
 
   @PostMapping("/parse-jobs")
-  public Map<String, Object> createParseJob(
-      @RequestBody Map<String, Object> body,
+  public ApiResponse<ParseJobResponseData> createParseJob(
+      @RequestBody CreateParseJobRequest request,
       @RequestHeader("Idempotency-Key") String idempotencyKey) {
-    Map<String, Object> data = ingestionService.createParseJob(body, idempotencyKey);
-    return Map.of(
-        "code", "OK",
-        "message", "queued",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", data);
+    ParseJobResponseData data = ingestionService.createParseJob(request, idempotencyKey);
+    return new ApiResponse<>("OK", "queued", RequestIdUtil.newRequestId(), data);
   }
 }

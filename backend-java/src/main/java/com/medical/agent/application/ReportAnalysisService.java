@@ -1,9 +1,15 @@
 package com.medical.agent.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
+import com.medical.agent.domain.vo.RecordAnalysisContext;
+import com.medical.agent.domain.vo.ReportAnalysisResult;
+import com.medical.agent.domain.vo.StructuredResultData;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -33,36 +39,31 @@ public class ReportAnalysisService {
     this.agentBaseUrl = agentBaseUrl;
   }
 
-  public Map<String, Object> getOrGenerate(UUID recordId) {
-    Map<String, Object> cached = persistenceService.fetchLatestGeneratedOutput(recordId, OUTPUT_TYPE);
-    if (!cached.isEmpty()) {
-      return Map.of(
-          "recordId", String.valueOf(cached.get("recordId")),
-          "content", String.valueOf(cached.get("content")),
-          "cached", true,
-          "version", cached.get("version"));
+  public ReportAnalysisResult getOrGenerate(UUID recordId) {
+    Optional<GeneratedOutputSnapshot> cached = persistenceService.fetchLatestGeneratedOutput(recordId, OUTPUT_TYPE);
+    if (cached.isPresent()) {
+      GeneratedOutputSnapshot snapshot = cached.get();
+      return new ReportAnalysisResult(
+          snapshot.recordId(),
+          snapshot.content(),
+          true,
+          snapshot.version());
     }
 
-    Map<String, Object> context = persistenceService.fetchRecordAnalysisContext(recordId);
-    if (context.isEmpty()) {
-      throw new IllegalArgumentException("record not found");
-    }
+    RecordAnalysisContext context = persistenceService.fetchRecordAnalysisContext(recordId)
+        .orElseThrow(() -> new IllegalArgumentException("record not found"));
     if (!isParseResultReadyForAnalysis(context)) {
       throw new AnalysisNotReadyException("parse result is not ready for analysis");
     }
-    Map<String, Object> sanitizedContext = sanitizeAnalysisContext(context);
-    Map<String, Object> generated = generateFromAgent(recordId, sanitizedContext);
-    String content = truncateToMaxCharacters(String.valueOf(generated.getOrDefault("content", "")).trim());
+    RecordAnalysisContext sanitizedContext = sanitizeAnalysisContext(context);
+    GeneratedAnalysis generated = generateFromAgent(recordId, sanitizedContext);
+    String content = truncateToMaxCharacters(generated.content().trim());
     if (content.isEmpty()) {
       throw new IllegalStateException("analysis content is empty");
     }
-    String modelMeta = asJson(generated.getOrDefault("modelMeta", Map.of()));
+    String modelMeta = asJson(generated.modelMeta());
     int version = persistenceService.createGeneratedOutputWithMeta(recordId, OUTPUT_TYPE, content, modelMeta);
-    return Map.of(
-        "recordId", recordId.toString(),
-        "content", content,
-        "cached", false,
-        "version", version);
+    return new ReportAnalysisResult(recordId.toString(), content, false, version);
   }
 
   public static final class AnalysisNotReadyException extends IllegalStateException {
@@ -71,23 +72,23 @@ public class ReportAnalysisService {
     }
   }
 
-  private Map<String, Object> generateFromAgent(UUID recordId, Map<String, Object> context) {
+  private GeneratedAnalysis generateFromAgent(UUID recordId, RecordAnalysisContext context) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
-    Map<String, Object> request = Map.of(
-        "payload", Map.of(
-            "recordId", recordId.toString(),
-            "type", OUTPUT_TYPE,
-            "traceId", UUID.randomUUID().toString().replace("-", ""),
-            "schemaVersion", "v1",
-            "analysisContext", context));
+    GenerateRequest request = new GenerateRequest(
+        new GeneratePayload(
+            recordId.toString(),
+            OUTPUT_TYPE,
+            UUID.randomUUID().toString().replace("-", ""),
+            "v1",
+            context));
 
-    ResponseEntity<Map> response;
+    ResponseEntity<String> response;
     try {
       response = restTemplate.postForEntity(
           agentBaseUrl + "/internal/generate",
           new HttpEntity<>(request, headers),
-          Map.class);
+          String.class);
     } catch (RestClientException error) {
       throw new IllegalStateException("failed to call report analysis provider", error);
     }
@@ -95,71 +96,75 @@ public class ReportAnalysisService {
     if (!response.getStatusCode().is2xxSuccessful()) {
       throw new IllegalStateException("analysis provider returned non-2xx status");
     }
-    Map<String, Object> body = response.getBody();
-    if (body == null) {
+
+    String responseBody = response.getBody();
+    if (responseBody == null || responseBody.isBlank()) {
       throw new IllegalStateException("analysis provider returned empty body");
     }
-    Object dataRaw = body.get("data");
-    if (!(dataRaw instanceof Map<?, ?> rawMap)) {
-      throw new IllegalStateException("analysis provider returned invalid response");
+
+    try {
+      JsonNode root = objectMapper.readTree(responseBody);
+      JsonNode data = root.path("data");
+      if (data.isMissingNode() || !data.isObject()) {
+        throw new IllegalStateException("analysis provider returned invalid response");
+      }
+      String status = data.path("status").asText("FAILED");
+      if (!"SUCCESS".equals(status)) {
+        throw new IllegalStateException("analysis provider generation failed");
+      }
+      String content = data.path("content").asText("");
+      JsonNode modelMeta = data.path("modelMeta");
+      return new GeneratedAnalysis(content, modelMeta.isMissingNode() ? objectMapper.createObjectNode() : modelMeta);
+    } catch (JsonProcessingException error) {
+      throw new IllegalStateException("analysis provider returned malformed JSON", error);
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) rawMap;
-    String status = String.valueOf(data.getOrDefault("status", "FAILED"));
-    if (!"SUCCESS".equals(status)) {
-      throw new IllegalStateException("analysis provider generation failed");
-    }
-    return data;
   }
 
-  private Map<String, Object> sanitizeAnalysisContext(Map<String, Object> context) {
-    Object structuredResultRaw = context.get("structuredResult");
-    if (!(structuredResultRaw instanceof Map<?, ?> structuredResultMapRaw)) {
+  private RecordAnalysisContext sanitizeAnalysisContext(RecordAnalysisContext context) {
+    StructuredResultData structured = context.structuredResult();
+    if (structured == null || structured.payload() == null || !structured.payload().isObject()) {
       return context;
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> structuredResult = (Map<String, Object>) structuredResultMapRaw;
 
-    Object payloadRaw = structuredResult.get("payload");
-    if (!(payloadRaw instanceof Map<?, ?> payloadMapRaw)) {
+    JsonNode fieldsNode = structured.payload().path("fields");
+    if (!fieldsNode.isArray()) {
       return context;
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> payload = (Map<String, Object>) payloadMapRaw;
-    Object fieldsRaw = payload.get("fields");
-    if (!(fieldsRaw instanceof List<?> fieldsList)) {
-      return context;
+
+    ArrayNode compactFields = objectMapper.createArrayNode();
+    int bound = Math.min(fieldsNode.size(), 60);
+    for (int i = 0; i < bound; i++) {
+      compactFields.add(fieldsNode.get(i));
     }
-    List<?> compactFields = fieldsList.size() <= 60 ? fieldsList : fieldsList.subList(0, 60);
-    Map<String, Object> compactPayload = Map.of("fields", compactFields);
-    Map<String, Object> compactResult = Map.of(
-        "schemaVersion", String.valueOf(structuredResult.getOrDefault("schemaVersion", "v1")),
-        "revision", structuredResult.getOrDefault("revision", 0),
-        "payload", compactPayload);
-    return Map.of(
-        "recordId", context.get("recordId"),
-        "title", context.get("title"),
-        "recordDate", context.get("recordDate"),
-        "sourceType", context.get("sourceType"),
-        "diseaseName", context.get("diseaseName"),
-        "structuredResult", compactResult);
+
+    ObjectNode compactPayload = ((ObjectNode) structured.payload()).deepCopy();
+    compactPayload.set("fields", compactFields);
+
+    StructuredResultData compactStructured = new StructuredResultData(
+        structured.schemaVersion(),
+        structured.revision(),
+        compactPayload);
+
+    return new RecordAnalysisContext(
+        context.recordId(),
+        context.title(),
+        context.recordDate(),
+        context.sourceType(),
+        context.diseaseName(),
+        context.parseStatus(),
+        compactStructured);
   }
 
-  private boolean isParseResultReadyForAnalysis(Map<String, Object> context) {
-    String parseStatus = String.valueOf(context.getOrDefault("parseStatus", "NOT_PARSED"));
-    if (!"SUCCESS".equalsIgnoreCase(parseStatus)) {
+  private boolean isParseResultReadyForAnalysis(RecordAnalysisContext context) {
+    if (!"SUCCESS".equalsIgnoreCase(context.parseStatus())) {
       return false;
     }
-    Object structuredResultRaw = context.get("structuredResult");
-    if (!(structuredResultRaw instanceof Map<?, ?> structuredResult)) {
+    StructuredResultData structured = context.structuredResult();
+    if (structured == null || structured.payload() == null) {
       return false;
     }
-    Object payloadRaw = structuredResult.get("payload");
-    if (!(payloadRaw instanceof Map<?, ?> payload)) {
-      return false;
-    }
-    Object fieldsRaw = payload.get("fields");
-    return fieldsRaw instanceof List<?> fields && !fields.isEmpty();
+    JsonNode fields = structured.payload().path("fields");
+    return fields.isArray() && fields.size() > 0;
   }
 
   private String truncateToMaxCharacters(String content) {
@@ -169,11 +174,22 @@ public class ReportAnalysisService {
     return content.substring(0, MAX_ANALYSIS_CHARACTERS);
   }
 
-  private String asJson(Object value) {
+  private String asJson(JsonNode value) {
     try {
-      return objectMapper.writeValueAsString(value);
+      return objectMapper.writeValueAsString(value == null ? objectMapper.createObjectNode() : value);
     } catch (JsonProcessingException ignored) {
       return "{}";
     }
   }
+
+  private record GenerateRequest(GeneratePayload payload) {}
+
+  private record GeneratePayload(
+      String recordId,
+      String type,
+      String traceId,
+      String schemaVersion,
+      RecordAnalysisContext analysisContext) {}
+
+  private record GeneratedAnalysis(String content, JsonNode modelMeta) {}
 }

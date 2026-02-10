@@ -1,10 +1,12 @@
 package com.medical.agent.infrastructure.persistence.jdbc;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.repository.StructuredResultRepository;
-import java.util.List;
+import com.medical.agent.domain.vo.RecordAnalysisContext;
+import com.medical.agent.domain.vo.StructuredResultData;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,7 +25,7 @@ public class JdbcStructuredResultRepository implements StructuredResultRepositor
   }
 
   @Override
-  public Map<String, Object> fetchRecordAnalysisContext(UUID recordId) {
+  public Optional<RecordAnalysisContext> fetchRecordAnalysisContext(UUID recordId) {
     Map<String, Object> record;
     try {
       record = jdbcTemplate.queryForMap(
@@ -35,40 +37,61 @@ public class JdbcStructuredResultRepository implements StructuredResultRepositor
           DEFAULT_TENANT_ID,
           DEFAULT_USER_ID);
     } catch (EmptyResultDataAccessException ignored) {
-      return Map.of();
+      return Optional.empty();
     }
 
-    List<Map<String, Object>> results = jdbcTemplate.queryForList(
-        "select schema_version, revision, payload_json "
-            + "from structured_results where record_id = ? "
-            + "order by revision desc limit 1",
-        recordId);
-    List<Map<String, Object>> parseJobs = jdbcTemplate.queryForList(
-        "select status from parse_jobs where record_id = ? order by updated_at desc, created_at desc limit 1",
-        recordId);
-    Map<String, Object> latestResult = results.isEmpty()
-        ? Map.of("schemaVersion", "v1", "revision", 0, "payload", Map.of("fields", List.of()))
-        : Map.of(
-            "schemaVersion", String.valueOf(results.get(0).get("schema_version")),
-            "revision", results.get(0).get("revision"),
-            "payload", parsePayload(String.valueOf(results.get(0).get("payload_json"))));
-    String parseStatus = parseJobs.isEmpty() ? "NOT_PARSED" : String.valueOf(parseJobs.get(0).get("status"));
+    Map<String, Object> latestResult = queryLatestStructuredResult(recordId);
+    String parseStatus = queryLatestParseStatus(recordId);
+    StructuredResultData structuredResult = new StructuredResultData(
+        String.valueOf(latestResult.get("schemaVersion")),
+        ((Number) latestResult.get("revision")).intValue(),
+        (JsonNode) latestResult.get("payload"));
 
-    return Map.of(
-        "recordId", String.valueOf(record.get("id")),
-        "title", record.get("title") == null ? "未命名报告" : String.valueOf(record.get("title")),
-        "recordDate", String.valueOf(record.get("record_date")),
-        "sourceType", String.valueOf(record.get("source_type")),
-        "diseaseName", String.valueOf(record.get("disease_name")),
-        "parseStatus", parseStatus,
-        "structuredResult", latestResult);
+    return Optional.of(new RecordAnalysisContext(
+        String.valueOf(record.get("id")),
+        record.get("title") == null ? "未命名报告" : String.valueOf(record.get("title")),
+        String.valueOf(record.get("record_date")),
+        String.valueOf(record.get("source_type")),
+        String.valueOf(record.get("disease_name")),
+        parseStatus,
+        structuredResult));
   }
 
-  private Object parsePayload(String payloadJson) {
+  private Map<String, Object> queryLatestStructuredResult(UUID recordId) {
     try {
-      return objectMapper.readValue(payloadJson, new TypeReference<Map<String, Object>>() {});
+      Map<String, Object> row = jdbcTemplate.queryForMap(
+          "select schema_version, revision, payload_json "
+              + "from structured_results where record_id = ? "
+              + "order by revision desc limit 1",
+          recordId);
+      return Map.of(
+          "schemaVersion", String.valueOf(row.get("schema_version")),
+          "revision", row.get("revision"),
+          "payload", parsePayload(String.valueOf(row.get("payload_json"))));
+    } catch (EmptyResultDataAccessException ignored) {
+      return Map.of(
+          "schemaVersion", "v1",
+          "revision", 0,
+          "payload", objectMapper.createObjectNode().putArray("fields"));
+    }
+  }
+
+  private String queryLatestParseStatus(UUID recordId) {
+    try {
+      return String.valueOf(jdbcTemplate.queryForObject(
+          "select status from parse_jobs where record_id = ? order by updated_at desc, created_at desc limit 1",
+          String.class,
+          recordId));
+    } catch (EmptyResultDataAccessException ignored) {
+      return "NOT_PARSED";
+    }
+  }
+
+  private JsonNode parsePayload(String payloadJson) {
+    try {
+      return objectMapper.readTree(payloadJson);
     } catch (Exception ignored) {
-      return payloadJson;
+      return objectMapper.createObjectNode().putArray("fields");
     }
   }
 }

@@ -1,12 +1,14 @@
 package com.medical.agent.infrastructure.persistence.jdbc;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.repository.GeneratedOutputRepository;
 import com.medical.agent.application.repository.RecordRepository;
+import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -72,7 +74,7 @@ public class JdbcGeneratedOutputRepository implements GeneratedOutputRepository 
   }
 
   @Override
-  public Map<String, Object> fetchLatestGeneratedOutput(UUID recordId, String type) {
+  public Optional<GeneratedOutputSnapshot> fetchLatestGeneratedOutput(UUID recordId, String type) {
     try {
       Map<String, Object> row = jdbcTemplate.queryForMap(
           "select version, content, model_meta "
@@ -80,24 +82,26 @@ public class JdbcGeneratedOutputRepository implements GeneratedOutputRepository 
               + "order by version desc limit 1",
           recordId,
           type);
-      return Map.of(
-          "recordId", recordId.toString(),
-          "type", type,
-          "version", row.get("version"),
-          "content", String.valueOf(row.get("content")),
-          "modelMeta", row.get("model_meta") == null
-              ? Map.of()
-              : parsePayload(String.valueOf(row.get("model_meta"))));
+      int version = ((Number) row.get("version")).intValue();
+      JsonNode modelMeta = row.get("model_meta") == null
+          ? objectMapper.createObjectNode()
+          : parsePayload(String.valueOf(row.get("model_meta")));
+      return Optional.of(new GeneratedOutputSnapshot(
+          recordId.toString(),
+          type,
+          version,
+          String.valueOf(row.get("content")),
+          modelMeta));
     } catch (EmptyResultDataAccessException ignored) {
-      return Map.of();
+      return Optional.empty();
     }
   }
 
-  private Object parsePayload(String payloadJson) {
+  private JsonNode parsePayload(String payloadJson) {
     try {
-      return objectMapper.readValue(payloadJson, new TypeReference<Map<String, Object>>() {});
+      return objectMapper.readTree(payloadJson);
     } catch (Exception ignored) {
-      return payloadJson;
+      return objectMapper.createObjectNode();
     }
   }
 

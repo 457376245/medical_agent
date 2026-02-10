@@ -1,14 +1,25 @@
 package com.medical.agent.infrastructure.persistence.jdbc;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.medical.agent.application.repository.RecordRepository;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.DiseaseProfileSummary;
+import com.medical.agent.domain.vo.RecordDetail;
+import com.medical.agent.domain.vo.RecordTrendData;
+import com.medical.agent.domain.vo.ReportCategorySummary;
+import com.medical.agent.domain.vo.StructuredResultData;
+import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.vo.TimelineRecordSummary;
+import com.medical.agent.domain.vo.TrendField;
+import com.medical.agent.domain.vo.TrendSnapshot;
+import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -108,25 +119,25 @@ public class JdbcRecordRepository implements RecordRepository {
   }
 
   @Override
-  public List<Map<String, Object>> listAssetRefs(List<UUID> assetIds) {
+  public List<AssetRef> listAssetRefs(List<UUID> assetIds) {
     if (assetIds == null || assetIds.isEmpty()) {
       return List.of();
     }
-    List<Map<String, Object>> refs = new ArrayList<>();
+    List<AssetRef> refs = new ArrayList<>();
     for (UUID assetId : assetIds) {
       Map<String, Object> row = jdbcTemplate.queryForMap(
           "select id, object_key, file_type from assets where id = ?",
           assetId);
-      refs.add(Map.of(
-          "assetId", String.valueOf(row.get("id")),
-          "objectKey", String.valueOf(row.get("object_key")),
-          "fileType", String.valueOf(row.get("file_type"))));
+      refs.add(new AssetRef(
+          String.valueOf(row.get("id")),
+          String.valueOf(row.get("object_key")),
+          String.valueOf(row.get("file_type"))));
     }
     return refs;
   }
 
   @Override
-  public Map<String, Object> fetchRecord(UUID recordId) {
+  public RecordDetail fetchRecord(UUID recordId) {
     try {
       jdbcTemplate.queryForMap(
           "select id from records where id = ? and tenant_id = ? and user_id = ?",
@@ -136,32 +147,12 @@ public class JdbcRecordRepository implements RecordRepository {
     } catch (EmptyResultDataAccessException ignored) {
       throw new IllegalArgumentException("record not found");
     }
-    List<Map<String, Object>> outputs = jdbcTemplate.queryForList(
-        "select type, version, content from generated_outputs where record_id = ? order by version desc",
-        recordId);
-    List<Map<String, Object>> parseJobs = jdbcTemplate.queryForList(
-        "select status from parse_jobs where record_id = ? order by updated_at desc, created_at desc limit 1",
-        recordId);
-    List<Map<String, Object>> results = jdbcTemplate.queryForList(
-        "select schema_version, revision, payload_json from structured_results where record_id = ? order by revision desc",
-        recordId);
-    String summary = outputs.stream()
-        .filter(row -> "SUMMARY".equals(String.valueOf(row.get("type"))))
-        .findFirst()
-        .map(row -> String.valueOf(row.get("content")))
-        .orElse("No summary yet.");
-    Map<String, Object> latestResult = results.isEmpty()
-        ? Map.of("schemaVersion", "v1", "revision", 0, "payload", Map.of())
-        : Map.of(
-            "schemaVersion", results.get(0).get("schema_version"),
-            "revision", results.get(0).get("revision"),
-            "payload", parsePayload(String.valueOf(results.get(0).get("payload_json"))));
-    String parseStatus = parseJobs.isEmpty() ? "NOT_PARSED" : String.valueOf(parseJobs.get(0).get("status"));
-    return Map.of(
-        "recordId", recordId.toString(),
-        "summary", summary,
-        "parseStatus", parseStatus,
-        "structuredResult", latestResult);
+
+    String summary = querySummary(recordId);
+    String parseStatus = queryLatestParseStatus(recordId);
+    StructuredResultData structuredResult = queryLatestStructuredResult(recordId);
+
+    return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult);
   }
 
   @Override
@@ -192,8 +183,8 @@ public class JdbcRecordRepository implements RecordRepository {
   }
 
   @Override
-  public List<Map<String, Object>> listDiseaseProfiles() {
-    return jdbcTemplate.queryForList(
+  public List<DiseaseProfileSummary> listDiseaseProfiles() {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
         "select dp.id, dp.name, dp.updated_at, count(r.id) as record_count "
             + "from disease_profiles dp "
             + "left join records r on r.disease_profile_id = dp.id and r.tenant_id = dp.tenant_id "
@@ -202,6 +193,16 @@ public class JdbcRecordRepository implements RecordRepository {
             + "order by dp.updated_at desc, dp.name asc",
         DEFAULT_TENANT_ID,
         DEFAULT_USER_ID);
+
+    List<DiseaseProfileSummary> profiles = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      profiles.add(new DiseaseProfileSummary(
+          String.valueOf(row.get("id")),
+          String.valueOf(row.get("name")),
+          String.valueOf(row.get("updated_at")),
+          ((Number) row.get("record_count")).intValue()));
+    }
+    return profiles;
   }
 
   @Override
@@ -331,8 +332,8 @@ public class JdbcRecordRepository implements RecordRepository {
   }
 
   @Override
-  public List<Map<String, Object>> listReportCategories() {
-    return jdbcTemplate.queryForList(
+  public List<ReportCategorySummary> listReportCategories() {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
         "select rc.id, rc.name, rc.updated_at, count(r.id) as record_count "
             + "from report_categories rc "
             + "left join records r on r.source_type = rc.name and r.tenant_id = rc.tenant_id and r.user_id = rc.user_id "
@@ -341,6 +342,16 @@ public class JdbcRecordRepository implements RecordRepository {
             + "order by rc.updated_at desc, rc.name asc",
         DEFAULT_TENANT_ID,
         DEFAULT_USER_ID);
+
+    List<ReportCategorySummary> categories = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      categories.add(new ReportCategorySummary(
+          String.valueOf(row.get("id")),
+          String.valueOf(row.get("name")),
+          String.valueOf(row.get("updated_at")),
+          ((Number) row.get("record_count")).intValue()));
+    }
+    return categories;
   }
 
   @Override
@@ -384,8 +395,8 @@ public class JdbcRecordRepository implements RecordRepository {
   }
 
   @Override
-  public List<Map<String, Object>> listTimelineBatches() {
-    return jdbcTemplate.queryForList(
+  public List<TimelineBatchSummary> listTimelineBatches() {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
         "with latest_parse as ("
             + "  select pj.record_id, pj.status, "
             + "         row_number() over (partition by pj.record_id order by pj.created_at desc, pj.updated_at desc) as rn "
@@ -418,19 +429,44 @@ public class JdbcRecordRepository implements RecordRepository {
             + "order by latest_record_at desc",
         DEFAULT_TENANT_ID,
         DEFAULT_USER_ID);
+
+    List<TimelineBatchSummary> batches = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      batches.add(new TimelineBatchSummary(
+          String.valueOf(row.get("batch_id")),
+          String.valueOf(row.get("disease_name")),
+          ((Number) row.get("record_count")).intValue(),
+          String.valueOf(row.get("latest_record_at")),
+          String.valueOf(row.get("latest_record_id")),
+          String.valueOf(row.get("latest_record_title")),
+          String.valueOf(row.get("latest_parse_status"))));
+    }
+    return batches;
   }
 
   @Override
-  public List<Map<String, Object>> listRecordsByBatch(String batchId) {
+  public List<TimelineRecordSummary> listRecordsByBatch(String batchId) {
+    List<Map<String, Object>> rows;
     if ("unknown".equalsIgnoreCase(batchId)) {
-      return jdbcTemplate.queryForList(
+      rows = jdbcTemplate.queryForList(
           "select id, title, record_date, source_type from records "
               + "where disease_profile_id is null and tenant_id = ? order by record_date desc",
           DEFAULT_TENANT_ID);
+    } else {
+      rows = jdbcTemplate.queryForList(
+          "select id, title, record_date, source_type from records where disease_profile_id::text = ? order by record_date desc",
+          batchId);
     }
-    return jdbcTemplate.queryForList(
-        "select id, title, record_date, source_type from records where disease_profile_id::text = ? order by record_date desc",
-        batchId);
+
+    List<TimelineRecordSummary> records = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      records.add(new TimelineRecordSummary(
+          String.valueOf(row.get("id")),
+          row.get("title") == null ? "未命名报告" : String.valueOf(row.get("title")),
+          String.valueOf(row.get("record_date")),
+          String.valueOf(row.get("source_type"))));
+    }
+    return records;
   }
 
   @Override
@@ -467,7 +503,7 @@ public class JdbcRecordRepository implements RecordRepository {
   }
 
   @Override
-  public Map<String, Object> updateRecordSourceType(UUID recordId, String sourceType) {
+  public UpdateRecordSourceTypeResult updateRecordSourceType(UUID recordId, String sourceType) {
     String normalizedSourceType = normalizeReportCategoryName(sourceType);
     if (normalizedSourceType == null) {
       throw new IllegalArgumentException("sourceType is required");
@@ -485,7 +521,7 @@ public class JdbcRecordRepository implements RecordRepository {
           DEFAULT_TENANT_ID,
           DEFAULT_USER_ID);
     } catch (EmptyResultDataAccessException ignored) {
-      return Map.of("updated", false);
+      return new UpdateRecordSourceTypeResult(false, null, null, null, null);
     }
 
     Object recordDateValue = record.get("record_date");
@@ -501,18 +537,13 @@ public class JdbcRecordRepository implements RecordRepository {
         DEFAULT_TENANT_ID,
         DEFAULT_USER_ID);
     if (updated <= 0) {
-      return Map.of("updated", false);
+      return new UpdateRecordSourceTypeResult(false, null, null, null, null);
     }
-    return Map.of(
-        "updated", true,
-        "sourceType", normalizedSourceType,
-        "title", nextTitle,
-        "recordDate", recordDate,
-        "diseaseName", diseaseName);
+    return new UpdateRecordSourceTypeResult(true, normalizedSourceType, nextTitle, recordDate, diseaseName);
   }
 
   @Override
-  public Map<String, Object> fetchRecordTrend(UUID recordId, int limit) {
+  public RecordTrendData fetchRecordTrend(UUID recordId, int limit) {
     Map<String, Object> currentRecord;
     try {
       currentRecord = jdbcTemplate.queryForMap(
@@ -564,29 +595,25 @@ public class JdbcRecordRepository implements RecordRepository {
     List<Map<String, Object>> window = new ArrayList<>(scopedRecords.subList(anchorIndex, endExclusive));
     Collections.reverse(window);
 
-    List<Map<String, Object>> snapshots = new ArrayList<>();
+    List<TrendSnapshot> snapshots = new ArrayList<>();
     for (Map<String, Object> row : window) {
       UUID rowRecordId = (UUID) row.get("id");
-      List<Map<String, Object>> results = jdbcTemplate.queryForList(
-          "select payload_json from structured_results where record_id = ? order by revision desc limit 1",
-          rowRecordId);
-      Object payload = results.isEmpty() ? Map.of("fields", List.of()) : parsePayload(String.valueOf(results.get(0).get("payload_json")));
-      List<Map<String, Object>> fields = extractTrendFields(payload);
-      snapshots.add(Map.of(
-          "recordId", rowRecordId.toString(),
-          "recordDate", String.valueOf(row.get("record_date")),
-          "title", row.get("title") == null ? "未命名报告" : String.valueOf(row.get("title")),
-          "sourceType", String.valueOf(row.get("source_type")),
-          "fields", fields));
+      JsonNode payload = queryLatestPayloadNode(rowRecordId);
+      List<TrendField> fields = extractTrendFields(payload);
+      snapshots.add(new TrendSnapshot(
+          rowRecordId.toString(),
+          String.valueOf(row.get("record_date")),
+          row.get("title") == null ? "未命名报告" : String.valueOf(row.get("title")),
+          String.valueOf(row.get("source_type")),
+          fields));
     }
 
-    Map<String, Object> response = new HashMap<>();
-    response.put("recordId", recordId.toString());
-    response.put("sourceType", sourceType);
-    response.put("diseaseProfileId", diseaseProfileId == null ? "unknown" : diseaseProfileId.toString());
-    response.put("limit", Math.max(1, limit));
-    response.put("snapshots", snapshots);
-    return response;
+    return new RecordTrendData(
+        recordId.toString(),
+        sourceType,
+        diseaseProfileId == null ? "unknown" : diseaseProfileId.toString(),
+        Math.max(1, limit),
+        snapshots);
   }
 
   @Override
@@ -599,6 +626,54 @@ public class JdbcRecordRepository implements RecordRepository {
     jdbcTemplate.update("delete from assets where record_id = ?", recordId);
     int deleted = jdbcTemplate.update("delete from records where id = ?", recordId);
     return deleted > 0;
+  }
+
+  private String querySummary(UUID recordId) {
+    List<Map<String, Object>> outputs = jdbcTemplate.queryForList(
+        "select type, version, content from generated_outputs where record_id = ? order by version desc",
+        recordId);
+    return outputs.stream()
+        .filter(row -> "SUMMARY".equals(String.valueOf(row.get("type"))))
+        .findFirst()
+        .map(row -> String.valueOf(row.get("content")))
+        .orElse("No summary yet.");
+  }
+
+  private String queryLatestParseStatus(UUID recordId) {
+    try {
+      return String.valueOf(jdbcTemplate.queryForObject(
+          "select status from parse_jobs where record_id = ? order by updated_at desc, created_at desc limit 1",
+          String.class,
+          recordId));
+    } catch (EmptyResultDataAccessException ignored) {
+      return "NOT_PARSED";
+    }
+  }
+
+  private StructuredResultData queryLatestStructuredResult(UUID recordId) {
+    try {
+      Map<String, Object> row = jdbcTemplate.queryForMap(
+          "select schema_version, revision, payload_json from structured_results where record_id = ? order by revision desc limit 1",
+          recordId);
+      return new StructuredResultData(
+          String.valueOf(row.get("schema_version")),
+          ((Number) row.get("revision")).intValue(),
+          parsePayload(String.valueOf(row.get("payload_json"))));
+    } catch (EmptyResultDataAccessException ignored) {
+      return new StructuredResultData("v1", 0, objectMapper.createObjectNode());
+    }
+  }
+
+  private JsonNode queryLatestPayloadNode(UUID recordId) {
+    try {
+      String payloadJson = String.valueOf(jdbcTemplate.queryForObject(
+          "select payload_json from structured_results where record_id = ? order by revision desc limit 1",
+          String.class,
+          recordId));
+      return parsePayload(payloadJson);
+    } catch (EmptyResultDataAccessException ignored) {
+      return objectMapper.createObjectNode().putArray("fields");
+    }
   }
 
   private static String sourceTypeLabel(String sourceType) {
@@ -633,51 +708,57 @@ public class JdbcRecordRepository implements RecordRepository {
     createReportCategory(name);
   }
 
-  private List<Map<String, Object>> extractTrendFields(Object payload) {
-    if (!(payload instanceof Map<?, ?> payloadMapRaw)) {
+  private List<TrendField> extractTrendFields(JsonNode payload) {
+    if (payload == null || !payload.isObject()) {
       return List.of();
     }
-    Object fieldsRaw = payloadMapRaw.get("fields");
-    if (!(fieldsRaw instanceof List<?> fieldsList)) {
+    JsonNode fieldsNode = payload.path("fields");
+    if (!fieldsNode.isArray()) {
       return List.of();
     }
 
-    List<Map<String, Object>> fields = new ArrayList<>();
-    for (Object fieldRaw : fieldsList) {
-      if (!(fieldRaw instanceof Map<?, ?> fieldMapRaw)) {
+    List<TrendField> fields = new ArrayList<>();
+    for (JsonNode fieldNode : fieldsNode) {
+      if (!fieldNode.isObject()) {
         continue;
       }
-      String name = readStringField(fieldMapRaw, "name");
-      String value = readStringField(fieldMapRaw, "value");
+      String name = readStringField(fieldNode, "name");
+      String value = readStringField(fieldNode, "value");
       if (name.isEmpty() || value.isEmpty()) {
         continue;
       }
-      String unit = readStringField(fieldMapRaw, "unit");
-      String referenceRange = readStringField(fieldMapRaw, "referenceRange");
-      Map<String, Object> normalized = new HashMap<>();
-      normalized.put("name", name);
-      normalized.put("value", value);
-      if (!unit.isEmpty() && !"null".equalsIgnoreCase(unit)) {
-        normalized.put("unit", unit);
+      String unit = readStringField(fieldNode, "unit");
+      String referenceRange = readStringField(fieldNode, "referenceRange");
+      if (unit.isEmpty()) {
+        unit = null;
       }
-      if (!referenceRange.isEmpty() && !"null".equalsIgnoreCase(referenceRange)) {
-        normalized.put("referenceRange", referenceRange);
+      if (referenceRange.isEmpty()) {
+        referenceRange = null;
       }
-      fields.add(normalized);
+      fields.add(new TrendField(name, value, unit, referenceRange));
     }
     return fields;
   }
 
-  private String readStringField(Map<?, ?> map, String key) {
-    Object value = map.get(key);
-    return value == null ? "" : String.valueOf(value).trim();
+  private String readStringField(JsonNode node, String key) {
+    JsonNode value = node.path(key);
+    if (value.isMissingNode() || value.isNull()) {
+      return "";
+    }
+    return value.asText("").trim();
   }
 
-  private Object parsePayload(String payloadJson) {
+  private JsonNode parsePayload(String payloadJson) {
     try {
-      return objectMapper.readValue(payloadJson, new TypeReference<Map<String, Object>>() {});
+      JsonNode parsed = objectMapper.readTree(payloadJson);
+      if (parsed.isObject()) {
+        return parsed;
+      }
+      ObjectNode fallback = objectMapper.createObjectNode();
+      fallback.put("raw", payloadJson);
+      return fallback;
     } catch (Exception ignored) {
-      return payloadJson;
+      return objectMapper.createObjectNode();
     }
   }
 

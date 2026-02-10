@@ -1,6 +1,7 @@
 package com.medical.agent.application.repository;
 
-import java.util.Map;
+import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface GeneratedOutputRepository {
@@ -8,5 +9,5 @@ public interface GeneratedOutputRepository {
 
   int createGeneratedOutputWithMeta(UUID recordId, String type, String content, String modelMetaJson);
 
-  Map<String, Object> fetchLatestGeneratedOutput(UUID recordId, String type);
+  Optional<GeneratedOutputSnapshot> fetchLatestGeneratedOutput(UUID recordId, String type);
 }

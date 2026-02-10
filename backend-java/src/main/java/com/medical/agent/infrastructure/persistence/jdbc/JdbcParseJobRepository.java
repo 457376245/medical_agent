@@ -2,6 +2,8 @@ package com.medical.agent.infrastructure.persistence.jdbc;
 
 import com.medical.agent.application.repository.ParseJobRepository;
 import com.medical.agent.application.repository.RecordRepository;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.ParseJobContext;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -67,7 +69,7 @@ public class JdbcParseJobRepository implements ParseJobRepository {
   }
 
   @Override
-  public List<Map<String, Object>> listAssetRefsByJobId(UUID jobId) {
+  public List<AssetRef> listAssetRefsByJobId(UUID jobId) {
     List<Map<String, Object>> rows = jdbcTemplate.queryForList(
         "select a.id, a.object_key, a.file_type "
             + "from parse_job_assets pja "
@@ -75,25 +77,25 @@ public class JdbcParseJobRepository implements ParseJobRepository {
             + "where pja.job_id = ? "
             + "order by pja.created_at asc",
         jobId);
-    List<Map<String, Object>> refs = new ArrayList<>();
+    List<AssetRef> refs = new ArrayList<>();
     for (Map<String, Object> row : rows) {
-      refs.add(Map.of(
-          "assetId", String.valueOf(row.get("id")),
-          "objectKey", String.valueOf(row.get("object_key")),
-          "fileType", String.valueOf(row.get("file_type"))));
+      refs.add(new AssetRef(
+          String.valueOf(row.get("id")),
+          String.valueOf(row.get("object_key")),
+          String.valueOf(row.get("file_type"))));
     }
     return refs;
   }
 
   @Override
-  public Map<String, String> parseJobContext(UUID jobId) {
+  public ParseJobContext parseJobContext(UUID jobId) {
     Map<String, Object> row = jdbcTemplate.queryForMap(
         "select record_id, tenant_id from parse_jobs where id = ?",
         jobId);
-    return Map.of(
-        "recordId", String.valueOf(row.get("record_id")),
-        "tenantId", String.valueOf(row.get("tenant_id")),
-        "userId", DEFAULT_USER_ID.toString());
+    return new ParseJobContext(
+        String.valueOf(row.get("record_id")),
+        String.valueOf(row.get("tenant_id")),
+        DEFAULT_USER_ID.toString());
   }
 
   @Override

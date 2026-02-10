@@ -1,7 +1,8 @@
 package com.medical.agent.application;
 
+import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.vo.TimelineRecordSummary;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,11 +13,11 @@ public class TimelineService {
     this.persistenceService = persistenceService;
   }
 
-  public List<Map<String, Object>> listBatches() {
+  public List<TimelineBatchSummary> listBatches() {
     return persistenceService.listTimelineBatches();
   }
 
-  public List<Map<String, Object>> listBatchRecords(String batchId) {
+  public List<TimelineRecordSummary> listBatchRecords(String batchId) {
     return persistenceService.listRecordsByBatch(batchId);
   }
 

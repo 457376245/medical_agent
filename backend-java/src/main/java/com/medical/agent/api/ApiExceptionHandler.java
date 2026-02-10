@@ -1,6 +1,7 @@
 package com.medical.agent.api;
 
-import java.util.Map;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.response.EmptyData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -13,13 +14,13 @@ public class ApiExceptionHandler {
   private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<Map<String, Object>> handleException(Exception ex) {
+  public ResponseEntity<ApiResponse<EmptyData>> handleException(Exception ex) {
     LOGGER.error("Unhandled API exception", ex);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(Map.of(
-            "code", "BIZ_INTERNAL_ERROR",
-            "message", "Internal server error",
-            "requestId", RequestIdUtil.newRequestId(),
-            "data", Map.of()));
+        .body(new ApiResponse<>(
+            "BIZ_INTERNAL_ERROR",
+            "Internal server error",
+            RequestIdUtil.newRequestId(),
+            new EmptyData()));
   }
 }

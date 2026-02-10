@@ -2,8 +2,15 @@ package com.medical.agent.application.repository;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.DiseaseProfileSummary;
+import com.medical.agent.domain.vo.RecordDetail;
+import com.medical.agent.domain.vo.RecordTrendData;
+import com.medical.agent.domain.vo.ReportCategorySummary;
+import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.vo.TimelineRecordSummary;
+import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
 
 public interface RecordRepository {
   UUID ensureRecord(UUID recordId);
@@ -23,13 +30,13 @@ public interface RecordRepository {
       String title,
       String sourceType);
 
-  List<Map<String, Object>> listAssetRefs(List<UUID> assetIds);
+  List<AssetRef> listAssetRefs(List<UUID> assetIds);
 
-  Map<String, Object> fetchRecord(UUID recordId);
+  RecordDetail fetchRecord(UUID recordId);
 
   UUID createDiseaseProfile(String name);
 
-  List<Map<String, Object>> listDiseaseProfiles();
+  List<DiseaseProfileSummary> listDiseaseProfiles();
 
   boolean diseaseProfileExists(UUID diseaseProfileId);
 
@@ -43,7 +50,7 @@ public interface RecordRepository {
 
   UUID createReportCategory(String name);
 
-  List<Map<String, Object>> listReportCategories();
+  List<ReportCategorySummary> listReportCategories();
 
   boolean reportCategoryExists(UUID reportCategoryId);
 
@@ -51,15 +58,15 @@ public interface RecordRepository {
 
   boolean deleteReportCategoryIfEmpty(UUID reportCategoryId);
 
-  List<Map<String, Object>> listTimelineBatches();
+  List<TimelineBatchSummary> listTimelineBatches();
 
-  List<Map<String, Object>> listRecordsByBatch(String batchId);
+  List<TimelineRecordSummary> listRecordsByBatch(String batchId);
 
   String getDiseaseNameByBatch(String batchId);
 
-  Map<String, Object> updateRecordSourceType(UUID recordId, String sourceType);
+  UpdateRecordSourceTypeResult updateRecordSourceType(UUID recordId, String sourceType);
 
-  Map<String, Object> fetchRecordTrend(UUID recordId, int limit);
+  RecordTrendData fetchRecordTrend(UUID recordId, int limit);
 
   boolean deleteRecord(UUID recordId);
 }

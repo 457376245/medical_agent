@@ -2,8 +2,8 @@ package com.medical.agent.infrastructure.mq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.medical.agent.domain.vo.GenerateRequestEvent;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -19,7 +19,7 @@ public class GenerateRequestPublisher {
     this.objectMapper = objectMapper;
   }
 
-  public void publish(Map<String, Object> payload) {
+  public void publish(GenerateRequestEvent payload) {
     try {
       byte[] body = objectMapper.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8);
       MessageProperties properties = new MessageProperties();

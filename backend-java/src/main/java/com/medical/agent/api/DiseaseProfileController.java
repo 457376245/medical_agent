@@ -2,8 +2,14 @@ package com.medical.agent.api;
 
 import com.medical.agent.application.DiseaseProfileService;
 import com.medical.agent.application.PersistenceService;
+import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.NameRequest;
+import com.medical.agent.domain.dto.response.DiseaseProfileCreateResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileDeleteResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileListResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileRefResponseData;
+import com.medical.agent.domain.vo.DiseaseProfileSummary;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,8 +18,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,105 +34,114 @@ public class DiseaseProfileController {
   }
 
   @GetMapping
-  public Map<String, Object> list() {
-    List<Map<String, Object>> profiles = persistenceService.listDiseaseProfiles();
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("profiles", profiles));
+  public ApiResponse<DiseaseProfileListResponseData> list() {
+    List<DiseaseProfileSummary> profiles = persistenceService.listDiseaseProfiles();
+    return new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileListResponseData(profiles));
   }
 
   @PostMapping
-  public Map<String, Object> create(@RequestBody Map<String, Object> body) {
-    String name = String.valueOf(body.getOrDefault("name", "")).trim();
+  public ApiResponse<DiseaseProfileCreateResponseData> create(@RequestBody NameRequest request) {
+    String name = request == null || request.name() == null ? "" : request.name().trim();
     UUID profileId = persistenceService.createDiseaseProfile(name);
-    return Map.of(
-        "code", "OK",
-        "message", "success",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of("diseaseProfileId", profileId.toString(), "name", name));
+    return new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileCreateResponseData(profileId.toString(), name));
   }
 
   @DeleteMapping("/{diseaseProfileId}")
-  public ResponseEntity<Map<String, Object>> delete(
+  public ResponseEntity<ApiResponse<?>> delete(
       @PathVariable("diseaseProfileId") String diseaseProfileId,
       @RequestParam(value = "onlyIfEmpty", defaultValue = "false") boolean onlyIfEmpty) {
     UUID diseaseProfileUuid;
     try {
       diseaseProfileUuid = UUID.fromString(diseaseProfileId);
     } catch (IllegalArgumentException error) {
-      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-          "code", "INVALID_DISEASE_PROFILE_ID",
-          "message", "diseaseProfileId is invalid",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("diseaseProfileId", diseaseProfileId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_DISEASE_PROFILE_ID",
+          "diseaseProfileId is invalid",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRefResponseData(diseaseProfileId, false)));
     }
 
     if (onlyIfEmpty) {
       DiseaseProfileService.DeleteDiseaseProfileIfEmptyResult result =
           diseaseProfileService.deleteProfileIfEmpty(diseaseProfileUuid);
       if (!result.deleted() && "NOT_FOUND".equals(result.reason())) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-            "code", "NOT_FOUND",
-            "message", "disease profile not found",
-            "requestId", RequestIdUtil.newRequestId(),
-            "data", Map.of(
-                "diseaseProfileId", diseaseProfileId,
-                "deleted", false,
-                "reason", result.reason(),
-                "linkedRecordCount", result.linkedRecordCount())));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+            "NOT_FOUND",
+            "disease profile not found",
+            RequestIdUtil.newRequestId(),
+            new DiseaseProfileDeleteResponseData(
+                diseaseProfileId,
+                false,
+                result.reason(),
+                result.linkedRecordCount(),
+                null,
+                null)));
       }
       if (!result.deleted() && "HAS_ASSOCIATED_RECORDS".equals(result.reason())) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-            "code", "CONFLICT",
-            "message", "disease profile has associated records",
-            "requestId", RequestIdUtil.newRequestId(),
-            "data", Map.of(
-                "diseaseProfileId", diseaseProfileId,
-                "deleted", false,
-                "reason", result.reason(),
-                "linkedRecordCount", result.linkedRecordCount())));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(
+            "CONFLICT",
+            "disease profile has associated records",
+            RequestIdUtil.newRequestId(),
+            new DiseaseProfileDeleteResponseData(
+                diseaseProfileId,
+                false,
+                result.reason(),
+                result.linkedRecordCount(),
+                null,
+                null)));
       }
       if (!result.deleted()) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-            "code", "DELETE_FAILED",
-            "message", "failed to delete disease profile",
-            "requestId", RequestIdUtil.newRequestId(),
-            "data", Map.of(
-                "diseaseProfileId", diseaseProfileId,
-                "deleted", false,
-                "reason", result.reason(),
-                "linkedRecordCount", result.linkedRecordCount())));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiResponse<>(
+            "DELETE_FAILED",
+            "failed to delete disease profile",
+            RequestIdUtil.newRequestId(),
+            new DiseaseProfileDeleteResponseData(
+                diseaseProfileId,
+                false,
+                result.reason(),
+                result.linkedRecordCount(),
+                null,
+                null)));
       }
-      return ResponseEntity.ok(Map.of(
-          "code", "OK",
-          "message", "deleted",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of(
-              "diseaseProfileId", diseaseProfileId,
-              "deleted", true,
-              "reason", result.reason(),
-              "linkedRecordCount", result.linkedRecordCount())));
+      return ResponseEntity.ok(new ApiResponse<>(
+          "OK",
+          "deleted",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileDeleteResponseData(
+              diseaseProfileId,
+              true,
+              result.reason(),
+              result.linkedRecordCount(),
+              null,
+              null)));
     }
 
-    DiseaseProfileService.DeleteDiseaseProfileResult result =
-        diseaseProfileService.deleteProfile(diseaseProfileUuid);
+    DiseaseProfileService.DeleteDiseaseProfileResult result = diseaseProfileService.deleteProfile(diseaseProfileUuid);
     if (!result.deleted()) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-          "code", "NOT_FOUND",
-          "message", "disease profile not found",
-          "requestId", RequestIdUtil.newRequestId(),
-          "data", Map.of("diseaseProfileId", diseaseProfileId, "deleted", false)));
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "disease profile not found",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRefResponseData(diseaseProfileId, false)));
     }
-    return ResponseEntity.ok(Map.of(
-        "code", "OK",
-        "message", "deleted",
-        "requestId", RequestIdUtil.newRequestId(),
-        "data", Map.of(
-            "diseaseProfileId", diseaseProfileId,
-            "deleted", true,
-            "deletedRecordCount", result.deletedRecordCount(),
-            "deletedAssetCount", result.deletedAssetCount())));
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "deleted",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileDeleteResponseData(
+            diseaseProfileId,
+            true,
+            "DELETED",
+            null,
+            result.deletedRecordCount(),
+            result.deletedAssetCount())));
   }
 }

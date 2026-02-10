@@ -1,9 +1,11 @@
 package com.medical.agent.infrastructure.scheduler;
 
 import com.medical.agent.application.PersistenceService;
+import com.medical.agent.domain.vo.AssetRef;
+import com.medical.agent.domain.vo.ParseJobContext;
+import com.medical.agent.domain.vo.ParseRequestEvent;
 import com.medical.agent.infrastructure.mq.ParseRequestPublisher;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,21 +71,21 @@ public class ParseRetryScheduler {
       return;
     }
     try {
-      List<Map<String, Object>> assetRefs = persistenceService.listAssetRefsByJobId(jobId);
+      List<AssetRef> assetRefs = persistenceService.listAssetRefsByJobId(jobId);
       if (assetRefs.isEmpty()) {
         persistenceService.markParseJobDeadLetter(jobId, MISSING_ASSET_ERROR);
         LOGGER.warn("Marked parse job as dead letter due to missing assets: jobId={}", jobId);
         return;
       }
-      Map<String, String> context = persistenceService.parseJobContext(jobId);
-      parseRequestPublisher.publish(Map.of(
-          "jobId", jobId.toString(),
-          "tenantId", context.get("tenantId"),
-          "userId", context.get("userId"),
-          "assetRefs", assetRefs,
-          "traceId", UUID.randomUUID().toString().replace("-", ""),
-          "schemaVersion", "v1",
-          "idempotencyKey", "parse-retry-" + jobId + "-" + candidate.retryCount()));
+      ParseJobContext context = persistenceService.parseJobContext(jobId);
+      parseRequestPublisher.publish(new ParseRequestEvent(
+          jobId.toString(),
+          context.tenantId(),
+          context.userId(),
+          assetRefs,
+          UUID.randomUUID().toString().replace("-", ""),
+          "v1",
+          "parse-retry-" + jobId + "-" + candidate.retryCount()));
       LOGGER.info(
           "Requeued failed parse job: jobId={} retryCount={}",
           jobId,
