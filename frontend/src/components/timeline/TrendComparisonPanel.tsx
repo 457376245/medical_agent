@@ -260,7 +260,7 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
       itemMap.set(item.key, item.label);
     }
     const xAxisDates = snapshots.map((snapshot) => snapshot.recordDate);
-    const series = selectedKeys.map((key) => {
+    const metricSeries = selectedKeys.map((key) => {
       const dataPoints = snapshots.map<TrendPoint>((snapshot) => {
         const field = snapshot.fields.find((item) => fieldKey(item) === key);
         if (!field) {
@@ -297,9 +297,82 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
             return RESULT_STATE_META[state].color;
           },
         },
+        z: 3,
         data: dataPoints,
       };
     });
+    const referenceRangeSeries =
+      viewMode === "raw" && selectedKeys.length === 1
+        ? (() => {
+            const selectedKey = selectedKeys[0];
+            const lowerBounds: Array<number | null> = [];
+            const upperBounds: Array<number | null> = [];
+            for (const snapshot of snapshots) {
+              const field = snapshot.fields.find((item) => fieldKey(item) === selectedKey);
+              if (!field?.referenceRange) {
+                lowerBounds.push(null);
+                upperBounds.push(null);
+                continue;
+              }
+              const bounds = parseRangeBounds(field.referenceRange);
+              lowerBounds.push(bounds?.min ?? null);
+              upperBounds.push(bounds?.max ?? null);
+            }
+            const guideLines: Array<Record<string, unknown>> = [];
+            if (lowerBounds.some((value) => value !== null)) {
+              guideLines.push({
+                name: "参考下限",
+                type: "line",
+                smooth: false,
+                connectNulls: false,
+                showSymbol: false,
+                lineStyle: {
+                  width: 1.5,
+                  type: "dashed",
+                  color: "#64748b",
+                },
+                itemStyle: {
+                  color: "#64748b",
+                },
+                tooltip: {
+                  show: false,
+                },
+                emphasis: {
+                  disabled: true,
+                },
+                z: 1,
+                data: lowerBounds,
+              });
+            }
+            if (upperBounds.some((value) => value !== null)) {
+              guideLines.push({
+                name: "参考上限",
+                type: "line",
+                smooth: false,
+                connectNulls: false,
+                showSymbol: false,
+                lineStyle: {
+                  width: 1.5,
+                  type: "dashed",
+                  color: "#94a3b8",
+                },
+                itemStyle: {
+                  color: "#94a3b8",
+                },
+                tooltip: {
+                  show: false,
+                },
+                emphasis: {
+                  disabled: true,
+                },
+                z: 1,
+                data: upperBounds,
+              });
+            }
+            return guideLines;
+          })()
+        : [];
+    const series = [...metricSeries, ...referenceRangeSeries];
 
     chart.setOption({
       tooltip: {
