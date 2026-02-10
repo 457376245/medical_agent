@@ -1,7 +1,7 @@
 package com.medical.agent.api;
 
-import com.medical.agent.application.PersistenceService;
 import com.medical.agent.application.ReportAnalysisService;
+import com.medical.agent.application.service.RecordService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -19,23 +19,43 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/records")
 public class RecordController {
-  private final PersistenceService persistenceService;
+  private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
 
-  public RecordController(PersistenceService persistenceService, ReportAnalysisService reportAnalysisService) {
-    this.persistenceService = persistenceService;
+  public RecordController(RecordService recordService, ReportAnalysisService reportAnalysisService) {
+    this.recordService = recordService;
     this.reportAnalysisService = reportAnalysisService;
   }
 
   @GetMapping("/{recordId}")
-  public Map<String, Object> getRecord(@PathVariable("recordId") String recordId) {
-    Map<String, Object> record = new HashMap<>(persistenceService.fetchRecord(UUID.fromString(recordId)));
+  public ResponseEntity<Map<String, Object>> getRecord(@PathVariable("recordId") String recordId) {
+    UUID recordUuid;
+    try {
+      recordUuid = UUID.fromString(recordId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_RECORD_ID",
+          "message", "recordId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
+
+    Map<String, Object> record;
+    try {
+      record = new HashMap<>(recordService.fetchRecord(recordUuid));
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+          "code", "NOT_FOUND",
+          "message", "record not found",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId)));
+    }
     record.put("defaultView", "PARSED_RESULT");
-    return Map.of(
+    return ResponseEntity.ok(Map.of(
         "code", "OK",
         "message", "success",
         "requestId", RequestIdUtil.newRequestId(),
-        "data", record);
+        "data", record));
   }
 
   @GetMapping("/{recordId}/analysis")
@@ -99,7 +119,7 @@ public class RecordController {
     int normalizedLimit = limit == null ? 6 : Math.max(1, Math.min(limit, 6));
     Map<String, Object> trendData;
     try {
-      trendData = persistenceService.fetchRecordTrend(recordUuid, normalizedLimit);
+      trendData = recordService.fetchTrend(recordUuid, normalizedLimit);
     } catch (IllegalArgumentException error) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
           "code", "NOT_FOUND",
@@ -117,7 +137,7 @@ public class RecordController {
 
   @DeleteMapping("/{recordId}")
   public ResponseEntity<Map<String, Object>> deleteRecord(@PathVariable("recordId") String recordId) {
-    boolean deleted = persistenceService.deleteRecord(UUID.fromString(recordId));
+    boolean deleted = recordService.deleteRecord(UUID.fromString(recordId));
     if (!deleted) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
           "code", "NOT_FOUND",
@@ -158,7 +178,7 @@ public class RecordController {
 
     Map<String, Object> updated;
     try {
-      updated = persistenceService.updateRecordSourceType(recordUuid, sourceType);
+      updated = recordService.updateSourceType(recordUuid, sourceType);
     } catch (IllegalArgumentException error) {
       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
           "code", "INVALID_SOURCE_TYPE",
