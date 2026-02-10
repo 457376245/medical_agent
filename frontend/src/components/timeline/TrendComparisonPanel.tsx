@@ -226,7 +226,11 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
   }, [snapshots]);
 
   useEffect(() => {
-    setSelectedKeys(abnormalItems.map((item) => item.key));
+    if (abnormalItems.length === 0) {
+      setSelectedKeys([]);
+      return;
+    }
+    setSelectedKeys([abnormalItems[0].key]);
   }, [abnormalItems]);
 
   const activeSingleIndex = useMemo(() => {
