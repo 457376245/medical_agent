@@ -3,7 +3,8 @@ package com.medical.agent.infrastructure.mq;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.medical.agent.application.PersistenceService;
+import com.medical.agent.application.service.ParseJobService;
+import com.medical.agent.application.service.RecordService;
 import com.medical.agent.domain.vo.GenerateRequestEvent;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.RecordAnalysisContext;
@@ -19,15 +20,18 @@ import org.springframework.stereotype.Component;
 public class ParseResultConsumer {
   private static final Logger LOGGER = LoggerFactory.getLogger(ParseResultConsumer.class);
   private final ObjectMapper objectMapper;
-  private final PersistenceService persistenceService;
+  private final ParseJobService parseJobService;
+  private final RecordService recordService;
   private final GenerateRequestPublisher generateRequestPublisher;
 
   public ParseResultConsumer(
       ObjectMapper objectMapper,
-      PersistenceService persistenceService,
+      ParseJobService parseJobService,
+      RecordService recordService,
       GenerateRequestPublisher generateRequestPublisher) {
     this.objectMapper = objectMapper;
-    this.persistenceService = persistenceService;
+    this.parseJobService = parseJobService;
+    this.recordService = recordService;
     this.generateRequestPublisher = generateRequestPublisher;
   }
 
@@ -48,8 +52,8 @@ public class ParseResultConsumer {
           errorCode = String.valueOf(code);
         }
       }
-      PersistenceService.ParseApplyResult applyResult =
-          persistenceService.applyParseResult(jobId, status, structuredJson, confidence, errorCode);
+      ParseJobService.ParseApplyResult applyResult =
+          parseJobService.applyParseResult(jobId, status, structuredJson, confidence, errorCode);
       LOGGER.info("Applied parse result for jobId={} status={} finalStatus={}", jobId, status, applyResult.finalStatus());
       if (applyResult.stateChanged() && "SUCCESS".equals(applyResult.finalStatus())) {
         triggerReportAnalysisGeneration(applyResult.recordId(), jobId);
@@ -63,12 +67,12 @@ public class ParseResultConsumer {
 
   private void triggerReportAnalysisGeneration(UUID recordId, UUID jobId) {
     try {
-      RecordAnalysisContext context = persistenceService.fetchRecordAnalysisContext(recordId).orElse(null);
+      RecordAnalysisContext context = recordService.fetchRecordAnalysisContext(recordId).orElse(null);
       if (context == null || !isAnalysisContextReady(context)) {
         LOGGER.info("Skipped report analysis generation due to parse context not ready: recordId={} jobId={}", recordId, jobId);
         return;
       }
-      ParseJobContext parseContext = persistenceService.parseJobContext(jobId);
+      ParseJobContext parseContext = parseJobService.parseJobContext(jobId);
       generateRequestPublisher.publish(new GenerateRequestEvent(
           UUID.randomUUID().toString(),
           parseContext.tenantId(),

@@ -1,7 +1,6 @@
 package com.medical.agent.application.service;
 
 import com.medical.agent.application.OssPresignService;
-import com.medical.agent.application.PersistenceService;
 import com.medical.agent.domain.dto.request.CompleteAssetRequest;
 import com.medical.agent.domain.dto.request.CreateParseJobRequest;
 import com.medical.agent.domain.dto.request.PresignRequest;
@@ -23,15 +22,15 @@ public class IngestionService {
   private String uploadBaseUrl;
 
   private final OssPresignService ossPresignService;
-  private final PersistenceService persistenceService;
+  private final RecordService recordService;
   private final ParseJobService parseJobService;
 
   public IngestionService(
       OssPresignService ossPresignService,
-      PersistenceService persistenceService,
+      RecordService recordService,
       ParseJobService parseJobService) {
     this.ossPresignService = ossPresignService;
-    this.persistenceService = persistenceService;
+    this.recordService = recordService;
     this.parseJobService = parseJobService;
   }
 
@@ -82,7 +81,7 @@ public class IngestionService {
     String sourceType = request == null || request.sourceType() == null ? "" : request.sourceType();
     String fileType = objectKey.endsWith(".pdf") ? "PDF" : "IMAGE";
     long fileSize = request == null || request.size() == null ? 1L : request.size();
-    UUID assetId = persistenceService.createAsset(
+    UUID assetId = recordService.createAsset(
         objectKey,
         checksum,
         recordId,

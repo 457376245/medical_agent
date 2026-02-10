@@ -1,6 +1,6 @@
 package com.medical.agent.infrastructure.scheduler;
 
-import com.medical.agent.application.PersistenceService;
+import com.medical.agent.application.service.ParseJobService;
 import com.medical.agent.domain.vo.AssetRef;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.ParseRequestEvent;
@@ -20,19 +20,19 @@ public class ParseRetryScheduler {
   private static final String RETRY_DISPATCH_ERROR = "EXT_RETRY_DISPATCH_FAILED";
   private static final String MISSING_ASSET_ERROR = "BIZ_MISSING_ASSET_REFS";
 
-  private final PersistenceService persistenceService;
+  private final ParseJobService parseJobService;
   private final ParseRequestPublisher parseRequestPublisher;
   private final boolean enabled;
   private final int maxRetryCount;
   private final int batchSize;
 
   public ParseRetryScheduler(
-      PersistenceService persistenceService,
+      ParseJobService parseJobService,
       ParseRequestPublisher parseRequestPublisher,
       @Value("${app.parse.retry.enabled:true}") boolean enabled,
       @Value("${app.parse.retry.max-retry-count:3}") int maxRetryCount,
       @Value("${app.parse.retry.batch-size:20}") int batchSize) {
-    this.persistenceService = persistenceService;
+    this.parseJobService = parseJobService;
     this.parseRequestPublisher = parseRequestPublisher;
     this.enabled = enabled;
     this.maxRetryCount = Math.max(1, maxRetryCount);
@@ -46,18 +46,18 @@ public class ParseRetryScheduler {
     }
 
     moveExpiredFailedJobsToDeadLetter();
-    List<PersistenceService.ParseRetryCandidate> candidates =
-        persistenceService.listFailedParseJobsForRetry(maxRetryCount, batchSize);
-    for (PersistenceService.ParseRetryCandidate candidate : candidates) {
+    List<ParseJobService.ParseRetryCandidate> candidates =
+        parseJobService.listFailedParseJobsForRetry(maxRetryCount, batchSize);
+    for (ParseJobService.ParseRetryCandidate candidate : candidates) {
       retrySingleJob(candidate);
     }
   }
 
   private void moveExpiredFailedJobsToDeadLetter() {
-    List<PersistenceService.ParseRetryCandidate> expired =
-        persistenceService.listFailedParseJobsForDeadLetter(maxRetryCount, batchSize);
-    for (PersistenceService.ParseRetryCandidate candidate : expired) {
-      persistenceService.markParseJobDeadLetter(candidate.jobId(), RETRY_EXHAUSTED_ERROR);
+    List<ParseJobService.ParseRetryCandidate> expired =
+        parseJobService.listFailedParseJobsForDeadLetter(maxRetryCount, batchSize);
+    for (ParseJobService.ParseRetryCandidate candidate : expired) {
+      parseJobService.markParseJobDeadLetter(candidate.jobId(), RETRY_EXHAUSTED_ERROR);
       LOGGER.warn(
           "Marked parse job as dead letter after retry limit reached: jobId={} retryCount={}",
           candidate.jobId(),
@@ -65,19 +65,19 @@ public class ParseRetryScheduler {
     }
   }
 
-  private void retrySingleJob(PersistenceService.ParseRetryCandidate candidate) {
+  private void retrySingleJob(ParseJobService.ParseRetryCandidate candidate) {
     UUID jobId = candidate.jobId();
-    if (!persistenceService.markParseJobRetrying(jobId)) {
+    if (!parseJobService.markParseJobRetrying(jobId)) {
       return;
     }
     try {
-      List<AssetRef> assetRefs = persistenceService.listAssetRefsByJobId(jobId);
+      List<AssetRef> assetRefs = parseJobService.listAssetRefsByJobId(jobId);
       if (assetRefs.isEmpty()) {
-        persistenceService.markParseJobDeadLetter(jobId, MISSING_ASSET_ERROR);
+        parseJobService.markParseJobDeadLetter(jobId, MISSING_ASSET_ERROR);
         LOGGER.warn("Marked parse job as dead letter due to missing assets: jobId={}", jobId);
         return;
       }
-      ParseJobContext context = persistenceService.parseJobContext(jobId);
+      ParseJobContext context = parseJobService.parseJobContext(jobId);
       parseRequestPublisher.publish(new ParseRequestEvent(
           jobId.toString(),
           context.tenantId(),
@@ -91,7 +91,7 @@ public class ParseRetryScheduler {
           jobId,
           candidate.retryCount());
     } catch (Exception ex) {
-      persistenceService.markParseJobFailedAfterRetryDispatch(jobId, RETRY_DISPATCH_ERROR);
+      parseJobService.markParseJobFailedAfterRetryDispatch(jobId, RETRY_DISPATCH_ERROR);
       LOGGER.error("Failed to dispatch retry parse job: jobId={}", jobId, ex);
     }
   }

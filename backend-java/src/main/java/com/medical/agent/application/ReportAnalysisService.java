@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.medical.agent.application.service.GeneratedOutputService;
+import com.medical.agent.application.service.RecordService;
 import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
 import com.medical.agent.domain.vo.RecordAnalysisContext;
 import com.medical.agent.domain.vo.ReportAnalysisResult;
@@ -25,22 +27,25 @@ public class ReportAnalysisService {
   private static final String OUTPUT_TYPE = "REPORT_ANALYSIS";
   private static final int MAX_ANALYSIS_CHARACTERS = 300;
 
-  private final PersistenceService persistenceService;
+  private final GeneratedOutputService generatedOutputService;
+  private final RecordService recordService;
   private final ObjectMapper objectMapper;
   private final RestTemplate restTemplate = new RestTemplate();
   private final String agentBaseUrl;
 
   public ReportAnalysisService(
-      PersistenceService persistenceService,
+      GeneratedOutputService generatedOutputService,
+      RecordService recordService,
       ObjectMapper objectMapper,
       @Value("${app.agent.base-url:http://localhost:8090}") String agentBaseUrl) {
-    this.persistenceService = persistenceService;
+    this.generatedOutputService = generatedOutputService;
+    this.recordService = recordService;
     this.objectMapper = objectMapper;
     this.agentBaseUrl = agentBaseUrl;
   }
 
   public ReportAnalysisResult getOrGenerate(UUID recordId) {
-    Optional<GeneratedOutputSnapshot> cached = persistenceService.fetchLatestGeneratedOutput(recordId, OUTPUT_TYPE);
+    Optional<GeneratedOutputSnapshot> cached = generatedOutputService.fetchLatestGeneratedOutput(recordId, OUTPUT_TYPE);
     if (cached.isPresent()) {
       GeneratedOutputSnapshot snapshot = cached.get();
       return new ReportAnalysisResult(
@@ -50,7 +55,7 @@ public class ReportAnalysisService {
           snapshot.version());
     }
 
-    RecordAnalysisContext context = persistenceService.fetchRecordAnalysisContext(recordId)
+    RecordAnalysisContext context = recordService.fetchRecordAnalysisContext(recordId)
         .orElseThrow(() -> new IllegalArgumentException("record not found"));
     if (!isParseResultReadyForAnalysis(context)) {
       throw new AnalysisNotReadyException("parse result is not ready for analysis");
@@ -62,7 +67,7 @@ public class ReportAnalysisService {
       throw new IllegalStateException("analysis content is empty");
     }
     String modelMeta = asJson(generated.modelMeta());
-    int version = persistenceService.createGeneratedOutputWithMeta(recordId, OUTPUT_TYPE, content, modelMeta);
+    int version = generatedOutputService.createGeneratedOutputWithMeta(recordId, OUTPUT_TYPE, content, modelMeta);
     return new ReportAnalysisResult(recordId.toString(), content, false, version);
   }
 

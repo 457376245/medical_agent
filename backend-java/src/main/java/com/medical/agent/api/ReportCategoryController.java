@@ -1,6 +1,6 @@
 package com.medical.agent.api;
 
-import com.medical.agent.application.PersistenceService;
+import com.medical.agent.application.service.ReportCategoryService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.NameRequest;
 import com.medical.agent.domain.dto.response.ReportCategoryCreateResponseData;
@@ -24,15 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/report-categories")
 public class ReportCategoryController {
-  private final PersistenceService persistenceService;
+  private final ReportCategoryService reportCategoryService;
 
-  public ReportCategoryController(PersistenceService persistenceService) {
-    this.persistenceService = persistenceService;
+  public ReportCategoryController(ReportCategoryService reportCategoryService) {
+    this.reportCategoryService = reportCategoryService;
   }
 
   @GetMapping
   public ApiResponse<ReportCategoryListResponseData> list() {
-    List<ReportCategorySummary> categories = persistenceService.listReportCategories();
+    List<ReportCategorySummary> categories = reportCategoryService.listCategories();
     return new ApiResponse<>(
         "OK",
         "success",
@@ -45,7 +45,7 @@ public class ReportCategoryController {
     String name = request == null || request.name() == null ? "" : request.name().trim();
     UUID categoryId;
     try {
-      categoryId = persistenceService.createReportCategory(name);
+      categoryId = reportCategoryService.createCategory(name);
     } catch (IllegalArgumentException error) {
       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
           "INVALID_REQUEST",
@@ -75,7 +75,7 @@ public class ReportCategoryController {
           new ReportCategoryRefResponseData(reportCategoryId, false)));
     }
 
-    if (!persistenceService.reportCategoryExists(categoryId)) {
+    if (!reportCategoryService.categoryExists(categoryId)) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
           "NOT_FOUND",
           "report category not found",
@@ -83,7 +83,7 @@ public class ReportCategoryController {
           new ReportCategoryRefResponseData(reportCategoryId, false)));
     }
 
-    int linkedCount = persistenceService.countRecordsByReportCategory(categoryId);
+    int linkedCount = reportCategoryService.countRecords(categoryId);
     if (onlyIfEmpty && linkedCount > 0) {
       return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(
           "CONFLICT",
@@ -96,7 +96,7 @@ public class ReportCategoryController {
               linkedCount)));
     }
 
-    boolean deleted = persistenceService.deleteReportCategoryIfEmpty(categoryId);
+    boolean deleted = reportCategoryService.deleteCategoryIfEmpty(categoryId);
     if (!deleted) {
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiResponse<>(
           "DELETE_FAILED",

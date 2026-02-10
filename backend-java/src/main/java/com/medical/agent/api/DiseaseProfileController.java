@@ -1,7 +1,6 @@
 package com.medical.agent.api;
 
 import com.medical.agent.application.DiseaseProfileService;
-import com.medical.agent.application.PersistenceService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.NameRequest;
 import com.medical.agent.domain.dto.response.DiseaseProfileCreateResponseData;
@@ -25,17 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/disease-profiles")
 public class DiseaseProfileController {
-  private final PersistenceService persistenceService;
   private final DiseaseProfileService diseaseProfileService;
 
-  public DiseaseProfileController(PersistenceService persistenceService, DiseaseProfileService diseaseProfileService) {
-    this.persistenceService = persistenceService;
+  public DiseaseProfileController(DiseaseProfileService diseaseProfileService) {
     this.diseaseProfileService = diseaseProfileService;
   }
 
   @GetMapping
   public ApiResponse<DiseaseProfileListResponseData> list() {
-    List<DiseaseProfileSummary> profiles = persistenceService.listDiseaseProfiles();
+    List<DiseaseProfileSummary> profiles = diseaseProfileService.listProfiles();
     return new ApiResponse<>(
         "OK",
         "success",
@@ -46,7 +43,7 @@ public class DiseaseProfileController {
   @PostMapping
   public ApiResponse<DiseaseProfileCreateResponseData> create(@RequestBody NameRequest request) {
     String name = request == null || request.name() == null ? "" : request.name().trim();
-    UUID profileId = persistenceService.createDiseaseProfile(name);
+    UUID profileId = diseaseProfileService.createProfile(name);
     return new ApiResponse<>(
         "OK",
         "success",
