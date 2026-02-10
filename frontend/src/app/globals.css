@@ -958,6 +958,35 @@ a {
   font-size: 0.9rem;
 }
 
+.trend-next-btn {
+  border: 1px solid #cde1d9;
+  border-radius: 10px;
+  background: #e9f5ef;
+  color: #255e52;
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.trend-next-wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.trend-next-btn:hover {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+.trend-next-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .summary-heading {
   margin: 0 0 8px;
   font-size: 1rem;

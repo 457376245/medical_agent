@@ -229,6 +229,21 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
     setSelectedKeys(abnormalItems.map((item) => item.key));
   }, [abnormalItems]);
 
+  const activeSingleIndex = useMemo(() => {
+    if (abnormalItems.length === 0 || selectedKeys.length !== 1) {
+      return -1;
+    }
+    return abnormalItems.findIndex((item) => item.key === selectedKeys[0]);
+  }, [abnormalItems, selectedKeys]);
+
+  const moveToNextSingleItem = () => {
+    if (abnormalItems.length === 0) {
+      return;
+    }
+    const nextIndex = activeSingleIndex >= 0 ? (activeSingleIndex + 1) % abnormalItems.length : 0;
+    setSelectedKeys([abnormalItems[nextIndex].key]);
+  };
+
   const canDrawChart = abnormalItems.length > 0 && selectedKeys.length > 0 && snapshots.length > 0;
 
   useEffect(() => {
@@ -449,6 +464,16 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
             </label>
           );
         })}
+        <div className="trend-next-wrap">
+          <button
+            className="trend-next-btn"
+            type="button"
+            onClick={moveToNextSingleItem}
+            disabled={abnormalItems.length === 0}
+          >
+            下一个
+          </button>
+        </div>
       </div>
     </section>
   );
