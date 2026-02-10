@@ -1,6 +1,6 @@
 import { DiseaseTimelineView } from "../../components/timeline/DiseaseTimelineView";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 type TimelineBatchDetailResponse = {
   data?: {
@@ -51,3 +51,4 @@ export default async function TimelinePage({
 
   return <DiseaseTimelineView batchId={batchId || undefined} diseaseName={diseaseName} records={records} />;
 }
+

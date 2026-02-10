@@ -33,6 +33,4 @@ public interface ParseJobRepository {
   void markParseJobFailedAfterRetryDispatch(UUID jobId, String errorCode);
 
   void markParseJobDeadLetter(UUID jobId, String errorCode);
-
-  Map<String, Object> getAndAdvanceParseJob(UUID jobId);
 }

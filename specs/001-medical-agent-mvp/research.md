@@ -8,7 +8,7 @@
 
 ## Decision 2: Async status delivery to frontend
 
-- Decision: Use polling (`GET /api/v1/parse-jobs/{jobId}` every 2-3s with backoff), with SSE as a later optimization.
+- Decision: Keep parse fully asynchronous and surface completion via timeline/record queries; no dedicated polling endpoint is exposed.
 - Rationale: Lowest operational complexity behind common gateways, resilient reconnect behavior, and sufficient UX for <= 90s tasks.
 - Alternatives considered: SSE (better real-time but higher infra complexity), WebSocket (overkill for one-way progress updates).
 
@@ -51,3 +51,4 @@
 ## Clarification Status
 
 All items that could be marked as NEEDS CLARIFICATION in technical context are resolved by the decisions above.
+

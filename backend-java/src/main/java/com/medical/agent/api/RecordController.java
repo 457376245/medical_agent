@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/records")
+@RequestMapping("/api/records")
 public class RecordController {
   private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
@@ -137,7 +137,18 @@ public class RecordController {
 
   @DeleteMapping("/{recordId}")
   public ResponseEntity<Map<String, Object>> deleteRecord(@PathVariable("recordId") String recordId) {
-    boolean deleted = recordService.deleteRecord(UUID.fromString(recordId));
+    UUID recordUuid;
+    try {
+      recordUuid = UUID.fromString(recordId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_RECORD_ID",
+          "message", "recordId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("recordId", recordId, "deleted", false)));
+    }
+
+    boolean deleted = recordService.deleteRecord(recordUuid);
     if (!deleted) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
           "code", "NOT_FOUND",

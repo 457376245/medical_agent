@@ -1,6 +1,6 @@
 import { HomeOverview } from "../components/home/HomeOverview";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 type TimelineResponse = {
   data?: {
@@ -56,3 +56,4 @@ export default async function HomePage() {
 
   return <HomeOverview batches={batches} />;
 }
+

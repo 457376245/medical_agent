@@ -9,9 +9,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class IdempotencyInterceptor implements HandlerInterceptor {
   private static final Set<String> IDEMPOTENT_PATHS = Set.of(
-      "/api/v1/parse-jobs",
-      "/generate-summary",
-      "/generate-medication-plan");
+      "/api/ingestions/parse-jobs");
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {

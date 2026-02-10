@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 type DiseaseProfile = {
   id: string;
@@ -404,7 +404,7 @@ export function UserTopBar() {
       const contentType = selectedFile.type || "application/octet-stream";
 
       setUploadStage("正在申请上传地址...");
-      const presignResp = await fetch(`${API_BASE}/uploads/presign`, {
+      const presignResp = await fetch(`${API_BASE}/ingestions/presign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileName: selectedFile.name, contentType, size: selectedFile.size }),
@@ -438,7 +438,7 @@ export function UserTopBar() {
       } catch (error) {
         setUploadStage("浏览器直传失败，正在使用服务端通道上传...");
         const base64Data = await fileToBase64(selectedFile);
-        const proxyUploadResp = await fetch(`${API_BASE}/uploads/proxy-put`, {
+        const proxyUploadResp = await fetch(`${API_BASE}/ingestions/proxy-upload`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ objectKey, contentType, base64Data }),
@@ -451,7 +451,7 @@ export function UserTopBar() {
       }
 
       setUploadStage("正在归档文件...");
-      const assetResp = await fetch(`${API_BASE}/assets/complete`, {
+      const assetResp = await fetch(`${API_BASE}/ingestions/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -477,7 +477,7 @@ export function UserTopBar() {
       }
 
       setUploadStage("正在创建解析任务...");
-      const parseResp = await fetch(`${API_BASE}/parse-jobs`, {
+      const parseResp = await fetch(`${API_BASE}/ingestions/parse-jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -867,3 +867,4 @@ export function UserTopBar() {
     </>
   );
 }
+

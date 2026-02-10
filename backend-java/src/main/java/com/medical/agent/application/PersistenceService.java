@@ -1,12 +1,10 @@
 package com.medical.agent.application;
 
-import com.medical.agent.application.repository.DataRightsRepository;
 import com.medical.agent.application.repository.GeneratedOutputRepository;
 import com.medical.agent.application.repository.ParseJobRepository;
 import com.medical.agent.application.repository.RecordRepository;
 import com.medical.agent.application.repository.StructuredResultRepository;
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,26 +13,20 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PersistenceService {
-  private static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
-  private static final UUID DEFAULT_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
-
   private final RecordRepository recordRepository;
   private final ParseJobRepository parseJobRepository;
   private final StructuredResultRepository structuredResultRepository;
   private final GeneratedOutputRepository generatedOutputRepository;
-  private final DataRightsRepository dataRightsRepository;
 
   public PersistenceService(
       RecordRepository recordRepository,
       ParseJobRepository parseJobRepository,
       StructuredResultRepository structuredResultRepository,
-      GeneratedOutputRepository generatedOutputRepository,
-      DataRightsRepository dataRightsRepository) {
+      GeneratedOutputRepository generatedOutputRepository) {
     this.recordRepository = recordRepository;
     this.parseJobRepository = parseJobRepository;
     this.structuredResultRepository = structuredResultRepository;
     this.generatedOutputRepository = generatedOutputRepository;
-    this.dataRightsRepository = dataRightsRepository;
   }
 
   public record ParseApplyResult(UUID recordId, String finalStatus, boolean stateChanged) {}
@@ -102,20 +94,6 @@ public class PersistenceService {
     return new ParseApplyResult(result.recordId(), result.finalStatus(), result.stateChanged());
   }
 
-  public Map<String, Object> createGenerateTask(UUID recordId, String type, String idempotencyKey) {
-    UUID taskId = UUID.randomUUID();
-    Map<String, Object> payload = new HashMap<>();
-    payload.put("taskId", taskId.toString());
-    payload.put("recordId", recordRepository.ensureRecord(recordId).toString());
-    payload.put("type", type);
-    payload.put("status", "QUEUED");
-    payload.put("traceId", RequestTrace.newTraceId());
-    payload.put("tenantId", DEFAULT_TENANT_ID.toString());
-    payload.put("userId", DEFAULT_USER_ID.toString());
-    payload.put("idempotencyKey", idempotencyKey);
-    return payload;
-  }
-
   public UUID createOrReuseParseJob(UUID recordId, String idempotencyKey) {
     return parseJobRepository.createOrReuseParseJob(recordId, idempotencyKey);
   }
@@ -142,14 +120,6 @@ public class PersistenceService {
 
   public void markParseJobDeadLetter(UUID jobId, String errorCode) {
     parseJobRepository.markParseJobDeadLetter(jobId, errorCode);
-  }
-
-  public Map<String, Object> getAndAdvanceParseJob(UUID jobId) {
-    return parseJobRepository.getAndAdvanceParseJob(jobId);
-  }
-
-  public Map<String, Object> patchStructuredResult(UUID recordId, int revision, String payloadJson) {
-    return structuredResultRepository.patchStructuredResult(recordId, revision, payloadJson);
   }
 
   public Map<String, Object> fetchRecord(UUID recordId) {
@@ -221,14 +191,6 @@ public class PersistenceService {
     return generatedOutputRepository.createGeneratedOutputWithMeta(recordId, type, content, modelMetaJson);
   }
 
-  public UUID createDataRightsRequest(UUID recordId, String requestType) {
-    return dataRightsRepository.createDataRightsRequest(recordId, requestType);
-  }
-
-  public Map<String, Object> getDataRightsRequest(UUID requestId) {
-    return dataRightsRepository.getDataRightsRequest(requestId);
-  }
-
   public List<Map<String, Object>> listTimelineBatches() {
     return recordRepository.listTimelineBatches();
   }
@@ -252,13 +214,5 @@ public class PersistenceService {
   @Transactional
   public boolean deleteRecord(UUID recordId) {
     return recordRepository.deleteRecord(recordId);
-  }
-
-  private static final class RequestTrace {
-    private RequestTrace() {}
-
-    static String newTraceId() {
-      return UUID.randomUUID().toString().replace("-", "");
-    }
   }
 }

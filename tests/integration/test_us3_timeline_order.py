@@ -17,13 +17,13 @@ def test_us3_timeline_reverse_order_contract_and_index_present() -> None:
     timeline_service = read_text(
         "backend-java/src/main/java/com/medical/agent/application/TimelineService.java"
     )
-    persistence_service = read_text(
-        "backend-java/src/main/java/com/medical/agent/application/PersistenceService.java"
+    record_repository = read_text(
+        "backend-java/src/main/java/com/medical/agent/infrastructure/persistence/jdbc/JdbcRecordRepository.java"
     )
     assert_contains_all(contract, ["/timeline:", "reverse-chronological"])
     assert_contains_all(model, ["records(user_id, record_date desc)"])
     assert_contains_all(timeline_service, ["listTimelineBatches", "listBatchRecords"])
     assert_contains_all(
-        persistence_service,
+        record_repository,
         ["left join disease_profiles", "order by latest_record_at desc"],
     )

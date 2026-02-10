@@ -5,7 +5,6 @@ import com.medical.agent.application.repository.RecordRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -244,30 +243,6 @@ public class JdbcParseJobRepository implements ParseJobRepository {
         now(),
         jobId,
         "FAILED");
-  }
-
-  @Override
-  public Map<String, Object> getAndAdvanceParseJob(UUID jobId) {
-    Map<String, Object> current = jdbcTemplate.queryForMap(
-        "select id, status, progress, record_id, error_code from parse_jobs where id = ?",
-        jobId);
-    String status = String.valueOf(current.get("status"));
-    int progress = ((Number) current.get("progress")).intValue();
-    String errorCode = current.get("error_code") == null ? null : String.valueOf(current.get("error_code"));
-
-    if ("QUEUED".equals(status)) {
-      status = "PROCESSING";
-      progress = 35;
-      jdbcTemplate.update("update parse_jobs set status = ?, progress = ?, updated_at = ? where id = ?",
-          status, progress, now(), jobId);
-    }
-
-    Map<String, Object> response = new HashMap<>();
-    response.put("status", status);
-    response.put("progress", progress);
-    response.put("errorCode", errorCode);
-    response.put("resultId", "SUCCESS".equals(status) ? jobId.toString() : null);
-    return response;
   }
 
   private Timestamp now() {

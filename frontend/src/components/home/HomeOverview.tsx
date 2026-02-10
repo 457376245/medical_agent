@@ -19,7 +19,7 @@ type HomeOverviewProps = {
   batches: HomeBatch[];
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 const IN_PROGRESS_STATUS = new Set(["QUEUED", "PROCESSING", "RETRYING"]);
 const ATTENTION_STATUS = new Set(["FAILED", "DEAD_LETTER"]);
 
@@ -221,3 +221,4 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
     </main>
   );
 }
+

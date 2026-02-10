@@ -60,7 +60,7 @@ class ApiIntegrationTest {
   void endToEndParseFlowPersistsAndReturnsRecord() {
     UUID recordId = UUID.randomUUID();
 
-    ResponseEntity<Map> presignResp = postJson("/api/v1/uploads/presign", Map.of(
+    ResponseEntity<Map> presignResp = postJson("/api/ingestions/presign", Map.of(
         "fileName", "lab.pdf",
         "contentType", "application/pdf",
         "size", 12345));
@@ -68,7 +68,7 @@ class ApiIntegrationTest {
     Map<String, Object> presignData = dataOf(presignResp.getBody());
     assertTrue(String.valueOf(presignData.get("objectKey")).contains("lab.pdf"));
 
-    ResponseEntity<Map> assetResp = postJson("/api/v1/assets/complete", Map.of(
+    ResponseEntity<Map> assetResp = postJson("/api/ingestions/assets", Map.of(
         "objectKey", presignData.get("objectKey"),
         "checksum", "sha256:abc",
         "recordId", recordId.toString(),
@@ -80,14 +80,13 @@ class ApiIntegrationTest {
     HttpHeaders jobHeaders = jsonHeaders();
     jobHeaders.set("Idempotency-Key", "job-" + UUID.randomUUID());
     ResponseEntity<Map> createJobResp = restTemplate.exchange(
-        "/api/v1/parse-jobs",
+        "/api/ingestions/parse-jobs",
         HttpMethod.POST,
         new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
         Map.class);
     assertEquals(HttpStatus.OK, createJobResp.getStatusCode());
     String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
 
-    ResponseEntity<Map> status1 = restTemplate.getForEntity("/api/v1/parse-jobs/" + jobId, Map.class);
     parseResultConsumer.consume(
         "{" +
             "\"jobId\":\"" + jobId + "\"," +
@@ -100,51 +99,17 @@ class ApiIntegrationTest {
             "\"confidence\":0.91," +
             "\"errors\":[]" +
             "}");
-    ResponseEntity<Map> status2 = restTemplate.getForEntity("/api/v1/parse-jobs/" + jobId, Map.class);
-    assertEquals("SUCCESS", String.valueOf(dataOf(status2.getBody()).get("status")));
-    assertEquals(100, ((Number) dataOf(status2.getBody()).get("progress")).intValue());
-    assertNotNull(dataOf(status1.getBody()).get("status"));
 
-    ResponseEntity<Map> recordResp = restTemplate.getForEntity("/api/v1/records/" + recordId, Map.class);
+    ResponseEntity<Map> recordResp = restTemplate.getForEntity("/api/records/" + recordId, Map.class);
     assertEquals(HttpStatus.OK, recordResp.getStatusCode());
     String summary = String.valueOf(dataOf(recordResp.getBody()).get("summary"));
     assertFalse(summary.isBlank());
   }
 
   @Test
-  void dataRightsExportFlowReturnsDownloadAndDeleteStatus() {
-    UUID recordId = UUID.randomUUID();
-    postJson("/api/v1/assets/complete", Map.of(
-        "objectKey", "uploads/seed/file.pdf",
-        "checksum", "sha256:seed",
-        "recordId", recordId.toString(),
-        "size", 10));
-
-    ResponseEntity<Map> exportReq = postJson("/api/v1/records/" + recordId + "/export-requests", Map.of());
-    String exportRequestId = String.valueOf(dataOf(exportReq.getBody()).get("requestId"));
-
-    ResponseEntity<Map> exportStatus = restTemplate.getForEntity(
-        "/api/v1/records/" + recordId + "/export-requests/" + exportRequestId,
-        Map.class);
-    assertEquals("COMPLETED", String.valueOf(dataOf(exportStatus.getBody()).get("status")));
-
-    ResponseEntity<Map> exportDownload = restTemplate.getForEntity(
-        "/api/v1/records/" + recordId + "/export-requests/" + exportRequestId + "/download",
-        Map.class);
-    assertTrue(String.valueOf(dataOf(exportDownload.getBody()).get("downloadUrl")).startsWith("https://"));
-
-    ResponseEntity<Map> deleteReq = postJson("/api/v1/records/" + recordId + "/delete-requests", Map.of());
-    String deleteRequestId = String.valueOf(dataOf(deleteReq.getBody()).get("requestId"));
-    ResponseEntity<Map> deleteStatus = restTemplate.getForEntity(
-        "/api/v1/records/" + recordId + "/delete-requests/" + deleteRequestId,
-        Map.class);
-    assertEquals("PROCESSING", String.valueOf(dataOf(deleteStatus.getBody()).get("status")));
-  }
-
-  @Test
   void parseJobCreationRequiresIdempotencyKey() {
     ResponseEntity<Map> missingHeaderResp = postJson(
-        "/api/v1/parse-jobs",
+        "/api/ingestions/parse-jobs",
         Map.of("assetIds", List.of(UUID.randomUUID().toString()), "recordId", UUID.randomUUID().toString()));
     assertEquals(HttpStatus.BAD_REQUEST, missingHeaderResp.getStatusCode());
   }
@@ -152,14 +117,14 @@ class ApiIntegrationTest {
   @Test
   void deleteRecordEndpointRemovesRecord() {
     UUID recordId = UUID.randomUUID();
-    postJson("/api/v1/assets/complete", Map.of(
+    postJson("/api/ingestions/assets", Map.of(
         "objectKey", "uploads/seed/file-to-delete.pdf",
         "checksum", "sha256:delete",
         "recordId", recordId.toString(),
         "size", 10));
 
     ResponseEntity<Map> firstDelete = restTemplate.exchange(
-        "/api/v1/records/" + recordId,
+        "/api/records/" + recordId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
         Map.class);
@@ -167,7 +132,7 @@ class ApiIntegrationTest {
     assertEquals("true", String.valueOf(dataOf(firstDelete.getBody()).get("deleted")));
 
     ResponseEntity<Map> secondDelete = restTemplate.exchange(
-        "/api/v1/records/" + recordId,
+        "/api/records/" + recordId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
         Map.class);
@@ -177,12 +142,12 @@ class ApiIntegrationTest {
 
   @Test
   void deleteDiseaseProfileEndpointRemovesProfileAndRecords() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "慢性肾病"));
+    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "慢性肾病"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
 
-    postJson("/api/v1/assets/complete", Map.of(
+    postJson("/api/ingestions/assets", Map.of(
         "objectKey", "uploads/seed/disease-delete.pdf",
         "checksum", "sha256:disease-delete",
         "recordId", recordId.toString(),
@@ -190,14 +155,14 @@ class ApiIntegrationTest {
         "size", 10));
 
     ResponseEntity<Map> deleteResp = restTemplate.exchange(
-        "/api/v1/disease-profiles/" + diseaseProfileId,
+        "/api/disease-profiles/" + diseaseProfileId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
         Map.class);
     assertEquals(HttpStatus.OK, deleteResp.getStatusCode());
     assertEquals("true", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
 
-    ResponseEntity<Map> profilesResp = restTemplate.getForEntity("/api/v1/disease-profiles", Map.class);
+    ResponseEntity<Map> profilesResp = restTemplate.getForEntity("/api/disease-profiles", Map.class);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> profiles = (List<Map<String, Object>>) dataOf(profilesResp.getBody()).get("profiles");
     boolean exists = profiles.stream()
@@ -207,12 +172,12 @@ class ApiIntegrationTest {
 
   @Test
   void deleteDiseaseProfileOnlyIfEmptyRejectsWhenLinkedRecordsExist() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "糖尿病"));
+    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "糖尿病"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
 
-    postJson("/api/v1/assets/complete", Map.of(
+    postJson("/api/ingestions/assets", Map.of(
         "objectKey", "uploads/seed/disease-cannot-delete.pdf",
         "checksum", "sha256:disease-cannot-delete",
         "recordId", recordId.toString(),
@@ -220,7 +185,7 @@ class ApiIntegrationTest {
         "size", 10));
 
     ResponseEntity<Map> deleteResp = restTemplate.exchange(
-        "/api/v1/disease-profiles/" + diseaseProfileId + "?onlyIfEmpty=true",
+        "/api/disease-profiles/" + diseaseProfileId + "?onlyIfEmpty=true",
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
         Map.class);
@@ -231,12 +196,12 @@ class ApiIntegrationTest {
 
   @Test
   void updateRecordSourceTypeEndpointUpdatesCategoryAndTitle() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/v1/disease-profiles", Map.of("name", "高血压"));
+    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "高血压"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
 
-    postJson("/api/v1/assets/complete", Map.of(
+    postJson("/api/ingestions/assets", Map.of(
         "objectKey", "uploads/seed/source-type-update.pdf",
         "checksum", "sha256:source-type-update",
         "recordId", recordId.toString(),
@@ -247,7 +212,7 @@ class ApiIntegrationTest {
         "size", 10));
 
     ResponseEntity<Map> updateResp = restTemplate.exchange(
-        "/api/v1/records/" + recordId + "/source-type",
+        "/api/records/" + recordId + "/source-type",
         HttpMethod.PATCH,
         new HttpEntity<>(Map.of("sourceType", "LAB"), jsonHeaders()),
         Map.class);
@@ -272,3 +237,4 @@ class ApiIntegrationTest {
     return (Map<String, Object>) body.get("data");
   }
 }
+

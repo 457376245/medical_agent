@@ -38,8 +38,4 @@ public class ParseJobService {
 
     return Map.of("jobId", jobId.toString(), "status", "QUEUED");
   }
-
-  public Map<String, Object> status(UUID jobId) {
-    return persistenceService.getAndAdvanceParseJob(jobId);
-  }
 }

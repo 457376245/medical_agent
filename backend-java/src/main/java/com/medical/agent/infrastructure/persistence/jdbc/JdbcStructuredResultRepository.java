@@ -3,8 +3,6 @@ package com.medical.agent.infrastructure.persistence.jdbc;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.repository.StructuredResultRepository;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -22,26 +20,6 @@ public class JdbcStructuredResultRepository implements StructuredResultRepositor
 
   public JdbcStructuredResultRepository(JdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
-  }
-
-  @Override
-  public Map<String, Object> patchStructuredResult(UUID recordId, int revision, String payloadJson) {
-    UUID resultId = UUID.randomUUID();
-    jdbcTemplate.update(
-        "insert into structured_results (id, tenant_id, job_id, record_id, schema_version, payload_json, confidence_score, revision, is_user_edited, created_at, updated_at) "
-            + "values (?, ?, ?, ?, ?, cast(? as jsonb), ?, ?, ?, ?, ?)",
-        resultId,
-        DEFAULT_TENANT_ID,
-        UUID.randomUUID(),
-        recordId,
-        "v1",
-        payloadJson,
-        0.8,
-        revision,
-        true,
-        now(),
-        now());
-    return Map.of("resultId", resultId.toString(), "revision", revision);
   }
 
   @Override
@@ -92,9 +70,5 @@ public class JdbcStructuredResultRepository implements StructuredResultRepositor
     } catch (Exception ignored) {
       return payloadJson;
     }
-  }
-
-  private Timestamp now() {
-    return Timestamp.from(Instant.now());
   }
 }

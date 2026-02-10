@@ -15,19 +15,13 @@ def test_us1_low_confidence_field_supports_source_evidence_and_revision_payload(
     None
 ):
     schema_text = read_text("backend-agent/app/schemas/structured_result_v1.py")
-    controller_text = read_text(
-        "backend-java/src/main/java/com/medical/agent/api/StructuredResultController.java"
-    )
-    persistence_service = read_text(
-        "backend-java/src/main/java/com/medical/agent/application/PersistenceService.java"
+    parse_repository = read_text(
+        "backend-java/src/main/java/com/medical/agent/infrastructure/persistence/jdbc/JdbcParseJobRepository.java"
     )
     assert_contains_all(
         schema_text, ["class SourceEvidence", "confidence", "schema_version", "fields"]
     )
     assert_contains_all(
-        controller_text, ["structured-result", "@PatchMapping", "patchStructuredResult"]
-    )
-    assert_contains_all(
-        persistence_service,
+        parse_repository,
         ["revision", "is_user_edited", "insert into structured_results"],
     )

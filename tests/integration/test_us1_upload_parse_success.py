@@ -12,33 +12,36 @@ def assert_contains_all(text: str, tokens: list[str]) -> None:
 
 
 def test_us1_upload_parse_success_flow_wired() -> None:
-    upload_controller = read_text(
-        "backend-java/src/main/java/com/medical/agent/api/UploadController.java"
+    ingestion_controller = read_text(
+        "backend-java/src/main/java/com/medical/agent/api/IngestionController.java"
     )
-    parse_controller = read_text(
-        "backend-java/src/main/java/com/medical/agent/api/ParseJobController.java"
+    parse_service = read_text(
+        "backend-java/src/main/java/com/medical/agent/application/service/ParseJobService.java"
     )
-    persistence_service = read_text(
-        "backend-java/src/main/java/com/medical/agent/application/PersistenceService.java"
+    parse_repository = read_text(
+        "backend-java/src/main/java/com/medical/agent/infrastructure/persistence/jdbc/JdbcParseJobRepository.java"
     )
     record_controller = read_text(
         "backend-java/src/main/java/com/medical/agent/api/RecordController.java"
     )
     assert_contains_all(
-        upload_controller, ['@PostMapping("/presign")', "uploadUrl", "objectKey"]
-    )
-    assert_contains_all(
-        parse_controller,
-        ["createOrReuseParseJob", "getAndAdvanceParseJob"],
-    )
-    assert_contains_all(
-        persistence_service,
+        ingestion_controller,
         [
+            '@PostMapping("/presign")',
+            '@PostMapping("/assets")',
+            '@PostMapping("/parse-jobs")',
+        ],
+    )
+    assert_contains_all(
+        parse_service,
+        ["createOrReuseParseJob", "bindParseJobAssets"],
+    )
+    assert_contains_all(
+        parse_repository,
+        [
+            "createOrReuseParseJob",
+            "applyParseResult",
             "insert into parse_jobs",
-            "insert into structured_results",
-            "createGeneratedOutput",
-            "summary",
-            "structuredResult",
         ],
     )
     assert_contains_all(record_controller, ["fetchRecord", "data", "record"])

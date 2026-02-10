@@ -16,9 +16,9 @@ def test_upload_endpoints_contract_has_presign_and_complete() -> None:
     assert_contains_all(
         openapi,
         [
-            "/uploads/presign:",
+            "/ingestions/presign:",
             "operationId: createUploadPresign",
-            "/assets/complete:",
+            "/ingestions/assets:",
             "operationId: completeAssetUpload",
         ],
     )

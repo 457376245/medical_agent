@@ -13,7 +13,7 @@
 Create env files for each module:
 
 - `frontend/.env.local`
-  - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1`
+  - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api`
 - `backend-java/.env`
   - `DB_URL=jdbc:postgresql://localhost:5432/medical_agent`
   - `DB_USER=...`
@@ -79,14 +79,14 @@ npm run dev
 ## 5. Verify MVP flow
 
 1. Select existing disease or create a new disease profile.
-2. Request upload URL: `POST /api/v1/uploads/presign`.
+2. Request upload URL: `POST /api/ingestions/presign`.
 3. Upload file directly to object storage using returned URL.
-4. Confirm file registration: `POST /api/v1/assets/complete` (bind to disease profile).
-5. Create parse job: `POST /api/v1/parse-jobs` with `Idempotency-Key`.
-6. Poll status: `GET /api/v1/parse-jobs/{jobId}` until terminal state.
+4. Confirm file registration: `POST /api/ingestions/assets` (bind to disease profile).
+5. Create parse job: `POST /api/ingestions/parse-jobs` with `Idempotency-Key`.
+6. Parse runs asynchronously in background; no polling endpoint is exposed.
 7. Open disease timeline and click a report node.
-8. Load parsed report details: `GET /api/v1/records/{recordId}` (parsed result is primary view).
-9. Revise structured result if needed, then trigger generation APIs.
+8. Load parsed report details: `GET /api/records/{recordId}` (parsed result is primary view).
+9. View analysis/trend data from timeline detail APIs.
 
 ## 6. Safety and compliance checks
 
@@ -106,3 +106,4 @@ npm run dev
 - Setup scaffolding validated: frontend/backend-java/backend-agent baseline files present.
 - Core contracts updated for timeline, structured-result revision, summary generation, export/delete with download endpoint.
 - Manual checklists created for US1/US2/US3/US4 and release readiness.
+

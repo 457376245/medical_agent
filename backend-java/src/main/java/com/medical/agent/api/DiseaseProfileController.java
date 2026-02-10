@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/disease-profiles")
+@RequestMapping("/api/disease-profiles")
 public class DiseaseProfileController {
   private final PersistenceService persistenceService;
   private final DiseaseProfileService diseaseProfileService;
@@ -52,9 +52,20 @@ public class DiseaseProfileController {
   public ResponseEntity<Map<String, Object>> delete(
       @PathVariable("diseaseProfileId") String diseaseProfileId,
       @RequestParam(value = "onlyIfEmpty", defaultValue = "false") boolean onlyIfEmpty) {
+    UUID diseaseProfileUuid;
+    try {
+      diseaseProfileUuid = UUID.fromString(diseaseProfileId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+          "code", "INVALID_DISEASE_PROFILE_ID",
+          "message", "diseaseProfileId is invalid",
+          "requestId", RequestIdUtil.newRequestId(),
+          "data", Map.of("diseaseProfileId", diseaseProfileId, "deleted", false)));
+    }
+
     if (onlyIfEmpty) {
       DiseaseProfileService.DeleteDiseaseProfileIfEmptyResult result =
-          diseaseProfileService.deleteProfileIfEmpty(UUID.fromString(diseaseProfileId));
+          diseaseProfileService.deleteProfileIfEmpty(diseaseProfileUuid);
       if (!result.deleted() && "NOT_FOUND".equals(result.reason())) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
             "code", "NOT_FOUND",
@@ -100,7 +111,7 @@ public class DiseaseProfileController {
     }
 
     DiseaseProfileService.DeleteDiseaseProfileResult result =
-        diseaseProfileService.deleteProfile(UUID.fromString(diseaseProfileId));
+        diseaseProfileService.deleteProfile(diseaseProfileUuid);
     if (!result.deleted()) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
           "code", "NOT_FOUND",

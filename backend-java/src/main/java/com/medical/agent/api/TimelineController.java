@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/timeline")
+@RequestMapping("/api/timeline")
 public class TimelineController {
   private final TimelineService timelineService;
 

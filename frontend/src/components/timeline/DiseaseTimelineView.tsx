@@ -6,7 +6,7 @@ import { StructuredResultTable } from "../parse/StructuredResultTable";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 const REPORT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "UPLOAD", label: "常规检查" },
@@ -610,3 +610,4 @@ export function DiseaseTimelineView({
     </main>
   );
 }
+

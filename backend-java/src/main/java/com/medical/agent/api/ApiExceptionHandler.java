@@ -18,8 +18,8 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
         .body(Map.of(
             "code", "BIZ_INTERNAL_ERROR",
-            "message", ex.getMessage(),
-            "requestId", "UNKNOWN",
+            "message", "Internal server error",
+            "requestId", RequestIdUtil.newRequestId(),
             "data", Map.of()));
   }
 }

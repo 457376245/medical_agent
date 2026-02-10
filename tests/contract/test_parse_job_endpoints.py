@@ -11,15 +11,12 @@ def assert_contains_all(text: str, tokens: list[str]) -> None:
     assert not missing, f"Missing required tokens: {missing}"
 
 
-def test_parse_job_endpoints_contract_has_idempotency_and_status() -> None:
+def test_parse_job_endpoints_contract_has_idempotency() -> None:
     openapi = read_text("specs/001-medical-agent-mvp/contracts/openapi.yaml")
     assert_contains_all(
         openapi,
         [
-            "/parse-jobs:",
+            "/ingestions/parse-jobs:",
             "name: Idempotency-Key",
-            "/parse-jobs/{jobId}:",
-            "operationId: getParseJob",
-            "enum: [QUEUED, PROCESSING, SUCCESS, FAILED, RETRYING, DEAD_LETTER]",
         ],
     )

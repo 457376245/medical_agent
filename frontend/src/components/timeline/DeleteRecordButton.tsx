@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 type DeleteRecordButtonProps = {
   recordId: string;
@@ -59,3 +59,4 @@ export function DeleteRecordButton({ recordId, batchId, isSelected }: DeleteReco
     </div>
   );
 }
+
