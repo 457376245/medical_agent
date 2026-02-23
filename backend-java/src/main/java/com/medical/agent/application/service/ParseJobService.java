@@ -1,13 +1,25 @@
 package com.medical.agent.application.service;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.yulichang.toolkit.JoinWrappers;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.domain.dto.request.CreateParseJobRequest;
 import com.medical.agent.domain.dto.response.ParseJobResponseData;
 import com.medical.agent.domain.dto.response.ParseJobStatusResponseData;
+import com.medical.agent.domain.enums.ParseJobStatus;
+import com.medical.agent.domain.exception.ResourceNotFoundException;
+import com.medical.agent.domain.repository.ParseJobRepository;
 import com.medical.agent.domain.vo.AssetRef;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.ParseRequestEvent;
@@ -19,22 +31,13 @@ import com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
 import com.medical.agent.infrastructure.persistence.mapper.GeneratedOutputMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobAssetMapper;
-import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ParseJobService {
   private static final int MAX_PARSE_RETRY_COUNT = 3;
 
-  private final ParseJobMapper parseJobMapper;
+  private final ParseJobRepository parseJobRepository;
   private final ParseJobAssetMapper parseJobAssetMapper;
   private final StructuredResultMapper structuredResultMapper;
   private final GeneratedOutputMapper generatedOutputMapper;
@@ -43,14 +46,14 @@ public class ParseJobService {
   private final TenantContextProvider tenantContextProvider;
 
   public ParseJobService(
-      ParseJobMapper parseJobMapper,
+      ParseJobRepository parseJobRepository,
       ParseJobAssetMapper parseJobAssetMapper,
       StructuredResultMapper structuredResultMapper,
       GeneratedOutputMapper generatedOutputMapper,
       RecordService recordService,
       ParseRequestPublisher parseRequestPublisher,
       TenantContextProvider tenantContextProvider) {
-    this.parseJobMapper = parseJobMapper;
+    this.parseJobRepository = parseJobRepository;
     this.parseJobAssetMapper = parseJobAssetMapper;
     this.structuredResultMapper = structuredResultMapper;
     this.generatedOutputMapper = generatedOutputMapper;
@@ -86,17 +89,14 @@ public class ParseJobService {
         "v1",
         idempotencyKey));
 
-    return new ParseJobResponseData(jobId.toString(), "QUEUED");
+    return new ParseJobResponseData(jobId.toString(), ParseJobStatus.QUEUED.name());
   }
 
   public ParseJobStatusResponseData getStatus(UUID jobId) {
     UUID tenantId = tenantContextProvider.currentTenantId();
-    ParseJobEntity job = parseJobMapper.selectOne(new LambdaQueryWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getId, jobId)
-        .eq(ParseJobEntity::getTenantId, tenantId)
-        .last("limit 1"));
+    ParseJobEntity job = parseJobRepository.findByIdAndTenantId(jobId, tenantId);
     if (job == null) {
-      throw new IllegalArgumentException("parse job not found");
+      throw new ResourceNotFoundException("parse job not found");
     }
     return new ParseJobStatusResponseData(
         String.valueOf(job.getId()),
@@ -113,33 +113,29 @@ public class ParseJobService {
       String structuredResultJson,
       double confidence,
       String errorCode) {
-    ParseJobEntity job = parseJobMapper.selectById(jobId);
+    ParseJobEntity job = parseJobRepository.findById(jobId);
     if (job == null) {
-      throw new IllegalArgumentException("parse job not found");
+      throw new ResourceNotFoundException("parse job not found");
     }
 
     String currentStatus = String.valueOf(job.getStatus());
     int retryCount = job.getRetryCount() == null ? 0 : job.getRetryCount();
-    if ("SUCCESS".equals(currentStatus) || "DEAD_LETTER".equals(currentStatus)) {
+    if (ParseJobStatus.SUCCESS.name().equals(currentStatus)
+        || ParseJobStatus.DEAD_LETTER.name().equals(currentStatus)) {
       return new ParseApplyResult(job.getRecordId(), currentStatus, false);
     }
 
-    boolean success = "SUCCESS".equals(status);
+    boolean success = ParseJobStatus.SUCCESS.name().equals(status);
     int nextRetryCount = success ? retryCount : retryCount + 1;
-    String nextStatus = success ? "SUCCESS" : "FAILED";
+    String nextStatus = success ? ParseJobStatus.SUCCESS.name() : ParseJobStatus.FAILED.name();
     if (!success && nextRetryCount >= MAX_PARSE_RETRY_COUNT) {
-      nextStatus = "DEAD_LETTER";
+      nextStatus = ParseJobStatus.DEAD_LETTER.name();
     }
 
-    parseJobMapper.update(null, new LambdaUpdateWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getId, jobId)
-        .set(ParseJobEntity::getStatus, nextStatus)
-        .set(ParseJobEntity::getProgress, 100)
-        .set(ParseJobEntity::getErrorCode, success ? null : errorCode)
-        .set(ParseJobEntity::getRetryCount, nextRetryCount)
-        .set(ParseJobEntity::getUpdatedAt, LocalDateTime.now()));
+    parseJobRepository.updateStatusFields(jobId, ParseJobStatus.valueOf(nextStatus), 100, success ? null : errorCode,
+        nextRetryCount);
 
-    if ("SUCCESS".equals(nextStatus)) {
+    if (ParseJobStatus.SUCCESS.name().equals(nextStatus)) {
       LocalDateTime now = LocalDateTime.now();
       structuredResultMapper.insertWithJson(
           UUID.randomUUID(),
@@ -172,11 +168,7 @@ public class ParseJobService {
 
   public List<ParseRetryCandidate> listFailedParseJobsForRetry(int maxRetryCount, int limit) {
     int normalizedLimit = Math.max(1, limit);
-    List<ParseJobEntity> jobs = parseJobMapper.selectList(new LambdaQueryWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getStatus, "FAILED")
-        .lt(ParseJobEntity::getRetryCount, maxRetryCount)
-        .orderByAsc(ParseJobEntity::getUpdatedAt)
-        .last("limit " + normalizedLimit));
+    List<ParseJobEntity> jobs = parseJobRepository.findFailedJobsLessThanRetryCount(maxRetryCount, normalizedLimit);
     List<ParseRetryCandidate> candidates = new ArrayList<>();
     for (ParseJobEntity job : jobs) {
       candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(),
@@ -187,11 +179,8 @@ public class ParseJobService {
 
   public List<ParseRetryCandidate> listFailedParseJobsForDeadLetter(int maxRetryCount, int limit) {
     int normalizedLimit = Math.max(1, limit);
-    List<ParseJobEntity> jobs = parseJobMapper.selectList(new LambdaQueryWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getStatus, "FAILED")
-        .ge(ParseJobEntity::getRetryCount, maxRetryCount)
-        .orderByAsc(ParseJobEntity::getUpdatedAt)
-        .last("limit " + normalizedLimit));
+    List<ParseJobEntity> jobs = parseJobRepository.findFailedJobsGreaterThanOrEqualRetryCount(maxRetryCount,
+        normalizedLimit);
     List<ParseRetryCandidate> candidates = new ArrayList<>();
     for (ParseJobEntity job : jobs) {
       candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(),
@@ -201,34 +190,15 @@ public class ParseJobService {
   }
 
   public boolean markParseJobRetrying(UUID jobId) {
-    int updated = parseJobMapper.update(null, new LambdaUpdateWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getId, jobId)
-        .eq(ParseJobEntity::getStatus, "FAILED")
-        .set(ParseJobEntity::getStatus, "RETRYING")
-        .set(ParseJobEntity::getProgress, 35)
-        .set(ParseJobEntity::getErrorCode, null)
-        .set(ParseJobEntity::getUpdatedAt, LocalDateTime.now()));
-    return updated > 0;
+    return parseJobRepository.markJobRetrying(jobId);
   }
 
   public void markParseJobFailedAfterRetryDispatch(UUID jobId, String errorCode) {
-    parseJobMapper.update(null, new LambdaUpdateWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getId, jobId)
-        .eq(ParseJobEntity::getStatus, "RETRYING")
-        .set(ParseJobEntity::getStatus, "FAILED")
-        .set(ParseJobEntity::getProgress, 100)
-        .set(ParseJobEntity::getErrorCode, errorCode)
-        .set(ParseJobEntity::getUpdatedAt, LocalDateTime.now()));
+    parseJobRepository.markJobFailedAfterRetryDispatch(jobId, errorCode);
   }
 
   public void markParseJobDeadLetter(UUID jobId, String errorCode) {
-    parseJobMapper.update(null, new LambdaUpdateWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getId, jobId)
-        .eq(ParseJobEntity::getStatus, "FAILED")
-        .set(ParseJobEntity::getStatus, "DEAD_LETTER")
-        .set(ParseJobEntity::getProgress, 100)
-        .set(ParseJobEntity::getErrorCode, errorCode)
-        .set(ParseJobEntity::getUpdatedAt, LocalDateTime.now()));
+    parseJobRepository.markJobDeadLetter(jobId, errorCode);
   }
 
   public List<AssetRef> listAssetRefsByJobId(UUID jobId) {
@@ -252,9 +222,9 @@ public class ParseJobService {
   }
 
   public ParseJobContext parseJobContext(UUID jobId) {
-    ParseJobEntity job = parseJobMapper.selectById(jobId);
+    ParseJobEntity job = parseJobRepository.findById(jobId);
     if (job == null) {
-      throw new IllegalArgumentException("parse job not found");
+      throw new ResourceNotFoundException("parse job not found");
     }
     return new ParseJobContext(
         String.valueOf(job.getRecordId()),
@@ -263,10 +233,7 @@ public class ParseJobService {
   }
 
   private UUID createOrReuseParseJob(UUID recordId, String idempotencyKey, UUID tenantId) {
-    ParseJobEntity existing = parseJobMapper.selectOne(new LambdaQueryWrapper<ParseJobEntity>()
-        .eq(ParseJobEntity::getTenantId, tenantId)
-        .eq(ParseJobEntity::getIdempotencyKey, idempotencyKey)
-        .last("limit 1"));
+    ParseJobEntity existing = parseJobRepository.findByTenantIdAndIdempotencyKey(tenantId, idempotencyKey);
     if (existing != null) {
       return existing.getId();
     }
@@ -275,7 +242,7 @@ public class ParseJobService {
     job.setId(UUID.randomUUID());
     job.setTenantId(tenantId);
     job.setRecordId(recordService.ensureRecord(recordId));
-    job.setStatus("QUEUED");
+    job.setStatus(ParseJobStatus.QUEUED.name());
     job.setProgress(0);
     job.setRetryCount(0);
     job.setErrorCode(null);
@@ -283,7 +250,7 @@ public class ParseJobService {
     job.setIdempotencyKey(idempotencyKey);
     job.setCreatedAt(LocalDateTime.now());
     job.setUpdatedAt(LocalDateTime.now());
-    parseJobMapper.insert(job);
+    parseJobRepository.save(job);
     return job.getId();
   }
 

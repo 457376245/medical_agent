@@ -1,5 +1,18 @@
 package com.medical.agent.application.service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,17 +43,6 @@ import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ReportCategoryMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class RecordService {
@@ -88,7 +90,8 @@ public class RecordService {
     return ensureRecord(recordId, diseaseProfileId, reportDate, title, null);
   }
 
-  public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title, String sourceType) {
+  public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title,
+      String sourceType) {
     UUID finalRecordId = recordId == null ? UUID.randomUUID() : recordId;
     LocalDate finalReportDate = reportDate == null ? LocalDate.now() : reportDate;
     String finalTitle = title == null || title.isBlank() ? "Imported record" : title;
@@ -240,9 +243,25 @@ public class RecordService {
     List<RecordEntity> window = new ArrayList<>(scopedRecords.subList(anchorIndex, endExclusive));
     Collections.reverse(window);
 
+    List<UUID> windowRecordIds = window.stream().map(RecordEntity::getId).toList();
+    Map<UUID, JsonNode> payloadLookup = new HashMap<>();
+    if (!windowRecordIds.isEmpty()) {
+      List<StructuredResultEntity> allResults = structuredResultMapper
+          .selectList(new LambdaQueryWrapper<StructuredResultEntity>()
+              .select(StructuredResultEntity::getRecordId, StructuredResultEntity::getPayloadJson,
+                  StructuredResultEntity::getRevision)
+              .in(StructuredResultEntity::getRecordId, windowRecordIds)
+              .orderByDesc(StructuredResultEntity::getRevision));
+
+      // Build map where only the latest revision is kept (since it's ordered by desc)
+      for (StructuredResultEntity res : allResults) {
+        payloadLookup.putIfAbsent(res.getRecordId(), parsePayload(res.getPayloadJson()));
+      }
+    }
+
     List<TrendSnapshot> snapshots = new ArrayList<>();
     for (RecordEntity row : window) {
-      JsonNode payload = queryLatestPayloadNode(row.getId());
+      JsonNode payload = payloadLookup.getOrDefault(row.getId(), objectMapper.createObjectNode().putArray("fields"));
       snapshots.add(new TrendSnapshot(
           row.getId().toString(),
           String.valueOf(row.getRecordDate()),
@@ -261,8 +280,9 @@ public class RecordService {
 
   @Transactional
   public boolean deleteRecord(UUID recordId) {
-    dataRightsRequestMapper.delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity>()
-        .eq(com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity::getRecordId, recordId));
+    dataRightsRequestMapper
+        .delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity>()
+            .eq(com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity::getRecordId, recordId));
     structuredResultMapper.delete(new LambdaQueryWrapper<StructuredResultEntity>()
         .eq(StructuredResultEntity::getRecordId, recordId));
     generatedOutputMapper.delete(new LambdaQueryWrapper<GeneratedOutputEntity>()
@@ -273,8 +293,9 @@ public class RecordService {
         .eq(ParseJobEntity::getRecordId, recordId));
     if (!jobs.isEmpty()) {
       List<UUID> jobIds = jobs.stream().map(ParseJobEntity::getId).toList();
-      parseJobAssetMapper.delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity>()
-          .in(com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity::getJobId, jobIds));
+      parseJobAssetMapper
+          .delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity>()
+              .in(com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity::getJobId, jobIds));
     }
 
     parseJobMapper.delete(new LambdaQueryWrapper<ParseJobEntity>().eq(ParseJobEntity::getRecordId, recordId));
@@ -356,10 +377,11 @@ public class RecordService {
     }
 
     String parseStatus = queryLatestParseStatus(recordId);
-    List<StructuredResultEntity> rows = structuredResultMapper.selectList(new LambdaQueryWrapper<StructuredResultEntity>()
-        .eq(StructuredResultEntity::getRecordId, recordId)
-        .orderByDesc(StructuredResultEntity::getRevision)
-        .last("limit 1"));
+    List<StructuredResultEntity> rows = structuredResultMapper
+        .selectList(new LambdaQueryWrapper<StructuredResultEntity>()
+            .eq(StructuredResultEntity::getRecordId, recordId)
+            .orderByDesc(StructuredResultEntity::getRevision)
+            .last("limit 1"));
     StructuredResultData structured;
     if (rows.isEmpty()) {
       structured = new StructuredResultData("v1", 0, objectMapper.createObjectNode().putArray("fields"));
@@ -382,11 +404,12 @@ public class RecordService {
   }
 
   private String querySummary(UUID recordId) {
-    List<GeneratedOutputEntity> outputs = generatedOutputMapper.selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
-        .eq(GeneratedOutputEntity::getRecordId, recordId)
-        .eq(GeneratedOutputEntity::getType, "SUMMARY")
-        .orderByDesc(GeneratedOutputEntity::getVersion)
-        .last("limit 1"));
+    List<GeneratedOutputEntity> outputs = generatedOutputMapper
+        .selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
+            .eq(GeneratedOutputEntity::getRecordId, recordId)
+            .eq(GeneratedOutputEntity::getType, "SUMMARY")
+            .orderByDesc(GeneratedOutputEntity::getVersion)
+            .last("limit 1"));
     if (outputs.isEmpty()) {
       return "No summary yet.";
     }
@@ -407,10 +430,11 @@ public class RecordService {
   }
 
   private StructuredResultData queryLatestStructuredResult(UUID recordId) {
-    List<StructuredResultEntity> rows = structuredResultMapper.selectList(new LambdaQueryWrapper<StructuredResultEntity>()
-        .eq(StructuredResultEntity::getRecordId, recordId)
-        .orderByDesc(StructuredResultEntity::getRevision)
-        .last("limit 1"));
+    List<StructuredResultEntity> rows = structuredResultMapper
+        .selectList(new LambdaQueryWrapper<StructuredResultEntity>()
+            .eq(StructuredResultEntity::getRecordId, recordId)
+            .orderByDesc(StructuredResultEntity::getRevision)
+            .last("limit 1"));
     if (rows.isEmpty()) {
       return new StructuredResultData("v1", 0, objectMapper.createObjectNode());
     }
@@ -419,18 +443,6 @@ public class RecordService {
         latest.getSchemaVersion(),
         latest.getRevision() == null ? 0 : latest.getRevision(),
         parsePayload(latest.getPayloadJson()));
-  }
-
-  private JsonNode queryLatestPayloadNode(UUID recordId) {
-    List<StructuredResultEntity> rows = structuredResultMapper.selectList(new LambdaQueryWrapper<StructuredResultEntity>()
-        .select(StructuredResultEntity::getPayloadJson)
-        .eq(StructuredResultEntity::getRecordId, recordId)
-        .orderByDesc(StructuredResultEntity::getRevision)
-        .last("limit 1"));
-    if (rows.isEmpty()) {
-      return objectMapper.createObjectNode().putArray("fields");
-    }
-    return parsePayload(rows.get(0).getPayloadJson());
   }
 
   private static String sourceTypeLabel(String sourceType) {
