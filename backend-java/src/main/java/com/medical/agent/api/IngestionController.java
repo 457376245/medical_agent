@@ -7,9 +7,16 @@ import com.medical.agent.domain.dto.request.CreateParseJobRequest;
 import com.medical.agent.domain.dto.request.PresignRequest;
 import com.medical.agent.domain.dto.request.ProxyUploadRequest;
 import com.medical.agent.domain.dto.response.AssetCreatedResponseData;
-import com.medical.agent.domain.dto.response.ParseJobResponseData;
 import com.medical.agent.domain.dto.response.PresignResponseData;
 import com.medical.agent.domain.dto.response.ProxyUploadResponseData;
+import com.medical.agent.domain.dto.response.ParseJobResponseData;
+import com.medical.agent.domain.dto.response.ParseJobStatusResponseData;
+import com.medical.agent.domain.dto.response.ParseJobRefResponseData;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -50,4 +57,32 @@ public class IngestionController {
     ParseJobResponseData data = ingestionService.createParseJob(request, idempotencyKey);
     return new ApiResponse<>("OK", "queued", RequestIdUtil.newRequestId(), data);
   }
+
+  @GetMapping("/parse-jobs/{jobId}")
+  public ResponseEntity<ApiResponse<?>> getParseJobStatus(@PathVariable("jobId") String jobId) {
+    UUID jobUuid;
+    try {
+      jobUuid = UUID.fromString(jobId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_PARSE_JOB_ID",
+          "jobId is invalid",
+          RequestIdUtil.newRequestId(),
+          new ParseJobRefResponseData(jobId)));
+    }
+
+    ParseJobStatusResponseData data;
+    try {
+      data = ingestionService.getParseJobStatus(jobUuid);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "parse job not found",
+          RequestIdUtil.newRequestId(),
+          new ParseJobRefResponseData(jobId)));
+    }
+
+    return ResponseEntity.ok(new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data));
+  }
 }
+

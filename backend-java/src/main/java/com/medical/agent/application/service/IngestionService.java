@@ -7,6 +7,7 @@ import com.medical.agent.domain.dto.request.PresignRequest;
 import com.medical.agent.domain.dto.request.ProxyUploadRequest;
 import com.medical.agent.domain.dto.response.AssetCreatedResponseData;
 import com.medical.agent.domain.dto.response.ParseJobResponseData;
+import com.medical.agent.domain.dto.response.ParseJobStatusResponseData;
 import com.medical.agent.domain.dto.response.PresignResponseData;
 import com.medical.agent.domain.dto.response.ProxyUploadResponseData;
 import java.time.Instant;
@@ -96,5 +97,9 @@ public class IngestionService {
 
   public ParseJobResponseData createParseJob(CreateParseJobRequest request, String idempotencyKey) {
     return parseJobService.create(request, idempotencyKey);
+  }
+
+  public ParseJobStatusResponseData getParseJobStatus(UUID jobId) {
+    return parseJobService.getStatus(jobId);
   }
 }

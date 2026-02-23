@@ -1,6 +1,7 @@
 package com.medical.agent.application.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.medical.agent.domain.vo.ReportCategorySummary;
 import com.medical.agent.infrastructure.persistence.ScopeConstants;
 import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
@@ -9,7 +10,9 @@ import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ReportCategoryMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -54,17 +57,15 @@ public class ReportCategoryService {
         .orderByDesc(ReportCategoryEntity::getUpdatedAt)
         .orderByAsc(ReportCategoryEntity::getName));
 
+    Map<String, Integer> countsBySourceType = loadRecordCountsBySourceType();
     List<ReportCategorySummary> result = new ArrayList<>();
     for (ReportCategoryEntity category : categories) {
-      Long recordCount = recordMapper.selectCount(new LambdaQueryWrapper<RecordEntity>()
-          .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-          .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
-          .eq(RecordEntity::getSourceType, category.getName()));
+      String categoryName = String.valueOf(category.getName());
       result.add(new ReportCategorySummary(
           String.valueOf(category.getId()),
-          String.valueOf(category.getName()),
+          categoryName,
           String.valueOf(category.getUpdatedAt()),
-          recordCount == null ? 0 : recordCount.intValue()));
+          countsBySourceType.getOrDefault(categoryName, 0)));
     }
     return result;
   }
@@ -125,6 +126,27 @@ public class ReportCategoryService {
         .eq(ReportCategoryEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
         .apply("lower(name) = lower({0})", normalizedName)
         .last("limit 1"));
+  }
+
+  private Map<String, Integer> loadRecordCountsBySourceType() {
+    List<Map<String, Object>> rows = recordMapper.selectMaps(new QueryWrapper<RecordEntity>()
+        .select("source_type", "count(*) as total")
+        .eq("tenant_id", ScopeConstants.DEFAULT_TENANT_ID)
+        .eq("user_id", ScopeConstants.DEFAULT_USER_ID)
+        .isNotNull("source_type")
+        .groupBy("source_type"));
+
+    Map<String, Integer> countsBySourceType = new HashMap<>();
+    for (Map<String, Object> row : rows) {
+      Object sourceType = row.get("source_type");
+      if (sourceType == null) {
+        continue;
+      }
+      Object total = row.get("total");
+      int count = total instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(total));
+      countsBySourceType.put(String.valueOf(sourceType), count);
+    }
+    return countsBySourceType;
   }
 
   private String normalizeName(String name) {

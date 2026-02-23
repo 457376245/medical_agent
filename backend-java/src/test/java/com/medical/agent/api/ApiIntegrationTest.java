@@ -115,6 +115,94 @@ class ApiIntegrationTest {
   }
 
   @Test
+  void parseJobStatusEndpointReturnsQueuedThenSuccess() {
+    UUID recordId = UUID.randomUUID();
+
+    ResponseEntity<Map> assetResp = postJson("/api/ingestions/assets", Map.of(
+        "objectKey", "uploads/seed/status-check.pdf",
+        "checksum", "sha256:status-check",
+        "recordId", recordId.toString(),
+        "size", 100));
+    String assetId = String.valueOf(dataOf(assetResp.getBody()).get("assetId"));
+
+    HttpHeaders jobHeaders = jsonHeaders();
+    jobHeaders.set("Idempotency-Key", "status-" + UUID.randomUUID());
+    ResponseEntity<Map> createJobResp = restTemplate.exchange(
+        "/api/ingestions/parse-jobs",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
+        Map.class);
+    String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
+
+    ResponseEntity<Map> statusBefore = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + jobId, Map.class);
+    assertEquals(HttpStatus.OK, statusBefore.getStatusCode());
+    assertEquals("QUEUED", String.valueOf(dataOf(statusBefore.getBody()).get("status")));
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[{\"name\":\"glucose\",\"value\":\"5.1\"}]}," +
+            "\"confidence\":0.9," +
+            "\"errors\":[]" +
+            "}");
+
+    ResponseEntity<Map> statusAfter = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + jobId, Map.class);
+    assertEquals(HttpStatus.OK, statusAfter.getStatusCode());
+    assertEquals("SUCCESS", String.valueOf(dataOf(statusAfter.getBody()).get("status")));
+    assertEquals(100, ((Number) dataOf(statusAfter.getBody()).get("progress")).intValue());
+  }
+
+  @Test
+  void parseJobStatusEndpointRejectsInvalidJobId() {
+    ResponseEntity<Map> response = restTemplate.getForEntity("/api/ingestions/parse-jobs/not-a-uuid", Map.class);
+    assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+    assertEquals("INVALID_PARSE_JOB_ID", String.valueOf(response.getBody().get("code")));
+    assertEquals("not-a-uuid", String.valueOf(dataOf(response.getBody()).get("jobId")));
+  }
+
+  @Test
+  void parseJobStatusEndpointReturnsNotFoundForMissingJobId() {
+    String missingJobId = UUID.randomUUID().toString();
+    ResponseEntity<Map> response = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + missingJobId, Map.class);
+    assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+    assertEquals("NOT_FOUND", String.valueOf(response.getBody().get("code")));
+    assertEquals(missingJobId, String.valueOf(dataOf(response.getBody()).get("jobId")));
+  }
+
+  @Test
+  void deleteReportCategoryRejectsWhenLinkedRecordsExist() {
+    String sourceType = "分类" + UUID.randomUUID().toString().substring(0, 8);
+    UUID recordId = UUID.randomUUID();
+
+    postJson("/api/ingestions/assets", Map.of(
+        "objectKey", "uploads/seed/report-category-delete.pdf",
+        "checksum", "sha256:report-category-delete",
+        "recordId", recordId.toString(),
+        "sourceType", sourceType,
+        "size", 10));
+
+    ResponseEntity<Map> categoriesResp = restTemplate.getForEntity("/api/report-categories", Map.class);
+    assertEquals(HttpStatus.OK, categoriesResp.getStatusCode());
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> categories = (List<Map<String, Object>>) dataOf(categoriesResp.getBody()).get("categories");
+    String categoryId = categories.stream()
+        .filter(item -> sourceType.equals(String.valueOf(item.get("name"))))
+        .map(item -> String.valueOf(item.get("id")))
+        .findFirst()
+        .orElseThrow();
+
+    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+        "/api/report-categories/" + categoryId,
+        HttpMethod.DELETE,
+        new HttpEntity<>(jsonHeaders()),
+        Map.class);
+    assertEquals(HttpStatus.CONFLICT, deleteResp.getStatusCode());
+    assertEquals("false", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
+    assertEquals("HAS_ASSOCIATED_RECORDS", String.valueOf(dataOf(deleteResp.getBody()).get("reason")));
+  }
+
+  @Test
   void deleteRecordEndpointRemovesRecord() {
     UUID recordId = UUID.randomUUID();
     postJson("/api/ingestions/assets", Map.of(
@@ -237,4 +325,5 @@ class ApiIntegrationTest {
     return (Map<String, Object>) body.get("data");
   }
 }
+
 

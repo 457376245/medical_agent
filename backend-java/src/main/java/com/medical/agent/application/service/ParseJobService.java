@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.yulichang.toolkit.JoinWrappers;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.domain.dto.request.CreateParseJobRequest;
 import com.medical.agent.domain.dto.response.ParseJobResponseData;
+import com.medical.agent.domain.dto.response.ParseJobStatusResponseData;
 import com.medical.agent.domain.vo.AssetRef;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.ParseRequestEvent;
@@ -38,6 +40,7 @@ public class ParseJobService {
   private final GeneratedOutputMapper generatedOutputMapper;
   private final RecordService recordService;
   private final ParseRequestPublisher parseRequestPublisher;
+  private final TenantContextProvider tenantContextProvider;
 
   public ParseJobService(
       ParseJobMapper parseJobMapper,
@@ -45,22 +48,27 @@ public class ParseJobService {
       StructuredResultMapper structuredResultMapper,
       GeneratedOutputMapper generatedOutputMapper,
       RecordService recordService,
-      ParseRequestPublisher parseRequestPublisher) {
+      ParseRequestPublisher parseRequestPublisher,
+      TenantContextProvider tenantContextProvider) {
     this.parseJobMapper = parseJobMapper;
     this.parseJobAssetMapper = parseJobAssetMapper;
     this.structuredResultMapper = structuredResultMapper;
     this.generatedOutputMapper = generatedOutputMapper;
     this.recordService = recordService;
     this.parseRequestPublisher = parseRequestPublisher;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
-  public record ParseApplyResult(UUID recordId, String finalStatus, boolean stateChanged) {}
+  public record ParseApplyResult(UUID recordId, String finalStatus, boolean stateChanged) {
+  }
 
-  public record ParseRetryCandidate(UUID jobId, UUID recordId, int retryCount) {}
+  public record ParseRetryCandidate(UUID jobId, UUID recordId, int retryCount) {
+  }
 
   public ParseJobResponseData create(CreateParseJobRequest request, String idempotencyKey) {
     UUID recordId = UUID.fromString(request.recordId());
-    UUID jobId = createOrReuseParseJob(recordId, idempotencyKey);
+    UUID tenantId = tenantContextProvider.currentTenantId();
+    UUID jobId = createOrReuseParseJob(recordId, idempotencyKey, tenantId);
 
     List<String> rawAssetIds = request.assetIds() == null ? List.of() : request.assetIds();
     List<UUID> assetIds = rawAssetIds.stream().map(UUID::fromString).toList();
@@ -79,6 +87,23 @@ public class ParseJobService {
         idempotencyKey));
 
     return new ParseJobResponseData(jobId.toString(), "QUEUED");
+  }
+
+  public ParseJobStatusResponseData getStatus(UUID jobId) {
+    UUID tenantId = tenantContextProvider.currentTenantId();
+    ParseJobEntity job = parseJobMapper.selectOne(new LambdaQueryWrapper<ParseJobEntity>()
+        .eq(ParseJobEntity::getId, jobId)
+        .eq(ParseJobEntity::getTenantId, tenantId)
+        .last("limit 1"));
+    if (job == null) {
+      throw new IllegalArgumentException("parse job not found");
+    }
+    return new ParseJobStatusResponseData(
+        String.valueOf(job.getId()),
+        String.valueOf(job.getStatus()),
+        job.getProgress(),
+        job.getErrorCode(),
+        job.getUpdatedAt() == null ? null : job.getUpdatedAt().toString());
   }
 
   @Transactional
@@ -154,7 +179,8 @@ public class ParseJobService {
         .last("limit " + normalizedLimit));
     List<ParseRetryCandidate> candidates = new ArrayList<>();
     for (ParseJobEntity job : jobs) {
-      candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(), job.getRetryCount() == null ? 0 : job.getRetryCount()));
+      candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(),
+          job.getRetryCount() == null ? 0 : job.getRetryCount()));
     }
     return candidates;
   }
@@ -168,7 +194,8 @@ public class ParseJobService {
         .last("limit " + normalizedLimit));
     List<ParseRetryCandidate> candidates = new ArrayList<>();
     for (ParseJobEntity job : jobs) {
-      candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(), job.getRetryCount() == null ? 0 : job.getRetryCount()));
+      candidates.add(new ParseRetryCandidate(job.getId(), job.getRecordId(),
+          job.getRetryCount() == null ? 0 : job.getRetryCount()));
     }
     return candidates;
   }
@@ -235,8 +262,9 @@ public class ParseJobService {
         ScopeConstants.DEFAULT_USER_ID.toString());
   }
 
-  private UUID createOrReuseParseJob(UUID recordId, String idempotencyKey) {
+  private UUID createOrReuseParseJob(UUID recordId, String idempotencyKey, UUID tenantId) {
     ParseJobEntity existing = parseJobMapper.selectOne(new LambdaQueryWrapper<ParseJobEntity>()
+        .eq(ParseJobEntity::getTenantId, tenantId)
         .eq(ParseJobEntity::getIdempotencyKey, idempotencyKey)
         .last("limit 1"));
     if (existing != null) {
@@ -245,7 +273,7 @@ public class ParseJobService {
 
     ParseJobEntity job = new ParseJobEntity();
     job.setId(UUID.randomUUID());
-    job.setTenantId(ScopeConstants.DEFAULT_TENANT_ID);
+    job.setTenantId(tenantId);
     job.setRecordId(recordService.ensureRecord(recordId));
     job.setStatus("QUEUED");
     job.setProgress(0);
@@ -270,12 +298,13 @@ public class ParseJobService {
   }
 
   private int nextGeneratedOutputVersion(UUID recordId, String type) {
-    List<GeneratedOutputEntity> latest = generatedOutputMapper.selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
-        .select(GeneratedOutputEntity::getVersion)
-        .eq(GeneratedOutputEntity::getRecordId, recordId)
-        .eq(GeneratedOutputEntity::getType, type)
-        .orderByDesc(GeneratedOutputEntity::getVersion)
-        .last("limit 1"));
+    List<GeneratedOutputEntity> latest = generatedOutputMapper
+        .selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
+            .select(GeneratedOutputEntity::getVersion)
+            .eq(GeneratedOutputEntity::getRecordId, recordId)
+            .eq(GeneratedOutputEntity::getType, type)
+            .orderByDesc(GeneratedOutputEntity::getVersion)
+            .last("limit 1"));
     if (latest.isEmpty() || latest.get(0).getVersion() == null) {
       return 1;
     }

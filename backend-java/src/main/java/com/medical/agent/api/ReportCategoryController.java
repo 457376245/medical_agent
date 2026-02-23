@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -61,9 +60,7 @@ public class ReportCategoryController {
   }
 
   @DeleteMapping("/{reportCategoryId}")
-  public ResponseEntity<ApiResponse<?>> delete(
-      @PathVariable("reportCategoryId") String reportCategoryId,
-      @RequestParam(value = "onlyIfEmpty", defaultValue = "true") boolean onlyIfEmpty) {
+  public ResponseEntity<ApiResponse<?>> delete(@PathVariable("reportCategoryId") String reportCategoryId) {
     UUID categoryId;
     try {
       categoryId = UUID.fromString(reportCategoryId);
@@ -84,7 +81,7 @@ public class ReportCategoryController {
     }
 
     int linkedCount = reportCategoryService.countRecords(categoryId);
-    if (onlyIfEmpty && linkedCount > 0) {
+    if (linkedCount > 0) {
       return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(
           "CONFLICT",
           "report category has associated records",
