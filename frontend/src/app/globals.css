@@ -1663,10 +1663,11 @@ a {
 .home-disease-actions {
   display: flex;
   width: 100%;
+  gap: 12px;
 }
 
 .home-view-btn-full {
-  width: 100%;
+  flex: 1;
   border-radius: 8px;
   background: #19715e;
   color: #ffffff;
@@ -1684,6 +1685,202 @@ a {
 
 .home-view-btn-full:hover {
   background: #156251;
+}
+
+.home-upload-mini-btn {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #eef6f2;
+  color: #19715e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.home-upload-mini-btn:hover {
+  background: #e2efea;
+  transform: translateY(-1px);
+}
+
+.add-disease-card {
+  border: 1px dashed #cfe0e7;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-height: 180px;
+}
+
+.add-disease-card:hover {
+  border-color: #19715e;
+  background: rgba(25, 113, 94, 0.02);
+}
+
+.add-disease-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.add-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #eef6f2;
+  color: #19715e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.add-disease-card:hover .add-icon-wrapper {
+  transform: scale(1.05);
+}
+
+.add-disease-content h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #18272f;
+}
+
+.add-disease-content p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #607784;
+}
+
+/* Add-disease card: editing state */
+.add-disease-card--editing {
+  cursor: default;
+  border-color: var(--primary);
+  background: var(--surface-strong);
+  box-shadow: var(--ring);
+}
+
+.add-disease-card--editing:hover {
+  border-color: var(--primary);
+  background: var(--surface-strong);
+}
+
+.add-disease-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+}
+
+.add-icon-wrapper--small {
+  width: 36px;
+  height: 36px;
+}
+
+.add-disease-form-label {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.add-disease-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.add-disease-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(25, 113, 94, 0.12);
+}
+
+.add-disease-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-disease-input::placeholder {
+  color: #a0b4be;
+}
+
+.add-disease-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--danger);
+  align-self: flex-start;
+}
+
+.add-disease-form-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.add-disease-confirm-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.add-disease-confirm-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-disease-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-disease-cancel-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.add-disease-cancel-btn:hover:not(:disabled) {
+  background: #f3f7f9;
+  border-color: #b8c9d1;
+}
+
+.add-disease-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Loading animation for buttons */

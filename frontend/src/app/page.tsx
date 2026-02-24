@@ -5,14 +5,17 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/
 type DiseaseProfileOverviewResponse = {
   data?: {
     profiles?: Array<{
+      id?: string;
       profile_id?: string;
       profileId?: string;
+      name?: string;
       disease_name?: string;
       diseaseName?: string;
       record_count?: number;
       recordCount?: number;
       latest_record_at?: string;
       latestRecordAt?: string;
+      updatedAt?: string;
       latest_record_id?: string;
       latestRecordId?: string;
       latest_record_title?: string;
@@ -40,10 +43,10 @@ export default async function HomePage() {
       const payload = (await response.json()) as DiseaseProfileOverviewResponse;
       profiles = (payload.data?.profiles ?? [])
         .map((item) => ({
-          profileId: item.profileId ?? item.profile_id ?? "unknown-profile",
-          diseaseName: item.diseaseName ?? item.disease_name ?? "未分类疾病",
+          profileId: item.profileId ?? item.profile_id ?? item.id ?? "unknown-profile",
+          diseaseName: item.diseaseName ?? item.disease_name ?? item.name ?? "未分类疾病",
           recordCount: item.recordCount ?? item.record_count ?? 0,
-          latestRecordAt: item.latestRecordAt ?? item.latest_record_at,
+          latestRecordAt: item.latestRecordAt ?? item.latest_record_at ?? item.updatedAt,
           latestRecordId: item.latestRecordId ?? item.latest_record_id,
           latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title,
           latestParseStatus: item.latestParseStatus ?? item.latest_parse_status,

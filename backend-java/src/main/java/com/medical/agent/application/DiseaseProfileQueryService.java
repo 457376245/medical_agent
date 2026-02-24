@@ -37,6 +37,14 @@ public class DiseaseProfileQueryService {
 
   @Operation(summary = "查询疾病档案总览数据", description = "按最新记录时间聚合疾病档案，返回记录数、最新记录与解析状态")
   public List<DiseaseProfileOverview> listProfiles() {
+    // 1. Load all disease profiles for this user
+    List<DiseaseProfileEntity> allProfiles = diseaseProfileMapper.selectList(
+        new LambdaQueryWrapper<DiseaseProfileEntity>()
+            .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
+            .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+            .orderByDesc(DiseaseProfileEntity::getUpdatedAt));
+
+    // 2. Load all records and group by profileId
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
@@ -56,23 +64,36 @@ public class DiseaseProfileQueryService {
       }
     }
 
+    // 3. Build result: every profile appears, with or without records
     List<DiseaseProfileOverview> result = new ArrayList<>();
-    for (Map.Entry<UUID, ProfileAccumulator> entry : grouped.entrySet()) {
-      UUID profileId = entry.getKey();
-      ProfileAccumulator accumulator = entry.getValue();
-      DiseaseProfileEntity profile = diseaseProfileMapper.selectById(profileId);
-      String diseaseName = profile == null || profile.getName() == null || profile.getName().isBlank()
+    for (DiseaseProfileEntity profile : allProfiles) {
+      UUID profileId = profile.getId();
+      String diseaseName = profile.getName() == null || profile.getName().isBlank()
           ? "未分类疾病"
           : profile.getName();
-      String latestParseStatus = queryLatestParseStatus(accumulator.latestRecord.getId());
-      result.add(new DiseaseProfileOverview(
-          String.valueOf(profileId),
-          diseaseName,
-          accumulator.recordCount,
-          String.valueOf(accumulator.latestRecord.getRecordDate()),
-          String.valueOf(accumulator.latestRecord.getId()),
-          accumulator.latestRecord.getTitle() == null ? "未命名报告" : accumulator.latestRecord.getTitle(),
-          latestParseStatus));
+
+      ProfileAccumulator accumulator = grouped.get(profileId);
+      if (accumulator != null) {
+        String latestParseStatus = queryLatestParseStatus(accumulator.latestRecord.getId());
+        result.add(new DiseaseProfileOverview(
+            String.valueOf(profileId),
+            diseaseName,
+            accumulator.recordCount,
+            String.valueOf(accumulator.latestRecord.getRecordDate()),
+            String.valueOf(accumulator.latestRecord.getId()),
+            accumulator.latestRecord.getTitle() == null ? "未命名报告" : accumulator.latestRecord.getTitle(),
+            latestParseStatus));
+      } else {
+        // Profile with 0 records
+        result.add(new DiseaseProfileOverview(
+            String.valueOf(profileId),
+            diseaseName,
+            0,
+            null,
+            null,
+            null,
+            "NOT_PARSED"));
+      }
     }
     return result;
   }
