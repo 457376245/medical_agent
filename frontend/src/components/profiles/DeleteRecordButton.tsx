@@ -30,7 +30,7 @@ export function DeleteRecordButton({ recordId, profileId, isSelected }: DeleteRe
       }
       setConfirmOpen(false);
       if (isSelected) {
-        router.push(`/profiles?profileId=${profileId}`);
+        router.push(`/profiles/${profileId}`);
       }
       router.refresh();
     } catch {

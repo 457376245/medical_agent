@@ -136,7 +136,18 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
               <div className="home-disease-actions">
                 <Link
                   className="home-view-btn-full"
-                  href={`/profiles?profileId=${encodeURIComponent(item.profileId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
+                  href={`/profiles/${encodeURIComponent(item.profileId)}`}
+                  onClick={(e) => {
+                    const el = e.currentTarget;
+                    el.innerHTML = `
+                      <svg class="btn-loading-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                      </svg>
+                      加载中...
+                    `;
+                    el.style.pointerEvents = 'none';
+                    el.style.opacity = '0.7';
+                  }}
                 >
                   查看分析
                 </Link>
