@@ -21,6 +21,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -34,6 +35,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest(classes = MedicalAgentApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ApiIntegrationTest {
   @Container
+  @SuppressWarnings("resource")
   static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
       .withDatabaseName("medical_agent_test")
       .withUsername("medical")
@@ -60,7 +62,7 @@ class ApiIntegrationTest {
   void endToEndParseFlowPersistsAndReturnsRecord() {
     UUID recordId = UUID.randomUUID();
 
-    ResponseEntity<Map> presignResp = postJson("/api/ingestions/presign", Map.of(
+    ResponseEntity<Map<String, Object>> presignResp = postJson("/api/ingestions/presign", Map.of(
         "fileName", "lab.pdf",
         "contentType", "application/pdf",
         "size", 12345));
@@ -68,7 +70,7 @@ class ApiIntegrationTest {
     Map<String, Object> presignData = dataOf(presignResp.getBody());
     assertTrue(String.valueOf(presignData.get("objectKey")).contains("lab.pdf"));
 
-    ResponseEntity<Map> assetResp = postJson("/api/ingestions/assets", Map.of(
+    ResponseEntity<Map<String, Object>> assetResp = postJson("/api/ingestions/assets", Map.of(
         "objectKey", presignData.get("objectKey"),
         "checksum", "sha256:abc",
         "recordId", recordId.toString(),
@@ -79,11 +81,11 @@ class ApiIntegrationTest {
 
     HttpHeaders jobHeaders = jsonHeaders();
     jobHeaders.set("Idempotency-Key", "job-" + UUID.randomUUID());
-    ResponseEntity<Map> createJobResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> createJobResp = restTemplate.exchange(
         "/api/ingestions/parse-jobs",
         HttpMethod.POST,
         new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, createJobResp.getStatusCode());
     String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
 
@@ -100,7 +102,7 @@ class ApiIntegrationTest {
             "\"errors\":[]" +
             "}");
 
-    ResponseEntity<Map> recordResp = restTemplate.getForEntity("/api/records/" + recordId, Map.class);
+    ResponseEntity<Map<String, Object>> recordResp = restTemplate.exchange("/api/records/" + recordId, HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, recordResp.getStatusCode());
     String summary = String.valueOf(dataOf(recordResp.getBody()).get("summary"));
     assertFalse(summary.isBlank());
@@ -108,7 +110,7 @@ class ApiIntegrationTest {
 
   @Test
   void parseJobCreationRequiresIdempotencyKey() {
-    ResponseEntity<Map> missingHeaderResp = postJson(
+    ResponseEntity<Map<String, Object>> missingHeaderResp = postJson(
         "/api/ingestions/parse-jobs",
         Map.of("assetIds", List.of(UUID.randomUUID().toString()), "recordId", UUID.randomUUID().toString()));
     assertEquals(HttpStatus.BAD_REQUEST, missingHeaderResp.getStatusCode());
@@ -118,7 +120,7 @@ class ApiIntegrationTest {
   void parseJobStatusEndpointReturnsQueuedThenSuccess() {
     UUID recordId = UUID.randomUUID();
 
-    ResponseEntity<Map> assetResp = postJson("/api/ingestions/assets", Map.of(
+    ResponseEntity<Map<String, Object>> assetResp = postJson("/api/ingestions/assets", Map.of(
         "objectKey", "uploads/seed/status-check.pdf",
         "checksum", "sha256:status-check",
         "recordId", recordId.toString(),
@@ -127,14 +129,14 @@ class ApiIntegrationTest {
 
     HttpHeaders jobHeaders = jsonHeaders();
     jobHeaders.set("Idempotency-Key", "status-" + UUID.randomUUID());
-    ResponseEntity<Map> createJobResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> createJobResp = restTemplate.exchange(
         "/api/ingestions/parse-jobs",
         HttpMethod.POST,
         new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
 
-    ResponseEntity<Map> statusBefore = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + jobId, Map.class);
+    ResponseEntity<Map<String, Object>> statusBefore = restTemplate.exchange("/api/ingestions/parse-jobs/" + jobId, HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, statusBefore.getStatusCode());
     assertEquals("QUEUED", String.valueOf(dataOf(statusBefore.getBody()).get("status")));
 
@@ -147,7 +149,7 @@ class ApiIntegrationTest {
             "\"errors\":[]" +
             "}");
 
-    ResponseEntity<Map> statusAfter = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + jobId, Map.class);
+    ResponseEntity<Map<String, Object>> statusAfter = restTemplate.exchange("/api/ingestions/parse-jobs/" + jobId, HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, statusAfter.getStatusCode());
     assertEquals("SUCCESS", String.valueOf(dataOf(statusAfter.getBody()).get("status")));
     assertEquals(100, ((Number) dataOf(statusAfter.getBody()).get("progress")).intValue());
@@ -155,7 +157,7 @@ class ApiIntegrationTest {
 
   @Test
   void parseJobStatusEndpointRejectsInvalidJobId() {
-    ResponseEntity<Map> response = restTemplate.getForEntity("/api/ingestions/parse-jobs/not-a-uuid", Map.class);
+    ResponseEntity<Map<String, Object>> response = restTemplate.exchange("/api/ingestions/parse-jobs/not-a-uuid", HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
     assertEquals("INVALID_PARSE_JOB_ID", String.valueOf(response.getBody().get("code")));
     assertEquals("not-a-uuid", String.valueOf(dataOf(response.getBody()).get("jobId")));
@@ -164,7 +166,7 @@ class ApiIntegrationTest {
   @Test
   void parseJobStatusEndpointReturnsNotFoundForMissingJobId() {
     String missingJobId = UUID.randomUUID().toString();
-    ResponseEntity<Map> response = restTemplate.getForEntity("/api/ingestions/parse-jobs/" + missingJobId, Map.class);
+    ResponseEntity<Map<String, Object>> response = restTemplate.exchange("/api/ingestions/parse-jobs/" + missingJobId, HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     assertEquals("NOT_FOUND", String.valueOf(response.getBody().get("code")));
     assertEquals(missingJobId, String.valueOf(dataOf(response.getBody()).get("jobId")));
@@ -182,7 +184,7 @@ class ApiIntegrationTest {
         "sourceType", sourceType,
         "size", 10));
 
-    ResponseEntity<Map> categoriesResp = restTemplate.getForEntity("/api/report-categories", Map.class);
+    ResponseEntity<Map<String, Object>> categoriesResp = restTemplate.exchange("/api/report-categories", HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, categoriesResp.getStatusCode());
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> categories = (List<Map<String, Object>>) dataOf(categoriesResp.getBody()).get("categories");
@@ -192,11 +194,11 @@ class ApiIntegrationTest {
         .findFirst()
         .orElseThrow();
 
-    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> deleteResp = restTemplate.exchange(
         "/api/report-categories/" + categoryId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.CONFLICT, deleteResp.getStatusCode());
     assertEquals("false", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
     assertEquals("HAS_ASSOCIATED_RECORDS", String.valueOf(dataOf(deleteResp.getBody()).get("reason")));
@@ -211,26 +213,26 @@ class ApiIntegrationTest {
         "recordId", recordId.toString(),
         "size", 10));
 
-    ResponseEntity<Map> firstDelete = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> firstDelete = restTemplate.exchange(
         "/api/records/" + recordId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, firstDelete.getStatusCode());
     assertEquals("true", String.valueOf(dataOf(firstDelete.getBody()).get("deleted")));
 
-    ResponseEntity<Map> secondDelete = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> secondDelete = restTemplate.exchange(
         "/api/records/" + recordId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.NOT_FOUND, secondDelete.getStatusCode());
     assertEquals("false", String.valueOf(dataOf(secondDelete.getBody()).get("deleted")));
   }
 
   @Test
   void deleteDiseaseProfileEndpointRemovesProfileAndRecords() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "慢性肾病"));
+    ResponseEntity<Map<String, Object>> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "慢性肾病"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
@@ -242,15 +244,15 @@ class ApiIntegrationTest {
         "diseaseProfileId", diseaseProfileId,
         "size", 10));
 
-    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> deleteResp = restTemplate.exchange(
         "/api/disease-profiles/" + diseaseProfileId,
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, deleteResp.getStatusCode());
     assertEquals("true", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
 
-    ResponseEntity<Map> profilesResp = restTemplate.getForEntity("/api/disease-profiles", Map.class);
+    ResponseEntity<Map<String, Object>> profilesResp = restTemplate.exchange("/api/disease-profiles", HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> profiles = (List<Map<String, Object>>) dataOf(profilesResp.getBody()).get("profiles");
     boolean exists = profiles.stream()
@@ -260,7 +262,7 @@ class ApiIntegrationTest {
 
   @Test
   void deleteDiseaseProfileOnlyIfEmptyRejectsWhenLinkedRecordsExist() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "糖尿病"));
+    ResponseEntity<Map<String, Object>> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "糖尿病"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
@@ -272,11 +274,11 @@ class ApiIntegrationTest {
         "diseaseProfileId", diseaseProfileId,
         "size", 10));
 
-    ResponseEntity<Map> deleteResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> deleteResp = restTemplate.exchange(
         "/api/disease-profiles/" + diseaseProfileId + "?onlyIfEmpty=true",
         HttpMethod.DELETE,
         new HttpEntity<>(jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.CONFLICT, deleteResp.getStatusCode());
     assertEquals("false", String.valueOf(dataOf(deleteResp.getBody()).get("deleted")));
     assertEquals("HAS_ASSOCIATED_RECORDS", String.valueOf(dataOf(deleteResp.getBody()).get("reason")));
@@ -284,7 +286,7 @@ class ApiIntegrationTest {
 
   @Test
   void updateRecordSourceTypeEndpointUpdatesCategoryAndTitle() {
-    ResponseEntity<Map> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "高血压"));
+    ResponseEntity<Map<String, Object>> createProfileResp = postJson("/api/disease-profiles", Map.of("name", "高血压"));
     assertEquals(HttpStatus.OK, createProfileResp.getStatusCode());
     String diseaseProfileId = String.valueOf(dataOf(createProfileResp.getBody()).get("diseaseProfileId"));
     UUID recordId = UUID.randomUUID();
@@ -299,19 +301,19 @@ class ApiIntegrationTest {
         "title", "原始标题",
         "size", 10));
 
-    ResponseEntity<Map> updateResp = restTemplate.exchange(
+    ResponseEntity<Map<String, Object>> updateResp = restTemplate.exchange(
         "/api/records/" + recordId + "/source-type",
         HttpMethod.PATCH,
         new HttpEntity<>(Map.of("sourceType", "LAB"), jsonHeaders()),
-        Map.class);
+        new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.OK, updateResp.getStatusCode());
     assertEquals("true", String.valueOf(dataOf(updateResp.getBody()).get("updated")));
     assertEquals("LAB", String.valueOf(dataOf(updateResp.getBody()).get("sourceType")));
     assertTrue(String.valueOf(dataOf(updateResp.getBody()).get("title")).contains("检验报告"));
   }
 
-  private ResponseEntity<Map> postJson(String path, Map<String, Object> body) {
-    return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(body, jsonHeaders()), Map.class);
+  private ResponseEntity<Map<String, Object>> postJson(String path, Map<String, Object> body) {
+    return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(body, jsonHeaders()), new ParameterizedTypeReference<Map<String, Object>>() {});
   }
 
   private HttpHeaders jsonHeaders() {

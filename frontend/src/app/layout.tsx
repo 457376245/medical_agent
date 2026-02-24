@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
 import { Noto_Sans_SC, Noto_Serif_SC } from "next/font/google";
-import { Providers } from "./providers";
+import type { ReactNode } from "react";
 import { UserTopBar } from "../components/layout/UserTopBar";
 import "./globals.css";
+import { Providers } from "./providers";
 
 const bodyFont = Noto_Sans_SC({
   subsets: ["latin"],

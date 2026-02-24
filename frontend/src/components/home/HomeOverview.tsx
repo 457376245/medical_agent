@@ -121,56 +121,111 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
   };
 
   return (
-    <main className="timeline-home">
-      <section className="timeline-section">
-        <div className="timeline-section-head">
-          <h3>疾病分类卡片</h3>
+    <main className="home-dashboard">
+      <section className="home-hero-card reveal">
+        <div className="home-hero-top">
+          <div className="home-hero-copy">
+            <p className="home-hero-kicker">健康档案总览</p>
+            <h2 className="home-hero-title">我的健康档案</h2>
+            <p className="home-hero-desc">按疾病追踪报告变化，快速定位需要关注的检查结果。</p>
+          </div>
+          <div className="home-hero-actions">
+            <button className="home-pill-btn home-pill-btn-primary" type="button" onClick={() => openUploadDialog()}>
+              上传报告
+            </button>
+            <Link className="home-pill-btn home-pill-btn-ghost" href="/agent">
+              AI 智能分析
+            </Link>
+          </div>
+        </div>
+
+        <div className="home-status-grid">
+          <article className="home-status-card home-status-processing">
+            <div className="home-status-icon" aria-hidden="true">
+              ⟳
+            </div>
+            <div className="home-status-content">
+              <p>处理中</p>
+              <strong>{overview.processing}</strong>
+            </div>
+          </article>
+          <article className="home-status-card home-status-done">
+            <div className="home-status-icon" aria-hidden="true">
+              ✓
+            </div>
+            <div className="home-status-content">
+              <p>已完成</p>
+              <strong>{overview.parsed}</strong>
+            </div>
+          </article>
+          <article className="home-status-card home-status-pending">
+            <div className="home-status-icon" aria-hidden="true">
+              !
+            </div>
+            <div className="home-status-content">
+              <p>待处理</p>
+              <strong>{overview.needAttention}</strong>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="home-disease-section reveal reveal-delay-1">
+        <div className="home-disease-headline">
+          <h3>疾病分类</h3>
+          <p>选择分类可查看该疾病下全部报告与趋势详情。</p>
         </div>
 
         {batches.length === 0 ? (
-          <p className="empty-tip">当前还没有任何疾病分类记录，点击上方“上传报告”添加第一份病历。</p>
+          <p className="empty-tip">当前还没有疾病报告，点击上方“上传报告”创建第一份记录。</p>
         ) : (
-          <div className="disease-focus-grid">
+          <div className="home-disease-grid">
             {batches.map((item) => {
               const status = statusMeta(item.latestParseStatus);
               const canDelete = item.batchId !== "unknown";
               const isDeleting = deletingBatchId === item.batchId;
               return (
-                <article className="disease-focus-card" key={item.batchId}>
-                  <div className="disease-focus-head">
-                    <h4>{item.diseaseName}</h4>
-                    <span className={`status-chip ${status.className}`}>{status.label}</span>
+                <article className="home-disease-card" key={item.batchId}>
+                  <div className="home-disease-card-top">
+                    <div>
+                      <h4>{item.diseaseName}</h4>
+                      <p className="home-disease-count">{item.recordCount} 份报告</p>
+                    </div>
+                    <div className="home-disease-card-top-right">
+                      <span className={`status-chip ${status.className}`}>{status.label}</span>
+                      <button
+                        className="home-delete-chip"
+                        type="button"
+                        onClick={() => openDeleteDialog(item.batchId, item.diseaseName)}
+                        disabled={!canDelete || isDeleting || deletingBatchId !== null}
+                        aria-label={`删除疾病 ${item.diseaseName}`}
+                        title={canDelete ? `删除 ${item.diseaseName}` : `${item.diseaseName} 下有报告，不能删除`}
+                      >
+                        {isDeleting ? "删除中" : "删除"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="disease-focus-meta">
-                    <p className="muted">
-                      报告数量：<strong>{item.recordCount}</strong>
-                    </p>
-                    <p className="muted">最近报告：{formatDate(item.latestRecordAt)}</p>
-                    <p className="muted">最新标题：{item.latestRecordTitle ?? "暂无"}</p>
+                  <div className="home-disease-meta">
+                    <p className="home-meta-label">最近报告日期</p>
+                    <p className="home-meta-date">{formatDate(item.latestRecordAt)}</p>
+                    <p className="home-meta-title">最新标题：{item.latestRecordTitle ?? "暂无"}</p>
                   </div>
 
-                  <div className="disease-focus-actions">
+                  <div className="home-disease-actions">
                     <Link
-                      className="btn btn-primary"
+                      className="home-view-btn"
                       href={`/timeline?batchId=${encodeURIComponent(item.batchId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
                     >
-                      进入疾病报告
+                      查看详情
+                      <span aria-hidden="true">→</span>
                     </Link>
                     <button
-                      className="btn btn-ghost"
+                      className="home-upload-mini-btn"
                       type="button"
                       onClick={() => openUploadDialog(item.batchId, item.diseaseName)}
                     >
-                      新增该疾病报告
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      type="button"
-                      onClick={() => openDeleteDialog(item.batchId, item.diseaseName)}
-                      disabled={!canDelete || isDeleting || deletingBatchId !== null}
-                    >
-                      {isDeleting ? "删除中..." : "删除疾病"}
+                      上传同类报告
                     </button>
                   </div>
                 </article>
@@ -178,8 +233,9 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
             })}
           </div>
         )}
-        {deleteError ? <p className="status-text error">{deleteError}</p> : null}
       </section>
+
+      {deleteError ? <p className="status-text error">{deleteError}</p> : null}
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
@@ -191,34 +247,6 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
         onCancel={closeDeleteDialog}
         onConfirm={deleteDisease}
       />
-
-      <section className="timeline-hero">
-        <h3 className="timeline-management-title">我的疾病报告管理</h3>
-        <p>以疾病分类为主线管理报告：先选择疾病，再进入该疾病下查看和维护所有历史记录。</p>
-
-        <div className="hero-actions">
-          <button className="btn btn-primary" type="button" onClick={() => openUploadDialog()}>
-            上传报告
-          </button>
-        </div>
-
-        <div className="hero-stats">
-          <article>
-            <span>解析中</span>
-            <strong>{overview.processing}</strong>
-          </article>
-          <article>
-            <span>已完成</span>
-            <strong>{overview.parsed}</strong>
-          </article>
-          <article>
-            <span>待处理</span>
-            <strong>{overview.needAttention}</strong>
-          </article>
-        </div>
-      </section>
-
     </main>
   );
 }
-
