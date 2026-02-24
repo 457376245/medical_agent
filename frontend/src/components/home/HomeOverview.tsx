@@ -136,7 +136,7 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
               <div className="home-disease-actions">
                 <Link
                   className="home-view-btn-full"
-                  href={`/timeline?profileId=${encodeURIComponent(item.profileId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
+                  href={`/profiles?profileId=${encodeURIComponent(item.profileId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
                 >
                   查看分析
                 </Link>

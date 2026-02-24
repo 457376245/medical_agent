@@ -17,7 +17,7 @@ export function TimelineProfileList({ profiles }: { profiles: TimelineProfile[] 
       {profiles.map((profile) => (
         <li className="timeline-item" key={profile.profileId}>
           <div>
-            <Link className="timeline-node-link" href={`/timeline?profileId=${profile.profileId}`}>
+            <Link className="timeline-node-link" href={`/profiles?profileId=${profile.profileId}`}>
               <strong>{profile.diseaseName}</strong>
             </Link>
             <p className="muted muted-tight">

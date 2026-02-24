@@ -2,7 +2,7 @@ import { HomeOverview } from "../components/home/HomeOverview";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
-type TimelineResponse = {
+type DiseaseProfileOverviewResponse = {
   data?: {
     profiles?: Array<{
       profile_id?: string;
@@ -35,9 +35,9 @@ export default async function HomePage() {
   }> = [];
 
   try {
-    const response = await fetch(`${API_BASE}/timeline`, { cache: "no-store" });
+    const response = await fetch(`${API_BASE}/disease-profiles/overview`, { cache: "no-store" });
     if (response.ok) {
-      const payload = (await response.json()) as TimelineResponse;
+      const payload = (await response.json()) as DiseaseProfileOverviewResponse;
       profiles = (payload.data?.profiles ?? [])
         .map((item) => ({
           profileId: item.profileId ?? item.profile_id ?? "unknown-profile",

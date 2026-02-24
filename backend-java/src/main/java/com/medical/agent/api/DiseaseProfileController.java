@@ -1,12 +1,17 @@
 package com.medical.agent.api;
 
+import com.medical.agent.application.DiseaseProfileQueryService;
 import com.medical.agent.application.DiseaseProfileService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.NameRequest;
 import com.medical.agent.domain.dto.response.DiseaseProfileCreateResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileDeleteResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileDetailResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileListResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileOverviewResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileRefResponseData;
+import com.medical.agent.domain.vo.DiseaseProfileOverview;
+import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.domain.vo.DiseaseProfileSummary;
 import java.util.List;
 import java.util.UUID;
@@ -25,9 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/disease-profiles")
 public class DiseaseProfileController {
   private final DiseaseProfileService diseaseProfileService;
+  private final DiseaseProfileQueryService diseaseProfileQueryService;
 
-  public DiseaseProfileController(DiseaseProfileService diseaseProfileService) {
+  public DiseaseProfileController(
+      DiseaseProfileService diseaseProfileService,
+      DiseaseProfileQueryService diseaseProfileQueryService) {
     this.diseaseProfileService = diseaseProfileService;
+    this.diseaseProfileQueryService = diseaseProfileQueryService;
   }
 
   @GetMapping
@@ -38,6 +47,27 @@ public class DiseaseProfileController {
         "success",
         RequestIdUtil.newRequestId(),
         new DiseaseProfileListResponseData(profiles));
+  }
+
+  @GetMapping("/overview")
+  public ApiResponse<DiseaseProfileOverviewResponseData> overview() {
+    List<DiseaseProfileOverview> profiles = diseaseProfileQueryService.listProfiles();
+    return new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileOverviewResponseData(profiles));
+  }
+
+  @GetMapping("/{profileId}/records")
+  public ApiResponse<DiseaseProfileDetailResponseData> profileRecords(@PathVariable("profileId") String profileId) {
+    List<DiseaseProfileRecordSummary> records = diseaseProfileQueryService.listProfileRecords(profileId);
+    String diseaseName = diseaseProfileQueryService.diseaseNameByProfile(profileId);
+    return new ApiResponse<>(
+        "OK",
+        "success",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileDetailResponseData(profileId, diseaseName, records));
   }
 
   @PostMapping

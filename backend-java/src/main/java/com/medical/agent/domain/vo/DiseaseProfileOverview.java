@@ -1,6 +1,6 @@
 package com.medical.agent.domain.vo;
 
-public record TimelineProfileSummary(
+public record DiseaseProfileOverview(
     String profileId,
     String diseaseName,
     int recordCount,

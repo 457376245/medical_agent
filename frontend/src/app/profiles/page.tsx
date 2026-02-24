@@ -1,8 +1,8 @@
-import { DiseaseTimelineView } from "../../components/timeline/DiseaseTimelineView";
+import { DiseaseTimelineView } from "../../components/profiles/DiseaseTimelineView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
-type TimelineProfileDetailResponse = {
+type DiseaseProfileDetailResponse = {
   data?: {
     profileId?: string;
     diseaseName?: string;
@@ -17,7 +17,7 @@ type TimelineProfileDetailResponse = {
   };
 };
 
-export default async function TimelinePage({
+export default async function ProfilePage({
   searchParams,
 }: {
   searchParams?: { profileId?: string; diseaseName?: string };
@@ -29,9 +29,9 @@ export default async function TimelinePage({
 
   if (profileId) {
     try {
-      const res = await fetch(`${API_BASE}/timeline/${profileId}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/profiles/${profileId}/records`, { cache: "no-store" });
       if (res.ok) {
-        const payload = (await res.json()) as TimelineProfileDetailResponse;
+        const payload = (await res.json()) as DiseaseProfileDetailResponse;
         const fromApi = String(payload.data?.diseaseName ?? "").trim();
         // Keep disease name from query when backend falls back to unassigned/default labels.
         if (fromApi && fromApi !== "Unassigned" && fromApi !== "未分类疾病") {

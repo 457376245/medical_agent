@@ -1,8 +1,8 @@
 package com.medical.agent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.medical.agent.domain.vo.TimelineProfileSummary;
-import com.medical.agent.domain.vo.TimelineRecordSummary;
+import com.medical.agent.domain.vo.DiseaseProfileOverview;
+import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.infrastructure.persistence.ScopeConstants;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
@@ -18,12 +18,12 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
-public class TimelineService {
+public class DiseaseProfileQueryService {
   private final RecordMapper recordMapper;
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final ParseJobMapper parseJobMapper;
 
-  public TimelineService(
+  public DiseaseProfileQueryService(
       RecordMapper recordMapper,
       DiseaseProfileMapper diseaseProfileMapper,
       ParseJobMapper parseJobMapper) {
@@ -32,7 +32,7 @@ public class TimelineService {
     this.parseJobMapper = parseJobMapper;
   }
 
-  public List<TimelineProfileSummary> listProfiles() {
+  public List<DiseaseProfileOverview> listProfiles() {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
@@ -52,7 +52,7 @@ public class TimelineService {
       }
     }
 
-    List<TimelineProfileSummary> result = new ArrayList<>();
+    List<DiseaseProfileOverview> result = new ArrayList<>();
     for (Map.Entry<UUID, ProfileAccumulator> entry : grouped.entrySet()) {
       UUID profileId = entry.getKey();
       ProfileAccumulator accumulator = entry.getValue();
@@ -61,7 +61,7 @@ public class TimelineService {
           ? "未分类疾病"
           : profile.getName();
       String latestParseStatus = queryLatestParseStatus(accumulator.latestRecord.getId());
-      result.add(new TimelineProfileSummary(
+      result.add(new DiseaseProfileOverview(
           String.valueOf(profileId),
           diseaseName,
           accumulator.recordCount,
@@ -73,7 +73,7 @@ public class TimelineService {
     return result;
   }
 
-  public List<TimelineRecordSummary> listProfileRecords(String profileId) {
+  public List<DiseaseProfileRecordSummary> listProfileRecords(String profileId) {
     LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
@@ -92,9 +92,9 @@ public class TimelineService {
     }
 
     List<RecordEntity> records = recordMapper.selectList(query);
-    List<TimelineRecordSummary> summaries = new ArrayList<>();
+    List<DiseaseProfileRecordSummary> summaries = new ArrayList<>();
     for (RecordEntity record : records) {
-      summaries.add(new TimelineRecordSummary(
+      summaries.add(new DiseaseProfileRecordSummary(
           String.valueOf(record.getId()),
           record.getTitle() == null ? "未命名报告" : record.getTitle(),
           String.valueOf(record.getRecordDate()),
