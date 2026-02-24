@@ -55,6 +55,10 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
   const [createError, setCreateError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [deleteTarget, setDeleteTarget] = useState<HomeProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     if (isAddingDisease && inputRef.current) {
       inputRef.current.focus();
@@ -101,6 +105,38 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
     setIsAddingDisease(false);
     setNewDiseaseName("");
     setCreateError(null);
+  }, []);
+
+  const handleDeleteDisease = useCallback(async () => {
+    if (!deleteTarget) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/disease-profiles/${encodeURIComponent(deleteTarget.profileId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+
+      if (!res.ok) {
+        setDeleteError("删除失败，请重试");
+        return;
+      }
+
+      setDeleteTarget(null);
+      setDeleteError(null);
+      router.refresh();
+    } catch {
+      setDeleteError("网络错误，请重试");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteTarget, router]);
+
+  const cancelDelete = useCallback(() => {
+    setDeleteTarget(null);
+    setDeleteError(null);
   }, []);
 
   const openUploadDialog = (diseaseProfileId?: string, diseaseName?: string) => {
@@ -171,25 +207,41 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
             <article className="home-disease-card" key={item.profileId}>
               <div className="home-disease-card-top">
                 <h4>{item.diseaseName}</h4>
-                <div className="home-disease-card-status" title={status.label}>
-                  {status.label === "已解析" && (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" fill="#e8f8ef" stroke="#b9e2ce" strokeWidth="1.5"/>
-                      <path d="M8 12.5L10.5 15L16 9" stroke="#1f7a53" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <div className="home-disease-card-top-actions">
+                  <div className="home-disease-card-status" title={status.label}>
+                    {status.label === "已解析" && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" fill="#e8f8ef" stroke="#b9e2ce" strokeWidth="1.5"/>
+                        <path d="M8 12.5L10.5 15L16 9" stroke="#1f7a53" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {status.label === "解析中" && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" fill="#fff4e2" stroke="#eed3a8" strokeWidth="1.5"/>
+                        <path d="M12 8V12L14.5 14.5" stroke="#9a611f" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                    {(status.label === "需处理" || status.label === "未解析") && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" fill="#fcebe8" stroke="#f0c7bf" strokeWidth="1.5"/>
+                        <path d="M12 8V13M12 16H12.01" stroke="#b74b3b" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                  </div>
+                  <button
+                    className="home-disease-delete-btn"
+                    type="button"
+                    onClick={() => setDeleteTarget(item)}
+                    aria-label={`删除 ${item.diseaseName}`}
+                    title="删除该疾病分类"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 6H5H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6M19 6V20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20V6H19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M10 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M14 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                  )}
-                  {status.label === "解析中" && (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" fill="#fff4e2" stroke="#eed3a8" strokeWidth="1.5"/>
-                      <path d="M12 8V12L14.5 14.5" stroke="#9a611f" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  )}
-                  {(status.label === "需处理" || status.label === "未解析") && (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" fill="#fcebe8" stroke="#f0c7bf" strokeWidth="1.5"/>
-                      <path d="M12 8V13M12 16H12.01" stroke="#b74b3b" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  )}
+                  </button>
                 </div>
               </div>
 
@@ -306,7 +358,55 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
 
       {profiles.length === 0 && (
         <div style={{ marginTop: '20px', textAlign: 'center', color: '#607784' }}>
-          <p>当前还没有疾病报告，点击右上角“上传”按钮创建第一份记录。</p>
+          <p>当前还没有疾病报告，点击右上角"上传"按钮创建第一份记录。</p>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="delete-dialog-overlay" onClick={cancelDelete}>
+          <div className="delete-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-dialog-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#fcebe8" stroke="#f0c7bf" strokeWidth="1.5"/>
+                <path d="M12 8V13M12 16H12.01" stroke="#b74b3b" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <h3 className="delete-dialog-title">确认删除</h3>
+            <p className="delete-dialog-message">
+              确定要删除疾病分类「{deleteTarget.diseaseName}」吗？
+            </p>
+            {deleteTarget.recordCount > 0 && (
+              <p className="delete-dialog-warning">
+                该分类下共有 <strong>{deleteTarget.recordCount}</strong> 份报告，删除后所有报告及分析数据将被永久清除，无法恢复。
+              </p>
+            )}
+            {deleteError && <p className="delete-dialog-error">{deleteError}</p>}
+            <div className="delete-dialog-actions">
+              <button
+                className="delete-dialog-cancel-btn"
+                type="button"
+                onClick={cancelDelete}
+                disabled={isDeleting}
+              >
+                取消
+              </button>
+              <button
+                className="delete-dialog-confirm-btn"
+                type="button"
+                onClick={handleDeleteDisease}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <svg className="btn-loading-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                    </svg>
+                    删除中...
+                  </>
+                ) : "确认删除"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
