@@ -2,9 +2,9 @@ import { DiseaseTimelineView } from "../../components/timeline/DiseaseTimelineVi
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
-type TimelineBatchDetailResponse = {
+type TimelineProfileDetailResponse = {
   data?: {
-    batchId?: string;
+    profileId?: string;
     diseaseName?: string;
     records?: Array<{
       id?: string;
@@ -20,18 +20,18 @@ type TimelineBatchDetailResponse = {
 export default async function TimelinePage({
   searchParams,
 }: {
-  searchParams?: { batchId?: string; diseaseName?: string };
+  searchParams?: { profileId?: string; diseaseName?: string };
 }) {
-  const batchId = searchParams?.batchId?.trim() ?? "";
+  const profileId = searchParams?.profileId?.trim() ?? "";
   const diseaseNameFromQuery = searchParams?.diseaseName?.trim() ?? "";
   let diseaseName = diseaseNameFromQuery || "未分类疾病";
   let records: Array<{ id: string; title: string; recordDate: string; sourceType: string }> = [];
 
-  if (batchId) {
+  if (profileId) {
     try {
-      const res = await fetch(`${API_BASE}/timeline/${batchId}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/timeline/${profileId}`, { cache: "no-store" });
       if (res.ok) {
-        const payload = (await res.json()) as TimelineBatchDetailResponse;
+        const payload = (await res.json()) as TimelineProfileDetailResponse;
         const fromApi = String(payload.data?.diseaseName ?? "").trim();
         // Keep disease name from query when backend falls back to unassigned/default labels.
         if (fromApi && fromApi !== "Unassigned" && fromApi !== "未分类疾病") {
@@ -49,6 +49,6 @@ export default async function TimelinePage({
     }
   }
 
-  return <DiseaseTimelineView batchId={batchId || undefined} diseaseName={diseaseName} records={records} />;
+  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} />;
 }
 

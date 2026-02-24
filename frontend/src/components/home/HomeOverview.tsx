@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
-type HomeBatch = {
-  batchId: string;
+type HomeProfile = {
+  profileId: string;
   diseaseName: string;
   recordCount: number;
   latestRecordAt?: string;
@@ -15,7 +15,7 @@ type HomeBatch = {
 };
 
 type HomeOverviewProps = {
-  batches: HomeBatch[];
+  profiles: HomeProfile[];
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
@@ -47,7 +47,7 @@ function statusMeta(raw?: string): { label: string; className: string } {
   return { label: "未解析", className: "" };
 }
 
-export function HomeOverview({ batches }: HomeOverviewProps) {
+export function HomeOverview({ profiles }: HomeOverviewProps) {
   const router = useRouter();
 
   const overview = useMemo(() => {
@@ -55,7 +55,7 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
     let parsed = 0;
     let needAttention = 0;
 
-    for (const item of batches) {
+    for (const item of profiles) {
       const status = (item.latestParseStatus ?? "NOT_PARSED").toUpperCase();
       if (status === "SUCCESS") {
         parsed += 1;
@@ -67,7 +67,7 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
     }
 
     return { processing, parsed, needAttention };
-  }, [batches]);
+  }, [profiles]);
 
   return (
     <main className="home-dashboard">
@@ -90,7 +90,7 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
               </div>
               <div className="stat-item">
                 <p>最近更新</p>
-                <strong>{batches.length > 0 ? formatDate(batches.reduce((latest, item) => {
+                <strong>{profiles.length > 0 ? formatDate(profiles.reduce((latest, item) => {
                   if (!latest) return item.latestRecordAt;
                   if (!item.latestRecordAt) return latest;
                   return new Date(item.latestRecordAt) > new Date(latest) ? item.latestRecordAt : latest;
@@ -100,11 +100,11 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
           </div>
         </article>
 
-        {batches.map((item) => {
+        {profiles.map((item) => {
           const status = statusMeta(item.latestParseStatus);
           
           return (
-            <article className="home-disease-card" key={item.batchId}>
+            <article className="home-disease-card" key={item.profileId}>
               <div className="home-disease-card-top">
                 <h4>{item.diseaseName}</h4>
                 <div className="home-disease-card-status" title={status.label}>
@@ -136,7 +136,7 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
               <div className="home-disease-actions">
                 <Link
                   className="home-view-btn-full"
-                  href={`/timeline?batchId=${encodeURIComponent(item.batchId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
+                  href={`/timeline?profileId=${encodeURIComponent(item.profileId)}&diseaseName=${encodeURIComponent(item.diseaseName)}`}
                 >
                   查看分析
                 </Link>
@@ -146,7 +146,7 @@ export function HomeOverview({ batches }: HomeOverviewProps) {
         })}
       </div>
 
-      {batches.length === 0 && (
+      {profiles.length === 0 && (
         <div style={{ marginTop: '20px', textAlign: 'center', color: '#607784' }}>
           <p>当前还没有疾病报告，点击右上角“上传”按钮创建第一份记录。</p>
         </div>

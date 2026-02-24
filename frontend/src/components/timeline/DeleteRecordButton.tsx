@@ -8,11 +8,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/
 
 type DeleteRecordButtonProps = {
   recordId: string;
-  batchId: string;
+  profileId: string;
   isSelected: boolean;
 };
 
-export function DeleteRecordButton({ recordId, batchId, isSelected }: DeleteRecordButtonProps) {
+export function DeleteRecordButton({ recordId, profileId, isSelected }: DeleteRecordButtonProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +30,7 @@ export function DeleteRecordButton({ recordId, batchId, isSelected }: DeleteReco
       }
       setConfirmOpen(false);
       if (isSelected) {
-        router.push(`/timeline?batchId=${batchId}`);
+        router.push(`/timeline?profileId=${profileId}`);
       }
       router.refresh();
     } catch {

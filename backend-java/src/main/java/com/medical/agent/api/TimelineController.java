@@ -2,9 +2,9 @@ package com.medical.agent.api;
 
 import com.medical.agent.application.TimelineService;
 import com.medical.agent.domain.dto.ApiResponse;
-import com.medical.agent.domain.dto.response.TimelineBatchResponseData;
-import com.medical.agent.domain.dto.response.TimelineBatchesResponseData;
-import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.dto.response.TimelineProfileDetailResponseData;
+import com.medical.agent.domain.dto.response.TimelineProfilesResponseData;
+import com.medical.agent.domain.vo.TimelineProfileSummary;
 import com.medical.agent.domain.vo.TimelineRecordSummary;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,23 +22,23 @@ public class TimelineController {
   }
 
   @GetMapping
-  public ApiResponse<TimelineBatchesResponseData> timeline() {
-    List<TimelineBatchSummary> batches = timelineService.listBatches();
+  public ApiResponse<TimelineProfilesResponseData> timeline() {
+    List<TimelineProfileSummary> profiles = timelineService.listProfiles();
     return new ApiResponse<>(
         "OK",
         "success",
         RequestIdUtil.newRequestId(),
-        new TimelineBatchesResponseData(batches));
+        new TimelineProfilesResponseData(profiles));
   }
 
-  @GetMapping("/{batchId}")
-  public ApiResponse<TimelineBatchResponseData> batch(@PathVariable("batchId") String batchId) {
-    List<TimelineRecordSummary> records = timelineService.listBatchRecords(batchId);
-    String diseaseName = timelineService.diseaseNameByBatch(batchId);
+  @GetMapping("/{profileId}")
+  public ApiResponse<TimelineProfileDetailResponseData> profile(@PathVariable("profileId") String profileId) {
+    List<TimelineRecordSummary> records = timelineService.listProfileRecords(profileId);
+    String diseaseName = timelineService.diseaseNameByProfile(profileId);
     return new ApiResponse<>(
         "OK",
         "success",
         RequestIdUtil.newRequestId(),
-        new TimelineBatchResponseData(batchId, diseaseName, records));
+        new TimelineProfileDetailResponseData(profileId, diseaseName, records));
   }
 }

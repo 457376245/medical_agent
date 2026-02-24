@@ -4,9 +4,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/
 
 type TimelineResponse = {
   data?: {
-    batches?: Array<{
-      batch_id?: string;
-      batchId?: string;
+    profiles?: Array<{
+      profile_id?: string;
+      profileId?: string;
       disease_name?: string;
       diseaseName?: string;
       record_count?: number;
@@ -24,8 +24,8 @@ type TimelineResponse = {
 };
 
 export default async function HomePage() {
-  let batches: Array<{
-    batchId: string;
+  let profiles: Array<{
+    profileId: string;
     diseaseName: string;
     recordCount: number;
     latestRecordAt?: string;
@@ -38,9 +38,9 @@ export default async function HomePage() {
     const response = await fetch(`${API_BASE}/timeline`, { cache: "no-store" });
     if (response.ok) {
       const payload = (await response.json()) as TimelineResponse;
-      batches = (payload.data?.batches ?? [])
+      profiles = (payload.data?.profiles ?? [])
         .map((item) => ({
-          batchId: item.batchId ?? item.batch_id ?? "unknown-batch",
+          profileId: item.profileId ?? item.profile_id ?? "unknown-profile",
           diseaseName: item.diseaseName ?? item.disease_name ?? "未分类疾病",
           recordCount: item.recordCount ?? item.record_count ?? 0,
           latestRecordAt: item.latestRecordAt ?? item.latest_record_at,
@@ -48,12 +48,12 @@ export default async function HomePage() {
           latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title,
           latestParseStatus: item.latestParseStatus ?? item.latest_parse_status,
         }))
-        .filter((item) => item.batchId !== "unknown" && item.diseaseName !== "Unassigned");
+        .filter((item) => item.profileId !== "unknown" && item.diseaseName !== "Unassigned");
     }
   } catch {
-    batches = [];
+    profiles = [];
   }
 
-  return <HomeOverview batches={batches} />;
+  return <HomeOverview profiles={profiles} />;
 }
 

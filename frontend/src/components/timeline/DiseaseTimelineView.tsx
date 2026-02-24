@@ -91,11 +91,11 @@ function hasStructuredFields(payload: unknown): boolean {
 }
 
 export function DiseaseTimelineView({
-  batchId,
+  profileId,
   diseaseName,
   records,
 }: {
-  batchId?: string;
+  profileId?: string;
   diseaseName?: string;
   records: TimelineRecord[];
 }) {
@@ -185,7 +185,7 @@ export function DiseaseTimelineView({
     setTrendCache({});
     setTrendLoading(false);
     setTrendError("");
-  }, [batchId]);
+  }, [profileId]);
 
   useEffect(() => {
     if (selectedDate && !groupedByDate.some((item) => item.date === selectedDate)) {
@@ -234,13 +234,13 @@ export function DiseaseTimelineView({
   }, []);
 
   const openUploadDialog = () => {
-    if (!batchId) {
+    if (!profileId) {
       return;
     }
     window.dispatchEvent(
       new CustomEvent("open-upload-dialog", {
         detail: {
-          diseaseProfileId: batchId,
+          diseaseProfileId: profileId,
           diseaseName,
         },
       }),
@@ -439,7 +439,7 @@ export function DiseaseTimelineView({
     }
   };
 
-  if (!batchId) {
+  if (!profileId) {
     return (
       <main className="page-stack">
         <section className="panel">
@@ -563,7 +563,7 @@ export function DiseaseTimelineView({
                     </ul>
                   ) : null}
                 </div>
-                <DeleteRecordButton recordId={selectedRecord.id} batchId={batchId} isSelected />
+                <DeleteRecordButton recordId={selectedRecord.id} profileId={profileId} isSelected />
                 <button
                   className="btn btn-ghost btn-small"
                   type="button"

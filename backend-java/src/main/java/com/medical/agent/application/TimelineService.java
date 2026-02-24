@@ -1,7 +1,7 @@
 package com.medical.agent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.medical.agent.domain.vo.TimelineBatchSummary;
+import com.medical.agent.domain.vo.TimelineProfileSummary;
 import com.medical.agent.domain.vo.TimelineRecordSummary;
 import com.medical.agent.infrastructure.persistence.ScopeConstants;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
@@ -32,7 +32,7 @@ public class TimelineService {
     this.parseJobMapper = parseJobMapper;
   }
 
-  public List<TimelineBatchSummary> listBatches() {
+  public List<TimelineProfileSummary> listProfiles() {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
@@ -41,28 +41,28 @@ public class TimelineService {
         .orderByDesc(RecordEntity::getUpdatedAt)
         .orderByDesc(RecordEntity::getCreatedAt));
 
-    Map<UUID, BatchAccumulator> grouped = new LinkedHashMap<>();
+    Map<UUID, ProfileAccumulator> grouped = new LinkedHashMap<>();
     for (RecordEntity record : records) {
-      UUID batchId = record.getDiseaseProfileId();
-      BatchAccumulator current = grouped.get(batchId);
+      UUID profileId = record.getDiseaseProfileId();
+      ProfileAccumulator current = grouped.get(profileId);
       if (current == null) {
-        grouped.put(batchId, new BatchAccumulator(record, 1));
+        grouped.put(profileId, new ProfileAccumulator(record, 1));
       } else {
         current.recordCount += 1;
       }
     }
 
-    List<TimelineBatchSummary> result = new ArrayList<>();
-    for (Map.Entry<UUID, BatchAccumulator> entry : grouped.entrySet()) {
-      UUID batchId = entry.getKey();
-      BatchAccumulator accumulator = entry.getValue();
-      DiseaseProfileEntity profile = diseaseProfileMapper.selectById(batchId);
+    List<TimelineProfileSummary> result = new ArrayList<>();
+    for (Map.Entry<UUID, ProfileAccumulator> entry : grouped.entrySet()) {
+      UUID profileId = entry.getKey();
+      ProfileAccumulator accumulator = entry.getValue();
+      DiseaseProfileEntity profile = diseaseProfileMapper.selectById(profileId);
       String diseaseName = profile == null || profile.getName() == null || profile.getName().isBlank()
           ? "未分类疾病"
           : profile.getName();
       String latestParseStatus = queryLatestParseStatus(accumulator.latestRecord.getId());
-      result.add(new TimelineBatchSummary(
-          String.valueOf(batchId),
+      result.add(new TimelineProfileSummary(
+          String.valueOf(profileId),
           diseaseName,
           accumulator.recordCount,
           String.valueOf(accumulator.latestRecord.getRecordDate()),
@@ -73,22 +73,22 @@ public class TimelineService {
     return result;
   }
 
-  public List<TimelineRecordSummary> listBatchRecords(String batchId) {
+  public List<TimelineRecordSummary> listProfileRecords(String profileId) {
     LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
         .orderByDesc(RecordEntity::getRecordDate);
 
-    if ("unknown".equalsIgnoreCase(batchId)) {
+    if ("unknown".equalsIgnoreCase(profileId)) {
       query.isNull(RecordEntity::getDiseaseProfileId);
     } else {
-      UUID profileId;
+      UUID targetProfileId;
       try {
-        profileId = UUID.fromString(batchId);
+        targetProfileId = UUID.fromString(profileId);
       } catch (IllegalArgumentException error) {
         return List.of();
       }
-      query.eq(RecordEntity::getDiseaseProfileId, profileId);
+      query.eq(RecordEntity::getDiseaseProfileId, targetProfileId);
     }
 
     List<RecordEntity> records = recordMapper.selectList(query);
@@ -103,19 +103,19 @@ public class TimelineService {
     return summaries;
   }
 
-  public String diseaseNameByBatch(String batchId) {
-    if ("unknown".equalsIgnoreCase(batchId)) {
+  public String diseaseNameByProfile(String profileId) {
+    if ("unknown".equalsIgnoreCase(profileId)) {
       return "未分类疾病";
     }
-    UUID profileId;
+    UUID targetProfileId;
     try {
-      profileId = UUID.fromString(batchId);
+      targetProfileId = UUID.fromString(profileId);
     } catch (IllegalArgumentException error) {
       return "未分类疾病";
     }
 
     DiseaseProfileEntity profile = diseaseProfileMapper.selectOne(new LambdaQueryWrapper<DiseaseProfileEntity>()
-        .eq(DiseaseProfileEntity::getId, profileId)
+        .eq(DiseaseProfileEntity::getId, targetProfileId)
         .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
         .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
         .last("limit 1"));
@@ -137,11 +137,11 @@ public class TimelineService {
     return String.valueOf(jobs.get(0).getStatus());
   }
 
-  private static final class BatchAccumulator {
+  private static final class ProfileAccumulator {
     private final RecordEntity latestRecord;
     private int recordCount;
 
-    private BatchAccumulator(RecordEntity latestRecord, int recordCount) {
+    private ProfileAccumulator(RecordEntity latestRecord, int recordCount) {
       this.latestRecord = latestRecord;
       this.recordCount = recordCount;
     }
