@@ -7,6 +7,8 @@ import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
 import com.medical.agent.infrastructure.persistence.ScopeConstants;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
 import com.medical.agent.infrastructure.persistence.mapper.GeneratedOutputMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +16,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
+@Tag(name = "生成内容服务", description = "负责生成内容的版本递增、结果落库与按类型读取，支撑摘要和分析等能力")
 public class GeneratedOutputService {
   private final GeneratedOutputMapper generatedOutputMapper;
   private final RecordService recordService;
@@ -28,10 +31,12 @@ public class GeneratedOutputService {
     this.objectMapper = objectMapper;
   }
 
+  @Operation(summary = "使用默认元数据创建生成内容", description = "创建带默认模型元信息的生成内容记录，并返回新版本号")
   public int createGeneratedOutput(UUID recordId, String type, String content) {
     return createGeneratedOutputWithMeta(recordId, type, content, "{\"provider\":\"gateway\"}");
   }
 
+  @Operation(summary = "使用自定义元数据创建生成内容", description = "创建带指定模型元信息的生成内容记录，并自动分配版本")
   public int createGeneratedOutputWithMeta(UUID recordId, String type, String content, String modelMetaJson) {
     int version = nextVersion(recordId, type);
     generatedOutputMapper.insertWithJsonMeta(
@@ -47,6 +52,7 @@ public class GeneratedOutputService {
     return version;
   }
 
+  @Operation(summary = "按类型获取最新生成内容", description = "按记录与类型读取最新一版生成内容，常用于缓存命中场景")
   public Optional<GeneratedOutputSnapshot> fetchLatestGeneratedOutput(UUID recordId, String type) {
     List<GeneratedOutputEntity> rows = generatedOutputMapper.selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
         .eq(GeneratedOutputEntity::getRecordId, recordId)

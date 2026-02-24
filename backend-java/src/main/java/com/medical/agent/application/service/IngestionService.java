@@ -10,6 +10,8 @@ import com.medical.agent.domain.dto.response.ParseJobResponseData;
 import com.medical.agent.domain.dto.response.ParseJobStatusResponseData;
 import com.medical.agent.domain.dto.response.PresignResponseData;
 import com.medical.agent.domain.dto.response.ProxyUploadResponseData;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
@@ -18,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+@Tag(name = "摄取服务", description = "承接文件上传链路，负责编排签名、代理上传、资产登记与解析任务创建")
 public class IngestionService {
   @Value("${app.upload.base-url:http://localhost:8080/mock-upload}")
   private String uploadBaseUrl;
@@ -35,6 +38,7 @@ public class IngestionService {
     this.parseJobService = parseJobService;
   }
 
+  @Operation(summary = "创建上传预签名地址", description = "根据文件元信息生成上传地址和对象键，用于前端直传对象存储")
   public PresignResponseData createPresign(PresignRequest request) {
     String fileName = request == null || request.fileName() == null || request.fileName().isBlank()
         ? "upload.bin"
@@ -50,6 +54,7 @@ public class IngestionService {
     return new PresignResponseData(signed.uploadUrl(), objectKey, signed.expireAt().toString());
   }
 
+  @Operation(summary = "通过后端上传文件字节流", description = "接收 base64 文件内容并转存到对象存储，适用于不便直传场景")
   public ProxyUploadResponseData proxyUpload(ProxyUploadRequest request) {
     String objectKey = request == null || request.objectKey() == null ? "" : request.objectKey().trim();
     String contentType = request == null || request.contentType() == null || request.contentType().isBlank()
@@ -68,6 +73,7 @@ public class IngestionService {
     return new ProxyUploadResponseData(objectKey, binary.length);
   }
 
+  @Operation(summary = "上传后创建资产记录", description = "将上传产物登记为资产并关联记录、病种和来源信息")
   public AssetCreatedResponseData completeAsset(CompleteAssetRequest request) {
     UUID recordId = request == null || request.recordId() == null ? null : UUID.fromString(request.recordId());
     UUID diseaseProfileId = request == null || request.diseaseProfileId() == null
@@ -95,10 +101,12 @@ public class IngestionService {
     return new AssetCreatedResponseData(assetId.toString());
   }
 
+  @Operation(summary = "创建解析任务", description = "创建解析任务并绑定资产，后续由异步处理链路执行结构化解析")
   public ParseJobResponseData createParseJob(CreateParseJobRequest request, String idempotencyKey) {
     return parseJobService.create(request, idempotencyKey);
   }
 
+  @Operation(summary = "查询解析任务状态", description = "查询解析任务当前状态、进度与错误码，供前端轮询展示")
   public ParseJobStatusResponseData getParseJobStatus(UUID jobId) {
     return parseJobService.getStatus(jobId);
   }

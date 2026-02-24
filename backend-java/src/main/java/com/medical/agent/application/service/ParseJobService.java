@@ -32,8 +32,11 @@ import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
 import com.medical.agent.infrastructure.persistence.mapper.GeneratedOutputMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobAssetMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Service
+@Tag(name = "解析任务服务", description = "负责解析任务全生命周期管理，包括创建、状态流转、重试与死信处理")
 public class ParseJobService {
   private static final int MAX_PARSE_RETRY_COUNT = 3;
 
@@ -68,6 +71,7 @@ public class ParseJobService {
   public record ParseRetryCandidate(UUID jobId, UUID recordId, int retryCount) {
   }
 
+  @Operation(summary = "创建解析任务并投递请求", description = "根据记录与资产创建任务，绑定幂等键后向消息队列发布解析请求")
   public ParseJobResponseData create(CreateParseJobRequest request, String idempotencyKey) {
     UUID recordId = UUID.fromString(request.recordId());
     UUID tenantId = tenantContextProvider.currentTenantId();
@@ -92,6 +96,7 @@ public class ParseJobService {
     return new ParseJobResponseData(jobId.toString(), ParseJobStatus.QUEUED.name());
   }
 
+  @Operation(summary = "获取解析任务状态", description = "按租户范围查询任务状态、进度与错误信息，用于前端轮询")
   public ParseJobStatusResponseData getStatus(UUID jobId) {
     UUID tenantId = tenantContextProvider.currentTenantId();
     ParseJobEntity job = parseJobRepository.findByIdAndTenantId(jobId, tenantId);
@@ -107,6 +112,7 @@ public class ParseJobService {
   }
 
   @Transactional
+  @Operation(summary = "应用解析结果回调", description = "消费解析回调并更新任务状态，成功时写入结构化结果与默认摘要")
   public ParseApplyResult applyParseResult(
       UUID jobId,
       String status,
@@ -166,6 +172,7 @@ public class ParseJobService {
     return new ParseApplyResult(job.getRecordId(), nextStatus, true);
   }
 
+  @Operation(summary = "查询待重试的失败解析任务", description = "查询失败且重试次数低于阈值的任务，用于定时补偿重试")
   public List<ParseRetryCandidate> listFailedParseJobsForRetry(int maxRetryCount, int limit) {
     int normalizedLimit = Math.max(1, limit);
     List<ParseJobEntity> jobs = parseJobRepository.findFailedJobsLessThanRetryCount(maxRetryCount, normalizedLimit);
@@ -177,6 +184,7 @@ public class ParseJobService {
     return candidates;
   }
 
+  @Operation(summary = "查询待入死信的失败解析任务", description = "查询失败且重试次数达到阈值的任务，进入死信处理流程")
   public List<ParseRetryCandidate> listFailedParseJobsForDeadLetter(int maxRetryCount, int limit) {
     int normalizedLimit = Math.max(1, limit);
     List<ParseJobEntity> jobs = parseJobRepository.findFailedJobsGreaterThanOrEqualRetryCount(maxRetryCount,
@@ -189,18 +197,22 @@ public class ParseJobService {
     return candidates;
   }
 
+  @Operation(summary = "标记解析任务为重试中", description = "在分发重试前将任务状态置为重试中，避免并发重复调度")
   public boolean markParseJobRetrying(UUID jobId) {
     return parseJobRepository.markJobRetrying(jobId);
   }
 
+  @Operation(summary = "重试投递后标记任务失败", description = "重试消息分发失败时回滚任务状态并记录错误码")
   public void markParseJobFailedAfterRetryDispatch(UUID jobId, String errorCode) {
     parseJobRepository.markJobFailedAfterRetryDispatch(jobId, errorCode);
   }
 
+  @Operation(summary = "标记解析任务为死信", description = "将超过重试上限或不可恢复的任务标记为死信，停止继续重试")
   public void markParseJobDeadLetter(UUID jobId, String errorCode) {
     parseJobRepository.markJobDeadLetter(jobId, errorCode);
   }
 
+  @Operation(summary = "按任务ID查询资产引用", description = "查询任务绑定的资产清单，供解析引擎拉取原始文件")
   public List<AssetRef> listAssetRefsByJobId(UUID jobId) {
     MPJLambdaWrapper<ParseJobAssetEntity> wrapper = JoinWrappers.lambda(ParseJobAssetEntity.class)
         .selectAs(AssetEntity::getId, "id")
@@ -221,6 +233,7 @@ public class ParseJobService {
     return refs;
   }
 
+  @Operation(summary = "构建解析任务上下文", description = "根据任务提取记录、租户与用户上下文，用于消息投递和追踪")
   public ParseJobContext parseJobContext(UUID jobId) {
     ParseJobEntity job = parseJobRepository.findById(jobId);
     if (job == null) {

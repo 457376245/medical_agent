@@ -10,6 +10,8 @@ import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
 import com.medical.agent.infrastructure.persistence.mapper.DiseaseProfileMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
+@Tag(name = "疾病档案查询服务", description = "聚合疾病档案与记录信息，提供列表总览与按档案维度的查询能力")
 public class DiseaseProfileQueryService {
   private final RecordMapper recordMapper;
   private final DiseaseProfileMapper diseaseProfileMapper;
@@ -32,6 +35,7 @@ public class DiseaseProfileQueryService {
     this.parseJobMapper = parseJobMapper;
   }
 
+  @Operation(summary = "查询疾病档案总览数据", description = "按最新记录时间聚合疾病档案，返回记录数、最新记录与解析状态")
   public List<DiseaseProfileOverview> listProfiles() {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
@@ -73,6 +77,7 @@ public class DiseaseProfileQueryService {
     return result;
   }
 
+  @Operation(summary = "按疾病档案查询记录", description = "查询指定疾病档案下的记录清单，支持 unknown 代表未分类疾病")
   public List<DiseaseProfileRecordSummary> listProfileRecords(String profileId) {
     LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
@@ -103,6 +108,7 @@ public class DiseaseProfileQueryService {
     return summaries;
   }
 
+  @Operation(summary = "按档案ID解析疾病名称", description = "根据档案ID解析展示名称，无法匹配时统一返回未分类疾病")
   public String diseaseNameByProfile(String profileId) {
     if ("unknown".equalsIgnoreCase(profileId)) {
       return "未分类疾病";

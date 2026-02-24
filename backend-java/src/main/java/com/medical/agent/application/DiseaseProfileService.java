@@ -18,6 +18,8 @@ import com.medical.agent.infrastructure.persistence.mapper.ParseJobAssetMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Tag(name = "疾病档案服务", description = "负责疾病档案的创建、校验、统计与删除编排，并处理关联资源清理")
 public class DiseaseProfileService {
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final RecordMapper recordMapper;
@@ -58,6 +61,7 @@ public class DiseaseProfileService {
     this.ossPresignService = ossPresignService;
   }
 
+  @Operation(summary = "创建或复用疾病档案", description = "按名称幂等创建疾病档案；若同租户同用户下存在同名档案则直接复用")
   public UUID createProfile(String name) {
     String normalizedName = name == null ? "" : name.trim();
     if (normalizedName.isEmpty()) {
@@ -84,6 +88,7 @@ public class DiseaseProfileService {
     return entity.getId();
   }
 
+  @Operation(summary = "查询疾病档案摘要", description = "返回疾病档案基础信息并附带每个档案下的记录数量")
   public List<DiseaseProfileSummary> listProfiles() {
     List<DiseaseProfileEntity> profiles = diseaseProfileMapper.selectList(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
@@ -105,6 +110,7 @@ public class DiseaseProfileService {
     return result;
   }
 
+  @Operation(summary = "检查疾病档案是否存在", description = "在当前租户与用户范围内校验指定疾病档案是否存在")
   public boolean profileExists(UUID diseaseProfileId) {
     Long count = diseaseProfileMapper.selectCount(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, diseaseProfileId)
@@ -113,6 +119,7 @@ public class DiseaseProfileService {
     return count != null && count > 0;
   }
 
+  @Operation(summary = "统计疾病档案下记录数", description = "统计指定疾病档案关联的记录条数，用于删除前校验")
   public int countRecords(UUID diseaseProfileId) {
     Long count = recordMapper.selectCount(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
@@ -121,6 +128,7 @@ public class DiseaseProfileService {
   }
 
   @Transactional
+  @Operation(summary = "级联删除疾病档案及关联资源", description = "删除档案及其关联记录、资产、解析结果与生成内容，并清理对象存储文件")
   public DeleteDiseaseProfileResult deleteProfile(UUID diseaseProfileId) {
     if (!profileExists(diseaseProfileId)) {
       return new DeleteDiseaseProfileResult(false, 0, 0);
@@ -136,6 +144,7 @@ public class DiseaseProfileService {
   }
 
   @Transactional
+  @Operation(summary = "仅在空档案时删除疾病档案", description = "仅当档案无关联记录时允许删除，避免误删仍在使用的数据")
   public DeleteDiseaseProfileIfEmptyResult deleteProfileIfEmpty(UUID diseaseProfileId) {
     if (!profileExists(diseaseProfileId)) {
       return new DeleteDiseaseProfileIfEmptyResult(false, "NOT_FOUND", 0);

@@ -13,6 +13,12 @@ import com.medical.agent.domain.dto.response.DiseaseProfileRefResponseData;
 import com.medical.agent.domain.vo.DiseaseProfileOverview;
 import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.domain.vo.DiseaseProfileSummary;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -28,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/disease-profiles")
+@Tag(name = "疾病档案", description = "疾病档案管理接口")
 public class DiseaseProfileController {
   private final DiseaseProfileService diseaseProfileService;
   private final DiseaseProfileQueryService diseaseProfileQueryService;
@@ -40,6 +47,14 @@ public class DiseaseProfileController {
   }
 
   @GetMapping
+  @Operation(summary = "查询疾病档案列表", description = "返回当前用户下的疾病档案列表")
+  @ApiResponses(value = {
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "200",
+          description = "查询成功",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"OK\",\"message\":\"success\",\"requestId\":\"req_20260224_101\",\"data\":{\"profiles\":[{\"id\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"name\":\"高血压\",\"updatedAt\":\"2026-02-24T10:00:00\",\"recordCount\":3}]}}")))
+  })
   public ApiResponse<DiseaseProfileListResponseData> list() {
     List<DiseaseProfileSummary> profiles = diseaseProfileService.listProfiles();
     return new ApiResponse<>(
@@ -50,6 +65,14 @@ public class DiseaseProfileController {
   }
 
   @GetMapping("/overview")
+  @Operation(summary = "查询疾病档案总览", description = "按最新记录返回疾病档案总览信息")
+  @ApiResponses(value = {
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "200",
+          description = "查询成功",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"OK\",\"message\":\"success\",\"requestId\":\"req_20260224_102\",\"data\":{\"profiles\":[{\"profileId\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"diseaseName\":\"高血压\",\"recordCount\":3,\"latestRecordAt\":\"2026-02-24\",\"latestRecordId\":\"07abefef-a580-4b6a-b15f-fd54e8f282f4\",\"latestRecordTitle\":\"高血压-门诊记录-2026-02-24\",\"latestParseStatus\":\"SUCCESS\"}]}}")))
+  })
   public ApiResponse<DiseaseProfileOverviewResponseData> overview() {
     List<DiseaseProfileOverview> profiles = diseaseProfileQueryService.listProfiles();
     return new ApiResponse<>(
@@ -60,7 +83,17 @@ public class DiseaseProfileController {
   }
 
   @GetMapping("/{profileId}/records")
-  public ApiResponse<DiseaseProfileDetailResponseData> profileRecords(@PathVariable("profileId") String profileId) {
+  @Operation(summary = "查询疾病档案下的记录", description = "按疾病档案 ID 查询关联记录")
+  @ApiResponses(value = {
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "200",
+          description = "查询成功",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"OK\",\"message\":\"success\",\"requestId\":\"req_20260224_103\",\"data\":{\"profileId\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"diseaseName\":\"高血压\",\"records\":[{\"id\":\"07abefef-a580-4b6a-b15f-fd54e8f282f4\",\"title\":\"门诊随访\",\"recordDate\":\"2026-02-24\",\"sourceType\":\"OUTPATIENT\"}]}}")))
+  })
+  public ApiResponse<DiseaseProfileDetailResponseData> profileRecords(
+      @Parameter(description = "疾病档案ID，传 unknown 可查询未分类疾病", example = "d5a113ca-56cf-4aca-a265-8f4ec0a3292c")
+      @PathVariable("profileId") String profileId) {
     List<DiseaseProfileRecordSummary> records = diseaseProfileQueryService.listProfileRecords(profileId);
     String diseaseName = diseaseProfileQueryService.diseaseNameByProfile(profileId);
     return new ApiResponse<>(
@@ -71,6 +104,20 @@ public class DiseaseProfileController {
   }
 
   @PostMapping
+  @Operation(
+      summary = "创建疾病档案",
+      description = "根据名称创建疾病档案，若同名已存在则返回已有档案ID",
+      requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+          required = true,
+          description = "疾病档案创建参数",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value = "{\"name\":\"高血压\"}"))))
+  @ApiResponses(value = {
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "200",
+          description = "创建成功",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"OK\",\"message\":\"success\",\"requestId\":\"req_20260224_104\",\"data\":{\"diseaseProfileId\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"name\":\"高血压\"}}")))
+  })
   public ApiResponse<DiseaseProfileCreateResponseData> create(@RequestBody NameRequest request) {
     String name = request == null || request.name() == null ? "" : request.name().trim();
     UUID profileId = diseaseProfileService.createProfile(name);
@@ -82,8 +129,28 @@ public class DiseaseProfileController {
   }
 
   @DeleteMapping("/{diseaseProfileId}")
+  @Operation(summary = "删除疾病档案", description = "支持普通删除，或通过 onlyIfEmpty=true 仅删除空档案")
+  @ApiResponses(value = {
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "200",
+          description = "删除成功",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"OK\",\"message\":\"deleted\",\"requestId\":\"req_20260224_105\",\"data\":{\"diseaseProfileId\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"deleted\":true,\"reason\":\"DELETED\",\"linkedRecordCount\":null,\"deletedRecordCount\":3,\"deletedAssetCount\":3}}"))),
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "400",
+          description = "参数错误",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"INVALID_DISEASE_PROFILE_ID\",\"message\":\"diseaseProfileId is invalid\",\"requestId\":\"req_20260224_106\",\"data\":{\"diseaseProfileId\":\"abc\",\"deleted\":false}}"))),
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(
+          responseCode = "409",
+          description = "存在关联记录，无法按空档案删除",
+          content = @Content(mediaType = "application/json", examples = @ExampleObject(value =
+              "{\"code\":\"CONFLICT\",\"message\":\"disease profile has associated records\",\"requestId\":\"req_20260224_107\",\"data\":{\"diseaseProfileId\":\"d5a113ca-56cf-4aca-a265-8f4ec0a3292c\",\"deleted\":false,\"reason\":\"HAS_ASSOCIATED_RECORDS\",\"linkedRecordCount\":3,\"deletedRecordCount\":null,\"deletedAssetCount\":null}}")))
+  })
   public ResponseEntity<ApiResponse<?>> delete(
+      @Parameter(description = "疾病档案ID（UUID）", example = "d5a113ca-56cf-4aca-a265-8f4ec0a3292c")
       @PathVariable("diseaseProfileId") String diseaseProfileId,
+      @Parameter(description = "是否仅允许删除空档案", example = "true")
       @RequestParam(value = "onlyIfEmpty", defaultValue = "false") boolean onlyIfEmpty) {
     UUID diseaseProfileUuid;
     try {

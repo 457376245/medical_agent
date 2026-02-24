@@ -11,6 +11,8 @@ import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
 import com.medical.agent.domain.vo.RecordAnalysisContext;
 import com.medical.agent.domain.vo.ReportAnalysisResult;
 import com.medical.agent.domain.vo.StructuredResultData;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +25,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 @Service
+@Tag(name = "报告分析服务", description = "负责报告分析结果的缓存命中、分析上下文构建与外部分析引擎调用的领域服务")
 public class ReportAnalysisService {
   private static final String OUTPUT_TYPE = "REPORT_ANALYSIS";
   private static final int MAX_ANALYSIS_CHARACTERS = 300;
@@ -44,6 +47,7 @@ public class ReportAnalysisService {
     this.agentBaseUrl = agentBaseUrl;
   }
 
+  @Operation(summary = "获取缓存分析或生成新分析", description = "优先返回已生成的分析结果；若无缓存则基于结构化数据调用分析引擎并落库")
   public ReportAnalysisResult getOrGenerate(UUID recordId) {
     Optional<GeneratedOutputSnapshot> cached = generatedOutputService.fetchLatestGeneratedOutput(recordId, OUTPUT_TYPE);
     if (cached.isPresent()) {

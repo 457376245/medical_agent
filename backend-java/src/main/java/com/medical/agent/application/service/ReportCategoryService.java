@@ -8,6 +8,8 @@ import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
 import com.medical.agent.infrastructure.persistence.entity.ReportCategoryEntity;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ReportCategoryMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,6 +19,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
+@Tag(name = "报告分类服务", description = "负责报告分类的幂等创建、统计查询与安全删除，保障分类体系稳定")
 public class ReportCategoryService {
   private static final int MAX_REPORT_CATEGORY_NAME_LENGTH = 64;
 
@@ -28,6 +31,7 @@ public class ReportCategoryService {
     this.recordMapper = recordMapper;
   }
 
+  @Operation(summary = "创建或复用报告分类", description = "按名称幂等创建分类，若已存在同名分类则直接返回既有ID")
   public UUID createCategory(String name) {
     String normalizedName = normalizeName(name);
     if (normalizedName == null) {
@@ -50,6 +54,7 @@ public class ReportCategoryService {
     return entity.getId();
   }
 
+  @Operation(summary = "查询报告分类摘要", description = "查询分类列表并聚合每个分类下的记录数量用于前端展示")
   public List<ReportCategorySummary> listCategories() {
     List<ReportCategoryEntity> categories = reportCategoryMapper.selectList(new LambdaQueryWrapper<ReportCategoryEntity>()
         .eq(ReportCategoryEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
@@ -70,6 +75,7 @@ public class ReportCategoryService {
     return result;
   }
 
+  @Operation(summary = "检查报告分类是否存在", description = "在当前租户和用户范围内校验分类ID有效性")
   public boolean categoryExists(UUID reportCategoryId) {
     Long count = reportCategoryMapper.selectCount(new LambdaQueryWrapper<ReportCategoryEntity>()
         .eq(ReportCategoryEntity::getId, reportCategoryId)
@@ -78,6 +84,7 @@ public class ReportCategoryService {
     return count != null && count > 0;
   }
 
+  @Operation(summary = "统计分类下记录数", description = "根据分类ID统计关联记录总数，供删除前冲突检查")
   public int countRecords(UUID reportCategoryId) {
     ReportCategoryEntity category = reportCategoryMapper.selectOne(new LambdaQueryWrapper<ReportCategoryEntity>()
         .eq(ReportCategoryEntity::getId, reportCategoryId)
@@ -95,6 +102,7 @@ public class ReportCategoryService {
     return count == null ? 0 : count.intValue();
   }
 
+  @Operation(summary = "无关联记录时删除报告分类", description = "仅在分类无关联记录时执行删除，避免破坏既有记录引用")
   public boolean deleteCategoryIfEmpty(UUID reportCategoryId) {
     ReportCategoryEntity category = reportCategoryMapper.selectOne(new LambdaQueryWrapper<ReportCategoryEntity>()
         .eq(ReportCategoryEntity::getId, reportCategoryId)

@@ -6,6 +6,8 @@ import com.aliyun.oss.HttpMethod;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.ByteArrayInputStream;
 import java.net.URL;
 import java.time.Instant;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+@Tag(name = "对象存储签名服务", description = "封装对象存储上传、删除与预签名能力，统一处理开关控制与凭证校验")
 public class OssPresignService {
   @Value("${app.oss.enabled:false}")
   private boolean ossEnabled;
@@ -34,6 +37,7 @@ public class OssPresignService {
   @Value("${app.oss.url-expire-seconds:900}")
   private long expireSeconds;
 
+  @Operation(summary = "生成对象存储预签名地址", description = "根据对象键和内容类型生成短时可用的 PUT 预签名 URL，供客户端直传")
   public Optional<PresignResult> presignPut(String objectKey, String contentType) {
     if (!ossEnabled) {
       return Optional.empty();
@@ -55,6 +59,7 @@ public class OssPresignService {
     }
   }
 
+  @Operation(summary = "上传对象到对象存储", description = "通过服务端凭证直接上传二进制内容，常用于代理上传与兜底场景")
   public void putObject(String objectKey, String contentType, byte[] body) {
     if (!ossEnabled) {
       throw new IllegalStateException("OSS upload is disabled. Please enable app.oss.enabled first");
@@ -85,6 +90,7 @@ public class OssPresignService {
     }
   }
 
+  @Operation(summary = "从对象存储删除对象", description = "按对象键删除文件；若存储未启用或对象不存在则安全忽略")
   public void deleteObject(String objectKey) {
     if (!ossEnabled) {
       return;

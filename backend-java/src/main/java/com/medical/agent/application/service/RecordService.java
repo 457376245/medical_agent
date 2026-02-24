@@ -43,8 +43,11 @@ import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ReportCategoryMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Service
+@Tag(name = "记录服务", description = "负责记录与资产的核心编排，包括创建、查询、趋势分析、更新与级联删除")
 public class RecordService {
   private static final int MAX_REPORT_CATEGORY_NAME_LENGTH = 64;
 
@@ -82,14 +85,17 @@ public class RecordService {
     this.objectMapper = objectMapper;
   }
 
+  @Operation(summary = "按ID确保记录存在", description = "在最小参数场景下确保记录存在，不存在时按默认值创建")
   public UUID ensureRecord(UUID recordId) {
     return ensureRecord(recordId, null, null, null, null);
   }
 
+  @Operation(summary = "按档案和日期确保记录存在", description = "在给定档案与日期条件下创建或补全记录基础信息")
   public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title) {
     return ensureRecord(recordId, diseaseProfileId, reportDate, title, null);
   }
 
+  @Operation(summary = "按完整元数据确保记录存在", description = "根据病种、日期、标题和来源类型幂等创建或更新记录主数据")
   public UUID ensureRecord(UUID recordId, UUID diseaseProfileId, LocalDate reportDate, String title,
       String sourceType) {
     UUID finalRecordId = recordId == null ? UUID.randomUUID() : recordId;
@@ -138,6 +144,7 @@ public class RecordService {
     return finalRecordId;
   }
 
+  @Operation(summary = "创建资产并绑定记录", description = "登记上传资产元信息并自动关联到记录，返回新资产ID")
   public UUID createAsset(
       String objectKey,
       String checksum,
@@ -162,6 +169,7 @@ public class RecordService {
     return assetId;
   }
 
+  @Operation(summary = "按ID列表查询资产引用", description = "按输入顺序返回资产引用信息，若资产不存在则抛出异常")
   public List<AssetRef> listAssetRefs(List<UUID> assetIds) {
     if (assetIds == null || assetIds.isEmpty()) {
       return List.of();
@@ -187,6 +195,7 @@ public class RecordService {
     return refs;
   }
 
+  @Operation(summary = "获取记录详情", description = "查询记录、最新解析状态与结构化结果，组装为详情视图")
   public RecordDetail fetchRecord(UUID recordId) {
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
@@ -203,6 +212,7 @@ public class RecordService {
     return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult);
   }
 
+  @Operation(summary = "获取单条记录趋势数据", description = "围绕当前记录构建同病种同来源的时间窗口趋势快照")
   public RecordTrendData fetchTrend(UUID recordId, int limit) {
     RecordEntity currentRecord = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
@@ -279,6 +289,7 @@ public class RecordService {
   }
 
   @Transactional
+  @Operation(summary = "删除记录及关联资源", description = "删除记录及其关联的解析任务、结构化结果、生成内容和资产映射")
   public boolean deleteRecord(UUID recordId) {
     dataRightsRequestMapper
         .delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity>()
@@ -303,6 +314,7 @@ public class RecordService {
     return recordMapper.deleteById(recordId) > 0;
   }
 
+  @Operation(summary = "更新记录来源类型", description = "更新记录来源分类并按业务规则重建记录标题")
   public UpdateRecordSourceTypeResult updateSourceType(UUID recordId, String sourceType) {
     String normalizedSourceType = normalizeReportCategoryName(sourceType);
     if (normalizedSourceType == null) {
@@ -343,6 +355,7 @@ public class RecordService {
     return new UpdateRecordSourceTypeResult(true, normalizedSourceType, nextTitle, recordDate, diseaseName);
   }
 
+  @Operation(summary = "按疾病档案查询资产对象键", description = "批量查询指定疾病档案下所有记录关联的对象存储键")
   public List<String> listAssetObjectKeysByDiseaseProfile(UUID diseaseProfileId) {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .select(RecordEntity::getId)
@@ -358,6 +371,7 @@ public class RecordService {
     return assets.stream().map(AssetEntity::getObjectKey).filter(v -> v != null && !v.isBlank()).toList();
   }
 
+  @Operation(summary = "获取记录分析上下文", description = "汇总记录、病种与结构化字段，构建分析引擎调用所需上下文")
   public Optional<RecordAnalysisContext> fetchRecordAnalysisContext(UUID recordId) {
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)

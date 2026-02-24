@@ -40,7 +40,13 @@ public class SecurityConfig {
 
     if (securityEnabled) {
       http.authorizeHttpRequests(auth -> auth
-          .requestMatchers("/actuator/health", "/api/auth/**").permitAll()
+          .requestMatchers(
+              "/actuator/health",
+              "/api/auth/**",
+              "/v3/api-docs/**",
+              "/swagger-ui/**",
+              "/swagger-ui.html")
+          .permitAll()
           .anyRequest().authenticated());
     } else {
       http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
