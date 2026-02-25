@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -6,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aio_pika
+
+from app.utils import extract_error_codes
 
 
 LOGGER = logging.getLogger(__name__)
@@ -65,7 +66,27 @@ class AgentMqConsumer:
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
         async with message.process(requeue=False):
-            payload = json.loads(message.body.decode("utf-8"))
+            try:
+                payload = json.loads(message.body.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                LOGGER.error("MQ parse: malformed message body: %s", exc)
+                await self._publish_error(
+                    exchange,
+                    routing_key="agent.parse.result.v1",
+                    event={
+                        "jobId": None,
+                        "status": "FAILED",
+                        "structuredResult": {},
+                        "confidence": 0.0,
+                        "errors": [
+                            {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
+                        ],
+                        "traceId": "",
+                        "schemaVersion": "v1",
+                    },
+                )
+                return
+
             LOGGER.info("MQ parse request received: jobId=%s", payload.get("jobId"))
             result = await self._parse_handler(payload)
             event = {
@@ -77,23 +98,16 @@ class AgentMqConsumer:
                 "traceId": payload.get("traceId", ""),
                 "schemaVersion": payload.get("schemaVersion", "v1"),
             }
-            await exchange.publish(
-                aio_pika.Message(
-                    body=json.dumps(event).encode("utf-8"),
-                    content_type="application/json",
-                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                ),
+            await self._publish_error(
+                exchange,
                 routing_key="agent.parse.result.v1",
+                event=event,
             )
             LOGGER.info(
                 "MQ parse result published: jobId=%s status=%s error_codes=%s",
                 payload.get("jobId"),
                 event.get("status"),
-                [
-                    item.get("code")
-                    for item in event.get("errors", [])
-                    if isinstance(item, dict)
-                ],
+                extract_error_codes(event),
             )
 
     async def _handle_generate(
@@ -102,7 +116,28 @@ class AgentMqConsumer:
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
         async with message.process(requeue=False):
-            payload = json.loads(message.body.decode("utf-8"))
+            try:
+                payload = json.loads(message.body.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                LOGGER.error("MQ generate: malformed message body: %s", exc)
+                await self._publish_error(
+                    exchange,
+                    routing_key="agent.generate.result.v1",
+                    event={
+                        "taskId": None,
+                        "recordId": None,
+                        "status": "FAILED",
+                        "type": "SUMMARY",
+                        "content": "",
+                        "modelMeta": {},
+                        "errors": [
+                            {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
+                        ],
+                        "traceId": "",
+                    },
+                )
+                return
+
             LOGGER.info(
                 "MQ generate request received: taskId=%s", payload.get("taskId")
             )
@@ -117,26 +152,30 @@ class AgentMqConsumer:
                 "errors": result.get("errors", []),
                 "traceId": payload.get("traceId", ""),
             }
-            await exchange.publish(
-                aio_pika.Message(
-                    body=json.dumps(event).encode("utf-8"),
-                    content_type="application/json",
-                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                ),
+            await self._publish_error(
+                exchange,
                 routing_key="agent.generate.result.v1",
+                event=event,
             )
             LOGGER.info(
                 "MQ generate result published: taskId=%s status=%s error_codes=%s",
                 payload.get("taskId"),
                 event.get("status"),
-                [
-                    item.get("code")
-                    for item in event.get("errors", [])
-                    if isinstance(item, dict)
-                ],
+                extract_error_codes(event),
             )
 
-
-async def wait_forever() -> None:
-    while True:
-        await asyncio.sleep(60)
+    @staticmethod
+    async def _publish_error(
+        exchange: aio_pika.abc.AbstractExchange,
+        *,
+        routing_key: str,
+        event: dict[str, Any],
+    ) -> None:
+        await exchange.publish(
+            aio_pika.Message(
+                body=json.dumps(event).encode("utf-8"),
+                content_type="application/json",
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            ),
+            routing_key=routing_key,
+        )

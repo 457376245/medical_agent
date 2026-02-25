@@ -12,7 +12,7 @@ import re
 import ssl
 import time
 import warnings
-from typing import Any, TypeVar, cast
+from typing import Any
 
 import fitz  # type: ignore[import-not-found]
 import oss2  # type: ignore[import-not-found]
@@ -51,8 +51,11 @@ class GenerateAgentOutput(BaseModel):
     content: str = Field(description="Generated draft content")
 
 
-StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 LOGGER = logging.getLogger(__name__)
+
+# --- Constants ---
+MAX_PDF_TEXT_CHARS = 18_000
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024  # 50 MB guard for OSS downloads
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
@@ -84,9 +87,7 @@ class ProviderGateway:
         self._gemini_base_url = os.getenv("GEMINI_BASE_URL", "").strip()
         # Default to bypassing ambient proxy settings to avoid intermittent TLS EOF
         # failures caused by unstable system proxy chains.
-        self._gemini_trust_env = self._to_bool(
-            os.getenv("GEMINI_TRUST_ENV", "false")
-        )
+        self._gemini_trust_env = self._to_bool(os.getenv("GEMINI_TRUST_ENV", "false"))
         self._gemini_proxy = os.getenv("GEMINI_PROXY", "").strip()
         self._gemini_retry_with_env_proxy = self._to_bool(
             os.getenv("GEMINI_RETRY_WITH_ENV_PROXY", "true")
@@ -366,12 +367,14 @@ class ProviderGateway:
             "recordId": payload.get("recordId"),
             "type": output_type,
             "traceId": payload.get("traceId"),
-            "analysisContext": analysis_context if output_type == "REPORT_ANALYSIS" else {},
+            "analysisContext": analysis_context
+            if output_type == "REPORT_ANALYSIS"
+            else {},
         }
         user_prompt = (
             f"{task_prompt}\n"
             "Context (JSON): "
-            f"{json.dumps(safe_context, ensure_ascii=True)}"
+            f"{json.dumps(safe_context, ensure_ascii=False)}"
         )
         generate_llm = self._chat_model(model_name, attempt).with_structured_output(
             GenerateAgentOutput, method="json_schema"
@@ -415,11 +418,17 @@ class ProviderGateway:
         if not api_key:
             raise ValueError("BIZ_GEMINI_NOT_CONFIGURED")
         trust_env = self._gemini_trust_env
-        if self._gemini_retry_with_env_proxy and not self._gemini_proxy and attempt >= 2:
+        if (
+            self._gemini_retry_with_env_proxy
+            and not self._gemini_proxy
+            and attempt >= 2
+        ):
             # Alternate between baseline trust_env and the opposite on retries so that
             # we can recover from one-side proxy path flakiness.
             trust_env = (
-                not self._gemini_trust_env if attempt % 2 == 0 else self._gemini_trust_env
+                not self._gemini_trust_env
+                if attempt % 2 == 0
+                else self._gemini_trust_env
             )
 
         client_args: dict[str, Any] = {
@@ -462,7 +471,7 @@ class ProviderGateway:
         prompt = (
             "Extract key medical test fields from the report and respond in JSON. "
             "Keep confidence in [0,1]. "
-            f"Schema: {json.dumps(schema_hint, ensure_ascii=True)}. "
+            f"Schema: {json.dumps(schema_hint, ensure_ascii=False)}. "
             f"Source file: {object_key}"
         )
 
@@ -473,7 +482,7 @@ class ProviderGateway:
                 return [
                     {
                         "type": "text",
-                        "text": f"{prompt}\nDocument text:\n{text[:18000]}",
+                        "text": f"{prompt}\nDocument text:\n{text[:MAX_PDF_TEXT_CHARS]}",
                     }
                 ]
 
@@ -513,6 +522,8 @@ class ProviderGateway:
         data = response.read()
         if not data:
             raise ValueError("BIZ_EMPTY_UPLOAD_FILE")
+        if len(data) > MAX_DOWNLOAD_BYTES:
+            raise ValueError("BIZ_FILE_TOO_LARGE")
         return data
 
     def _extract_pdf_text(self, content: bytes) -> str:
@@ -526,6 +537,7 @@ class ProviderGateway:
                         chunks.append(text)
                 return "\n".join(chunks).strip()
         except Exception:
+            LOGGER.warning("Failed to extract PDF text via pypdf", exc_info=True)
             return ""
 
     def _render_pdf_pages(self, content: bytes) -> list[str]:
@@ -539,6 +551,7 @@ class ProviderGateway:
                     pix = page_obj.get_pixmap(alpha=False)
                     images.append(base64.b64encode(pix.tobytes("png")).decode("utf-8"))
         except Exception:
+            LOGGER.warning("Failed to render PDF pages via PyMuPDF", exc_info=True)
             return []
         return images
 
@@ -590,20 +603,6 @@ class ProviderGateway:
             normalized["evidence"] = evidence
 
         return normalized
-
-    def _coerce_structured_response(
-        self, result: dict[str, Any], schema: type[StructuredModel]
-    ) -> StructuredModel:
-        structured = result.get("structured_response")
-        if structured is None:
-            raise ValueError("BIZ_INVALID_LLM_OUTPUT")
-        if isinstance(structured, schema):
-            return structured
-        if isinstance(structured, BaseModel):
-            return cast(StructuredModel, schema.model_validate(structured.model_dump()))
-        if isinstance(structured, dict):
-            return cast(StructuredModel, schema.model_validate(structured))
-        raise ValueError("BIZ_INVALID_LLM_OUTPUT")
 
     def _average_confidence(self, fields: list[dict[str, Any]]) -> float:
         valid_scores = [
@@ -712,7 +711,13 @@ class ProviderGateway:
         time.sleep(sleep_seconds)
 
     def _to_bool(self, value: str) -> bool:
-        return value.strip().lower() in {"1", "true", "yes", "on"}
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+        LOGGER.warning("Unrecognized boolean value '%s', treating as False", value)
+        return False
 
     def _read_float_env(self, key: str, default: float, minimum: float) -> float:
         raw = os.getenv(key, "").strip()

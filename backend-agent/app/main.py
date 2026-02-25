@@ -1,20 +1,26 @@
+from __future__ import annotations
+
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.mq.consumer import AgentMqConsumer
+from app.providers.gateway import ProviderGateway
+from app.utils import extract_error_codes
 from app.workers.generate_worker import GenerateWorker
 from app.workers.parse_worker import ParseWorker
 
 
 class TaskPayload(BaseModel):
-    payload: dict
+    payload: dict[str, Any]
 
 
-app = FastAPI(title="medical-agent-worker", version="0.1.0")
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def configure_logging() -> None:
@@ -28,23 +34,19 @@ def configure_logging() -> None:
 
 configure_logging()
 
-parse_worker = ParseWorker()
-generate_worker = GenerateWorker()
+gateway = ProviderGateway()
+parse_worker = ParseWorker(gateway)
+generate_worker = GenerateWorker(gateway)
 mq_consumer = AgentMqConsumer(parse_worker.handle, generate_worker.handle)
 
 
-@app.get("/health")
-async def health() -> dict:
-    return {"status": "ok"}
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    logger.info(
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    LOGGER.info(
         "Agent starting with MQ_CONSUMER_ENABLED=%s",
         os.getenv("MQ_CONSUMER_ENABLED", "true"),
     )
-    logger.info(
+    LOGGER.info(
         "Agent config: rabbitmq_set=%s oss_set=%s gemini_set=%s",
         bool(os.getenv("RABBITMQ_URL")),
         bool(
@@ -59,44 +61,43 @@ async def startup_event() -> None:
         try:
             await mq_consumer.start()
         except Exception as exc:  # pragma: no cover - defensive startup fallback
-            logger.exception("Failed to start MQ consumer", exc_info=exc)
+            LOGGER.exception("Failed to start MQ consumer", exc_info=exc)
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
     try:
         await mq_consumer.close()
     except Exception:
-        logger.exception("Failed to close MQ consumer")
+        LOGGER.exception("Failed to close MQ consumer")
+
+
+app = FastAPI(title="medical-agent-worker", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 @app.post("/internal/parse")
-async def parse_task(task: TaskPayload) -> dict:
-    logger.info("/internal/parse invoked: keys=%s", sorted(task.payload.keys()))
+async def parse_task(task: TaskPayload) -> dict[str, Any]:
+    LOGGER.info("/internal/parse invoked: keys=%s", sorted(task.payload.keys()))
     result = await parse_worker.handle(task.payload)
-    logger.info(
+    LOGGER.info(
         "/internal/parse finished: status=%s error_codes=%s",
         result.get("status"),
-        [
-            item.get("code")
-            for item in result.get("errors", [])
-            if isinstance(item, dict)
-        ],
+        extract_error_codes(result),
     )
     return {"code": "OK", "message": "success", "data": result}
 
 
 @app.post("/internal/generate")
-async def generate_task(task: TaskPayload) -> dict:
-    logger.info("/internal/generate invoked: keys=%s", sorted(task.payload.keys()))
+async def generate_task(task: TaskPayload) -> dict[str, Any]:
+    LOGGER.info("/internal/generate invoked: keys=%s", sorted(task.payload.keys()))
     result = await generate_worker.handle(task.payload)
-    logger.info(
+    LOGGER.info(
         "/internal/generate finished: status=%s error_codes=%s",
         result.get("status"),
-        [
-            item.get("code")
-            for item in result.get("errors", [])
-            if isinstance(item, dict)
-        ],
+        extract_error_codes(result),
     )
     return {"code": "OK", "message": "success", "data": result}

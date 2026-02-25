@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import asyncio
+from typing import Any
 
 from app.providers.gateway import ProviderGateway
 
 
 class GenerateWorker:
-    def __init__(self) -> None:
-        self.gateway = ProviderGateway()
+    def __init__(self, gateway: ProviderGateway | None = None) -> None:
+        self.gateway = gateway or ProviderGateway()
 
-    async def handle(self, payload: dict) -> dict:
+    async def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not payload.get("recordId"):
             return {
                 "status": "FAILED",

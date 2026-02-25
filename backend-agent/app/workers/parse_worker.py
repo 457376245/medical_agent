@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 import logging
+from typing import Any
 
 from app.providers.gateway import ProviderGateway
 
@@ -8,10 +11,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ParseWorker:
-    def __init__(self) -> None:
-        self.gateway = ProviderGateway()
+    def __init__(self, gateway: ProviderGateway | None = None) -> None:
+        self.gateway = gateway or ProviderGateway()
 
-    async def handle(self, payload: dict) -> dict:
+    async def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
         LOGGER.info(
             "Parse task received: jobId=%s asset_ref_count=%s",
             payload.get("jobId"),
@@ -79,7 +82,7 @@ class ParseWorker:
             confidence_score = float(confidence)
         except (TypeError, ValueError):
             confidence_score = 0.0
-        final = {
+        final: dict[str, Any] = {
             "status": "SUCCESS",
             "structuredResult": structured,
             "confidence": max(0.0, min(1.0, confidence_score)),
