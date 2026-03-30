@@ -16,7 +16,7 @@ from app.providers.document import DocumentParser
 from app.providers.gateway import ProviderGateway
 from app.providers.llm import LLMService
 from app.providers.storage import OSSStorageService
-from app.utils import extract_error_codes
+from app.utils import extract_error_codes, read_int_env, to_bool
 from app.workers.generate_worker import GenerateWorker
 from app.workers.parse_worker import ParseWorker
 
@@ -185,3 +185,15 @@ async def generate_task(task: TaskPayload) -> dict[str, Any]:
         extract_error_codes(result),
     )
     return {"code": "OK", "message": "success", "data": result}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host=os.getenv("UVICORN_HOST", "0.0.0.0"),
+        port=read_int_env("UVICORN_PORT", 8090, 1),
+        env_file=os.getenv("UVICORN_ENV_FILE", ".env"),
+        reload=to_bool(os.getenv("UVICORN_RELOAD", "true")),
+    )
