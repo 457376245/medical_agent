@@ -1,0 +1,4 @@
+# Keep this directory in git but ignore runtime data files
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,1 @@
+mvn spring-bootrun -Dspring-boot.run.jvmArguments=-Dlogging.level.org.springframework=DEBUG

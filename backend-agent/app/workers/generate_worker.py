@@ -7,8 +7,14 @@ from app.providers.gateway import ProviderGateway
 
 
 class GenerateWorker:
-    def __init__(self, gateway: ProviderGateway | None = None) -> None:
+    def __init__(
+        self,
+        gateway: ProviderGateway | None = None,
+        *,
+        semaphore: asyncio.Semaphore | None = None,
+    ) -> None:
         self.gateway = gateway or ProviderGateway()
+        self._semaphore = semaphore
 
     async def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not payload.get("recordId"):
@@ -22,6 +28,12 @@ class GenerateWorker:
                 ],
             }
 
+        if self._semaphore is not None:
+            async with self._semaphore:
+                return await self._execute(payload)
+        return await self._execute(payload)
+
+    async def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = await asyncio.to_thread(
             self.gateway.execute_with_resilience,
             "generate",
