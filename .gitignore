@@ -35,3 +35,5 @@ Thumbs.db
 
 # Local tooling artifacts
 .opencode/node_modules/
+/medical_agent.iml
+/backend-java/web/WEB-INF/web.xml
