@@ -39,7 +39,7 @@
 backend-agent/
 ├── .env                        # 环境变量（密钥、连接串等，gitignore）
 ├── .env.example                # 环境变量模板
-├── requirements.txt            # Python 依赖
+├── pyproject.toml              # uv 项目配置与 Python 依赖
 ├── data/                       # 运行时数据目录（gitignore）
 │   ├── checkpoints.db          # LangGraph 短期记忆 (SQLite)
 │   └── memory.db               # 长期记忆存储 (SQLite)
@@ -361,7 +361,7 @@ RabbitMQ ──▶ mq/consumer.py ──▶ workers/*.py ──▶ providers/gat
 
 ### 升级步骤
 
-1. **Phase 1 — 依赖升级**：更新 `requirements.txt`，安装新版本
+1. **Phase 1 — 依赖升级**：更新 `pyproject.toml`，使用 `uv sync` 安装新版本
 2. **Phase 2 — 修复现有代码**：适配 `providers/llm.py` 中的 breaking changes
 3. **Phase 3 — 新增 Agent 模块**：基于 LangChain 1.2 + LangGraph 1.0 构建
 

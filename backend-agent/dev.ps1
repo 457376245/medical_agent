@@ -1,5 +1,6 @@
 param(
-    [string]$Host = "0.0.0.0",
+    [Alias("Host")]
+    [string]$BindHost = "0.0.0.0",
     [int]$Port = 8090,
     [string]$EnvFile = ".env",
     [switch]$NoReload
@@ -10,28 +11,29 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
-$venvPython = Join-Path $scriptDir ".venv\Scripts\python.exe"
-$python = $venvPython
-
-if (-not (Test-Path $python)) {
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($pythonCmd) {
-        $python = $pythonCmd.Source
-    } else {
-        throw "Python interpreter not found. Create .venv first or install Python."
-    }
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    throw "uv command not found. Install uv first: https://docs.astral.sh/uv/"
 }
+
+# Use a project-local uv cache to avoid machine-level cache conflicts.
+$env:UV_CACHE_DIR = Join-Path $scriptDir ".uv-cache"
+$env:http_proxy = "http://127.0.0.1:7897"
+$env:https_proxy = "http://127.0.0.1:7897"
+$env:HTTP_PROXY = "http://127.0.0.1:7897"
+$env:HTTPS_PROXY = "http://127.0.0.1:7897"
 
 if (-not (Test-Path $EnvFile)) {
     throw "Env file '$EnvFile' was not found in $scriptDir."
 }
 
 $args = @(
+    "run",
+    "python",
     "-m",
     "uvicorn",
     "app.main:app",
     "--host",
-    $Host,
+    $BindHost,
     "--port",
     $Port,
     "--env-file",
@@ -42,6 +44,6 @@ if (-not $NoReload) {
     $args += "--reload"
 }
 
-Write-Host "Starting backend-agent with $python"
-& $python @args
+Write-Host "Starting backend-agent with uv"
+& uv @args
 exit $LASTEXITCODE

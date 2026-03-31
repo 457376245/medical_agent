@@ -11,6 +11,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.uv-cache/
+gen-lang-client-*.json
 *.egg-info/
 
 # Java

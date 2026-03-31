@@ -11,6 +11,9 @@ This repository is a Java backend service (`backend-java`) built with Spring Boo
 
 ## Build, Test, and Development Commands
 - `mvn spring-boot:run`: start the service locally on port `8080`.
+- `.\dev.ps1`: start the service with PowerShell defaults for local development, using the machine's Maven configuration.
+- `.\dev.ps1 -UseLocalInfra`: start with environment overrides that match the repository `docker-compose.yml`.
+- `.\dev.ps1 -ForceUpdate`: force Maven to refresh dependencies instead of reusing failed cache entries.
 - `mvn test`: run all tests (includes Spring Boot + JUnit 5 integration tests).
 - `mvn -Dtest=ApiIntegrationTest test`: run a single test class.
 - `mvn clean package`: build the JAR and run tests.
