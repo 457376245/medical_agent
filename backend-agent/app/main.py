@@ -9,14 +9,27 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.config import (
+    CORS_ALLOW_ORIGINS,
+    JAVA_AGENT_API_KEY,
+    JAVA_AGENT_API_KEY_HEADER,
+    JAVA_AGENT_CONTEXT_PATH,
+    JAVA_AGENT_CONTEXT_TIMEOUT_SECONDS,
+    JAVA_API_BASE_URL,
+    LLM_PROXY_MODE,
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+)
 from app.mq.consumer import AgentMqConsumer
 from app.providers.document import DocumentParser
 from app.providers.gateway import ProviderGateway
 from app.providers.llm import LLMService
 from app.providers.storage import OSSStorageService
-from app.utils import extract_error_codes, read_int_env, to_bool
+from app.services.disease_profile_context import DiseaseProfileContextClient
+from app.utils import configure_llm_proxy_env, extract_error_codes, read_int_env, to_bool
 from app.workers.generate_worker import GenerateWorker
 from app.workers.parse_worker import ParseWorker
 
@@ -46,6 +59,7 @@ def configure_logging() -> None:
 
 
 configure_logging()
+configure_llm_proxy_env(LLM_PROXY_MODE, [])
 
 # ---------------------------------------------------------------------------
 # Dependency wiring — existing task-processing pipeline (unchanged)
@@ -66,10 +80,20 @@ mq_consumer = AgentMqConsumer(parse_worker.handle, generate_worker.handle)
 # Dependency wiring — Agent tools (inject providers into tool modules)
 # ---------------------------------------------------------------------------
 from app.tools import document_parse as _tool_doc  # noqa: E402
+from app.tools import disease_profile_context as _tool_context  # noqa: E402
 from app.tools import text_generate as _tool_gen  # noqa: E402
 
-_tool_doc.configure(storage=storage, document=document)
+_tool_doc.configure(gateway=gateway)
 _tool_gen.configure(gateway=gateway)
+_tool_context.configure(
+    client=DiseaseProfileContextClient(
+        base_url=JAVA_API_BASE_URL,
+        context_path=JAVA_AGENT_CONTEXT_PATH,
+        timeout_seconds=JAVA_AGENT_CONTEXT_TIMEOUT_SECONDS,
+        api_key=JAVA_AGENT_API_KEY,
+        api_key_header=JAVA_AGENT_API_KEY_HEADER,
+    )
+)
 
 
 @asynccontextmanager
@@ -111,10 +135,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         os.getenv("MQ_CONSUMER_ENABLED", "true"),
     )
     LOGGER.info(
-        "Agent config: rabbitmq_set=%s oss_set=%s gemini_set=%s",
+        "Agent config: rabbitmq_set=%s oss_set=%s openai_set=%s",
         bool(os.getenv("RABBITMQ_URL")),
         storage.is_configured,
-        bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
+        bool(OPENAI_BASE_URL and OPENAI_API_KEY),
     )
     if os.getenv("MQ_CONSUMER_ENABLED", "true").lower() == "true":
         try:
@@ -142,6 +166,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="medical-agent", version="2.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Register API routers (Agent chat + sessions)

@@ -1,35 +1,22 @@
 from __future__ import annotations
 
-# pyright: reportMissingImports=false
-
 import json
 import logging
 import os
-import warnings
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any
 
-from langchain_core.messages import HumanMessage  # type: ignore[import-not-found]
-from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import-not-found]
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.providers.document import DocumentParser
 from app.providers.storage import OSSStorageService
-from app.utils import read_float_env, read_int_env, to_bool
+from app.utils import normalize_openai_base_url, read_float_env, read_int_env, to_bool
 
 
 LOGGER = logging.getLogger(__name__)
-
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    module=r"pydantic\.main",
-    message=r"Pydantic serializer warnings:.*",
-)
-
-
-# ------------------------------------------------------------------
-# Pydantic models for LLM structured output
-# ------------------------------------------------------------------
 
 
 class ParseEvidence(BaseModel):
@@ -61,11 +48,6 @@ class GenerateAgentOutput(BaseModel):
     content: str = Field(description="Generated draft content")
 
 
-# ------------------------------------------------------------------
-# Exception
-# ------------------------------------------------------------------
-
-
 class LLMError(Exception):
     """Raised when an LLM interaction fails."""
 
@@ -74,13 +56,8 @@ class LLMError(Exception):
         self.code = code
 
 
-# ------------------------------------------------------------------
-# Service
-# ------------------------------------------------------------------
-
-
 class LLMService:
-    """Manages prompt construction and LLM invocations via LangChain."""
+    """Manages prompt construction and LLM invocations via OpenAI chat completions."""
 
     def __init__(
         self,
@@ -90,44 +67,42 @@ class LLMService:
         self._storage = storage or OSSStorageService()
         self._document = document or DocumentParser()
 
-        # Gemini / LLM config
-        self._google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-        self._gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro").strip()
-        self._gemini_fallback_model = os.getenv(
-            "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash"
+        self._openai_base_url = normalize_openai_base_url(
+            os.getenv("OPENAI_BASE_URL", "")
+        )
+        self._openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        self._openai_parse_model = os.getenv("OPENAI_PARSE_MODEL", "gpt-5.4").strip()
+        self._openai_generate_model = os.getenv(
+            "OPENAI_GENERATE_MODEL", "gpt-5.4-mini"
         ).strip()
-        self._gemini_temperature = float(os.getenv("GEMINI_TEMPERATURE", "0"))
-        self._gemini_request_timeout_seconds = read_float_env(
-            "GEMINI_REQUEST_TIMEOUT_SECONDS", 90.0, 1.0
+        self._openai_vision_model = os.getenv("OPENAI_VISION_MODEL", "gpt-5.4").strip()
+        self._openai_fallback_model = os.getenv(
+            "OPENAI_FALLBACK_MODEL", "gpt-5.4-mini"
+        ).strip()
+        self._openai_temperature = read_float_env("OPENAI_TEMPERATURE", 0.0, 0.0)
+        self._openai_request_timeout_seconds = read_float_env(
+            "OPENAI_REQUEST_TIMEOUT_SECONDS", 90.0, 1.0
         )
-        self._gemini_sdk_retries = read_int_env("GEMINI_SDK_RETRIES", 2, 0)
-        self._gemini_base_url = os.getenv("GEMINI_BASE_URL", "").strip()
-        self._gemini_trust_env = to_bool(os.getenv("GEMINI_TRUST_ENV", "false"))
-        self._gemini_proxy = os.getenv("GEMINI_PROXY", "").strip()
-        self._gemini_retry_with_env_proxy = to_bool(
-            os.getenv("GEMINI_RETRY_WITH_ENV_PROXY", "true")
+        self._openai_sdk_retries = read_int_env("OPENAI_SDK_RETRIES", 2, 0)
+        self._openai_trust_env = to_bool(os.getenv("OPENAI_TRUST_ENV", "false"))
+        self._openai_proxy = os.getenv("OPENAI_PROXY", "").strip()
+        self._openai_retry_with_env_proxy = to_bool(
+            os.getenv("OPENAI_RETRY_WITH_ENV_PROXY", "true")
         )
-        self._gemini_http2 = to_bool(os.getenv("GEMINI_HTTP2", "false"))
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def model_for_attempt(self, attempt: int) -> str:
-        if attempt == 1 or not self._gemini_fallback_model:
-            return self._gemini_model
-        return self._gemini_fallback_model
+    def model_for_attempt(self, operation: str, attempt: int) -> str:
+        primary = (
+            self._openai_generate_model
+            if operation == "generate"
+            else self._openai_parse_model
+        )
+        if attempt == 1 or not self._openai_fallback_model:
+            return primary
+        return self._openai_fallback_model
 
     def parse(
         self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
-        """Download a file from OSS, parse it via the LLM, return structured fields.
-
-        Raises:
-            OSSError: if the file cannot be downloaded.
-            LLMError: if the LLM returns invalid or empty output.
-            ValueError: for business-logic validation failures (BIZ_*).
-        """
         asset_refs = payload.get("assetRefs")
         if not isinstance(asset_refs, list) or not asset_refs:
             raise ValueError("BIZ_MISSING_ASSET_REFS")
@@ -138,16 +113,21 @@ class LLMService:
         if not object_key:
             raise ValueError("BIZ_MISSING_OBJECT_KEY")
 
-        # Download + build content, free raw bytes early
         content = self._storage.download_bytes(object_key)
-        user_content = self._document.build_parse_content(
-            file_type, object_key, content
-        )
-        del content  # free raw bytes before LLM call
+        user_content = self._document.build_parse_content(file_type, object_key, content)
+        del content
 
-        structured = self._invoke_structured(
-            ParseAgentOutput, user_content, model_name, attempt
+        effective_model = self._model_for_parse_content(
+            requested_model=model_name,
+            user_content=user_content,
+            attempt=attempt,
         )
+        raw_output = self._invoke_parse_content(
+            user_content=user_content,
+            model_name=effective_model,
+            attempt=attempt,
+        )
+        structured = self._coerce_structured(raw_output)
 
         normalized_fields = [
             _normalize_field(
@@ -164,9 +144,9 @@ class LLMService:
 
         confidence = _average_confidence(fields)
         meta = {
-            "provider": "langchain-google-genai",
-            "framework": "langchain-v1",
-            "model": model_name,
+            "provider": "openai-compatible",
+            "framework": "chat-completions",
+            "model": effective_model,
         }
         return {
             "structuredResult": {
@@ -181,11 +161,6 @@ class LLMService:
     def generate(
         self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
-        """Generate medical draft text via the LLM.
-
-        Raises:
-            LLMError: if the LLM returns invalid or empty output.
-        """
         output_type = str(payload.get("type", "SUMMARY")).upper()
         system_prompt = (
             "You generate clinically cautious Chinese draft text. "
@@ -228,16 +203,12 @@ class LLMService:
             "Context (JSON): "
             f"{json.dumps(safe_context, ensure_ascii=False)}"
         )
-        prompt = f"{system_prompt}\n{user_prompt}"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
 
-        structured = self._invoke_structured(
-            GenerateAgentOutput,
-            [{"type": "text", "text": prompt}],
-            model_name,
-            attempt,
-        )
-
-        text = structured.content.strip()
+        text = self._invoke_text(messages=messages, model_name=model_name, attempt=attempt)
         if not text:
             raise LLMError("LLM returned empty content", code="BIZ_EMPTY_GENERATION")
 
@@ -245,90 +216,229 @@ class LLMService:
             "type": output_type,
             "content": text,
             "modelMeta": {
-                "provider": "langchain-google-genai",
-                "framework": "langchain-v1",
+                "provider": "openai-compatible",
+                "framework": "chat-completions",
                 "model": model_name,
             },
         }
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
-    def _invoke_structured(
+    def _model_for_parse_content(
         self,
-        schema: type[BaseModel],
+        *,
+        requested_model: str,
+        user_content: list[dict[str, Any]],
+        attempt: int,
+    ) -> str:
+        if attempt > 1:
+            return requested_model
+        if self._document.contains_visual_parts(user_content):
+            return self._openai_vision_model or requested_model
+        return requested_model
+
+    def _invoke_parse_content(
+        self,
+        *,
         user_content: list[dict[str, Any]],
         model_name: str,
         attempt: int,
-    ) -> Any:
-        """Invoke the LLM with structured output and coerce the result."""
-        llm = self._chat_model(model_name, attempt).with_structured_output(
-            schema, method="json_schema"
-        )
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                category=UserWarning,
-                message=r"Pydantic serializer warnings:.*PydanticSerializationUnexpectedValue.*",
-            )
-            result = llm.invoke([HumanMessage(content=user_content)])
+    ) -> str:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You extract key medical test fields from medical reports. "
+                    "Return only a valid JSON object with a top-level `fields` array. "
+                    "Do not use markdown code fences."
+                ),
+            },
+            {
+                "role": "user",
+                "content": user_content,
+            },
+        ]
+        return self._invoke_text(messages=messages, model_name=model_name, attempt=attempt)
 
-        if isinstance(result, schema):
-            return result
-        if isinstance(result, BaseModel):
-            return schema.model_validate(result.model_dump())
-        if isinstance(result, dict):
-            return schema.model_validate(result)
-        raise LLMError(
-            f"Unexpected LLM output type: {type(result).__name__}",
-            code="BIZ_INVALID_LLM_OUTPUT",
+    def _invoke_text(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model_name: str,
+        attempt: int,
+    ) -> str:
+        status_code, body = self._send_chat_completion_request(
+            payload={
+                "model": model_name,
+                "temperature": self._openai_temperature,
+                "messages": messages,
+            },
+            attempt=attempt,
         )
-
-    def _chat_model(self, model_name: str, attempt: int) -> ChatGoogleGenerativeAI:
-        api_key = (
-            self._google_api_key
-            or os.getenv("GOOGLE_API_KEY", "").strip()
-            or os.getenv("GEMINI_API_KEY", "").strip()
-        )
-        if not api_key:
+        if status_code >= 400:
+            raise self._to_http_error(status_code, body)
+        content = _extract_message_content(body)
+        if not content:
             raise LLMError(
-                "Gemini API key not configured", code="BIZ_GEMINI_NOT_CONFIGURED"
+                "LLM returned empty response content",
+                code="BIZ_EMPTY_LLM_RESPONSE",
             )
-        trust_env = self._gemini_trust_env
+        return content.strip()
+
+    def _coerce_structured(self, raw_output: str) -> ParseAgentOutput:
+        try:
+            parsed = _load_json_object(raw_output)
+        except ValueError as exc:
+            raise LLMError(
+                f"Failed to parse structured LLM output: {exc}",
+                code="BIZ_INVALID_LLM_OUTPUT",
+            ) from exc
+        return ParseAgentOutput.model_validate(parsed)
+
+    def _send_chat_completion_request(
+        self, *, payload: dict[str, Any], attempt: int
+    ) -> tuple[int, dict[str, Any]]:
+        self._ensure_configured()
+        url = f"{self._openai_base_url}/chat/completions"
+        request = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._openai_api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        opener = self._build_opener(attempt)
+        try:
+            with opener.open(request, timeout=self._openai_request_timeout_seconds) as response:
+                raw_body = response.read().decode("utf-8")
+                parsed_body = json.loads(raw_body) if raw_body else {}
+                return response.status, parsed_body
+        except urllib.error.HTTPError as exc:
+            raw_body = exc.read().decode("utf-8", errors="replace")
+            try:
+                parsed_body = json.loads(raw_body) if raw_body else {}
+            except json.JSONDecodeError:
+                parsed_body = {"raw_error": raw_body}
+            return exc.code, parsed_body
+        except urllib.error.URLError as exc:
+            reason = exc.reason
+            if isinstance(reason, TimeoutError | socket.timeout):
+                raise TimeoutError(f"OpenAI request timed out: {reason}") from exc
+            raise ConnectionError(f"OpenAI request failed: {reason}") from exc
+
+    def _build_opener(self, attempt: int) -> urllib.request.OpenerDirector:
+        trust_env = self._openai_trust_env
         if (
-            self._gemini_retry_with_env_proxy
-            and not self._gemini_proxy
+            self._openai_retry_with_env_proxy
+            and not self._openai_proxy
             and attempt >= 2
         ):
             trust_env = (
-                not self._gemini_trust_env
+                not self._openai_trust_env
                 if attempt % 2 == 0
-                else self._gemini_trust_env
+                else self._openai_trust_env
             )
 
-        client_args: dict[str, Any] = {
-            "trust_env": trust_env,
-            "http2": self._gemini_http2,
-        }
-        if self._gemini_proxy:
-            client_args["proxy"] = self._gemini_proxy
-        model_kwargs: dict[str, Any] = {
-            "model": model_name,
-            "google_api_key": api_key,
-            "temperature": self._gemini_temperature,
-            "max_retries": self._gemini_sdk_retries,
-            "timeout": self._gemini_request_timeout_seconds,
-            "client_args": client_args,
-        }
-        if self._gemini_base_url:
-            model_kwargs["base_url"] = self._gemini_base_url
-        return ChatGoogleGenerativeAI(**model_kwargs)
+        if self._openai_proxy:
+            return urllib.request.build_opener(
+                urllib.request.ProxyHandler(
+                    {
+                        "http": self._openai_proxy,
+                        "https": self._openai_proxy,
+                    }
+                )
+            )
+        if not trust_env:
+            return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        return urllib.request.build_opener()
+
+    def _ensure_configured(self) -> None:
+        if not self._openai_base_url:
+            raise LLMError(
+                "OpenAI base URL not configured",
+                code="BIZ_OPENAI_NOT_CONFIGURED",
+            )
+        if not self._openai_api_key:
+            raise LLMError(
+                "OpenAI API key not configured",
+                code="BIZ_OPENAI_NOT_CONFIGURED",
+            )
+
+    @staticmethod
+    def _to_http_error(status_code: int, body: dict[str, Any]) -> LLMError:
+        message = _extract_error_message(body) or json.dumps(body, ensure_ascii=False)
+        if status_code in {400, 404}:
+            return LLMError(message, code="BIZ_LLM_REQUEST_INVALID")
+        if status_code in {401, 403}:
+            return LLMError(message, code="BIZ_LLM_UNAUTHORIZED")
+        if status_code == 408:
+            return LLMError(message, code="EXT_TIMEOUT")
+        return LLMError(message, code="EXT_PROVIDER_UNAVAILABLE")
 
 
-# ------------------------------------------------------------------
-# Pure helper functions (no state, previously inside ProviderGateway)
-# ------------------------------------------------------------------
+def _extract_message_content(body: dict[str, Any]) -> str:
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return ""
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(str(item["text"]))
+        return "".join(parts)
+    return ""
+
+
+def _extract_error_message(body: dict[str, Any]) -> str:
+    error = body.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    message = body.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return ""
+
+
+def _load_json_object(raw_output: str) -> dict[str, Any]:
+    cleaned = raw_output.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+
+    candidates = [cleaned]
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and start < end:
+        candidates.append(cleaned[start : end + 1])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError("response is not a valid JSON object")
 
 
 def _normalize_field(field: dict[str, Any], object_key: str) -> dict[str, Any]:

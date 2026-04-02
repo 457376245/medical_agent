@@ -1,40 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import base64
 
 import pytest
 
 from app.providers.document import DocumentParser
-from app.providers.ocr_google import OCRError, OCRResult
-
-
-@dataclass
-class _StubOCR:
-    image_text: str = ""
-    pages_text: str = ""
-    image_error: OCRError | None = None
-    pages_error: OCRError | None = None
-    image_calls: int = 0
-    pages_calls: int = 0
-
-    def extract_text_from_image(self, image_bytes: bytes, *, mime_type: str) -> str:
-        self.image_calls += 1
-        if self.image_error:
-            raise self.image_error
-        return self.image_text
-
-    def extract_text_from_pages(
-        self, page_images: list[bytes], *, mime_type: str = "image/png"
-    ) -> OCRResult:
-        self.pages_calls += 1
-        if self.pages_error:
-            raise self.pages_error
-        return OCRResult(text=self.pages_text, page_count=len(page_images))
 
 
 def test_pdf_with_text_prefers_pdf_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    ocr = _StubOCR(pages_text="vision text")
-    parser = DocumentParser(ocr=ocr)
+    parser = DocumentParser()
     monkeypatch.setattr(
         DocumentParser,
         "_extract_pdf_text",
@@ -46,57 +20,53 @@ def test_pdf_with_text_prefers_pdf_text(monkeypatch: pytest.MonkeyPatch) -> None
     assert len(result) == 1
     assert result[0]["type"] == "text"
     assert "text from pypdf" in result[0]["text"]
-    assert ocr.pages_calls == 0
 
 
-def test_pdf_without_text_uses_vision(monkeypatch: pytest.MonkeyPatch) -> None:
-    ocr = _StubOCR(pages_text="--- Page 1 ---\nvision text")
-    parser = DocumentParser(ocr=ocr)
+def test_pdf_without_text_builds_openai_vision_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parser = DocumentParser()
     monkeypatch.setattr(DocumentParser, "_extract_pdf_text", staticmethod(lambda _: ""))
     monkeypatch.setattr(
         DocumentParser,
         "_render_pdf_pages",
-        staticmethod(lambda _content, *, max_pages: [b"page-1"][:max_pages]),
+        staticmethod(lambda _content, *, max_pages: [b"page-1", b"page-2"][:max_pages]),
     )
 
     result = parser.build_parse_content("PDF", "scan.pdf", b"dummy")
 
-    assert len(result) == 1
     assert result[0]["type"] == "text"
-    assert "vision text" in result[0]["text"]
-    assert ocr.pages_calls == 1
+    assert result[1]["type"] == "image_url"
+    assert result[2]["type"] == "image_url"
+    assert DocumentParser.contains_visual_parts(result) is True
+    assert result[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
-def test_image_uses_vision_text() -> None:
-    ocr = _StubOCR(image_text="vision image text")
-    parser = DocumentParser(ocr=ocr)
+def test_image_builds_openai_vision_parts() -> None:
+    parser = DocumentParser()
 
     result = parser.build_parse_content("IMAGE", "scan.png", b"image-content")
 
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0]["type"] == "text"
-    assert "vision image text" in result[0]["text"]
-    assert ocr.image_calls == 1
+    assert result[1]["type"] == "image_url"
+    assert DocumentParser.contains_visual_parts(result) is True
+    image_url = result[1]["image_url"]["url"]
+    assert image_url == "data:image/png;base64," + base64.b64encode(b"image-content").decode(
+        "utf-8"
+    )
 
 
-def test_vision_error_falls_back_to_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VISION_OCR_FALLBACK_TO_GEMINI", "true")
-    ocr = _StubOCR(image_error=OCRError("not configured", code="BIZ_OCR_NOT_CONFIGURED"))
-    parser = DocumentParser(ocr=ocr)
+def test_pdf_without_text_and_pages_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = DocumentParser()
+    monkeypatch.setattr(DocumentParser, "_extract_pdf_text", staticmethod(lambda _: ""))
+    monkeypatch.setattr(
+        DocumentParser,
+        "_render_pdf_pages",
+        staticmethod(lambda _content, *, max_pages: []),
+    )
 
-    result = parser.build_parse_content("IMAGE", "scan.png", b"image-content")
+    with pytest.raises(ValueError) as exc_info:
+        parser.build_parse_content("PDF", "broken.pdf", b"dummy")
 
-    part_types = [item["type"] for item in result]
-    assert "text" in part_types
-    assert "image_url" in part_types
-
-
-def test_vision_error_without_fallback_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VISION_OCR_FALLBACK_TO_GEMINI", "false")
-    ocr = _StubOCR(image_error=OCRError("vision down", code="EXT_OCR_UNAVAILABLE"))
-    parser = DocumentParser(ocr=ocr)
-
-    with pytest.raises(OCRError) as exc_info:
-        parser.build_parse_content("IMAGE", "scan.png", b"image-content")
-
-    assert exc_info.value.code == "EXT_OCR_UNAVAILABLE"
+    assert str(exc_info.value) == "BIZ_PDF_PARSE_FAILED"

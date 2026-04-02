@@ -7,29 +7,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend-agent"))
 
-from app.providers import gateway as gateway_module
+from app.providers.llm import LLMError, LLMService
 from app.providers.gateway import ProviderGateway
 
 
 def test_ssl_eof_error_is_treated_as_retryable_connectivity_issue(
     monkeypatch,
 ) -> None:
-    gateway = ProviderGateway()
+    class StubLLM:
+        def model_for_attempt(self, operation: str, attempt: int) -> str:
+            return f"{operation}-{attempt}"
+
+        def parse(self, payload: dict, model_name: str, attempt: int) -> dict:
+            del payload, model_name, attempt
+            class ConnectError(Exception):
+                pass
+
+            try:
+                raise ConnectError(
+                    "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol"
+                )
+            except ConnectError as inner:
+                raise RuntimeError("parse invoke failed") from inner
+
+        def generate(self, payload: dict, model_name: str, attempt: int) -> dict:
+            del payload, model_name, attempt
+            return {"content": "ok"}
+
+    gateway = ProviderGateway(llm=StubLLM())
     monkeypatch.setattr(gateway, "_provider_max_attempts", 2)
     monkeypatch.setattr(gateway, "_sleep_before_retry", lambda _attempt: None)
-
-    class ConnectError(Exception):
-        pass
-
-    def raise_ssl_eof(_payload: dict, _model_name: str, _attempt: int) -> dict:
-        try:
-            raise ConnectError(
-                "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol"
-            )
-        except ConnectError as inner:
-            raise RuntimeError("parse invoke failed") from inner
-
-    monkeypatch.setattr(gateway, "_parse_with_langchain", raise_ssl_eof)
     response = gateway.execute_with_resilience(
         "parse",
         {"assetRefs": [{"objectKey": "report.pdf", "fileType": "PDF"}]},
@@ -54,23 +61,13 @@ def test_timeout_detection_supports_nested_exception_chain() -> None:
         assert gateway._is_timeout_error(exc)
 
 
-def test_chat_model_alternates_trust_env_after_first_attempt(monkeypatch) -> None:
-    gateway = ProviderGateway()
-    gateway._google_api_key = "dummy-key"
-    gateway._gemini_proxy = ""
-    gateway._gemini_trust_env = False
-    gateway._gemini_retry_with_env_proxy = True
+def test_model_for_attempt_is_operation_aware(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_PARSE_MODEL", "parse-model")
+    monkeypatch.setenv("OPENAI_GENERATE_MODEL", "generate-model")
+    monkeypatch.setenv("OPENAI_FALLBACK_MODEL", "fallback-model")
 
-    trust_env_values: list[bool] = []
+    service = LLMService()
 
-    class DummyChatModel:
-        def __init__(self, **kwargs):
-            trust_env_values.append(bool(kwargs["client_args"]["trust_env"]))
-
-    monkeypatch.setattr(gateway_module, "ChatGoogleGenerativeAI", DummyChatModel)
-    gateway._chat_model("gemini-2.5-flash", 1)
-    gateway._chat_model("gemini-2.5-flash", 2)
-    gateway._chat_model("gemini-2.5-flash", 3)
-    gateway._chat_model("gemini-2.5-flash", 4)
-
-    assert trust_env_values == [False, True, False, True]
+    assert service.model_for_attempt("parse", 1) == "parse-model"
+    assert service.model_for_attempt("generate", 1) == "generate-model"
+    assert service.model_for_attempt("parse", 2) == "fallback-model"

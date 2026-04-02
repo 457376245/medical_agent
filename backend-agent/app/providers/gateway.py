@@ -9,7 +9,6 @@ import time
 from typing import Any
 
 from app.providers.llm import LLMError, LLMService
-from app.providers.ocr_google import OCRError
 from app.providers.storage import OSSError
 from app.utils import read_float_env, read_int_env
 
@@ -64,7 +63,7 @@ class ProviderGateway:
                 if simulation == "biz_error":
                     raise ValueError("BIZ_INVALID_INPUT")
 
-                model_name = self._llm.model_for_attempt(attempt)
+                model_name = self._llm.model_for_attempt(operation, attempt)
                 LOGGER.info(
                     "Provider call started: operation=%s attempt=%s model=%s",
                     operation,
@@ -117,31 +116,6 @@ class ProviderGateway:
             except LLMError as exc:
                 LOGGER.warning(
                     "LLM error: operation=%s attempt=%s code=%s message=%s",
-                    operation,
-                    attempt,
-                    exc.code,
-                    str(exc),
-                )
-                if exc.code.startswith("BIZ_"):
-                    return ProviderResponse(
-                        success=False,
-                        payload={"operation": operation, "input": payload},
-                        error_code=exc.code,
-                        attempts=attempt,
-                    )
-                if attempt >= max_attempts:
-                    return ProviderResponse(
-                        success=False,
-                        payload={"operation": operation, "input": payload},
-                        error_code=exc.code,
-                        attempts=attempt,
-                    )
-                self._sleep_before_retry(attempt)
-
-            # -- OCR-specific failures -- #
-            except OCRError as exc:
-                LOGGER.warning(
-                    "OCR error: operation=%s attempt=%s code=%s message=%s",
                     operation,
                     attempt,
                     exc.code,

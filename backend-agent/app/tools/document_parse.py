@@ -1,7 +1,7 @@
 """Tool: document parsing.
 
-Wraps ``providers/storage`` + ``providers/document`` as an Agent-callable
-tool.  When invoked, downloads a file from OSS and extracts its content.
+Wraps the provider gateway as an Agent-callable tool and formats the
+structured parse result into plain text for the conversation layer.
 """
 
 from __future__ import annotations
@@ -10,24 +10,17 @@ import logging
 
 from langchain_core.tools import tool
 
-from app.providers.document import DocumentParser
-from app.providers.storage import OSSStorageService
+from app.providers.gateway import ProviderGateway
 
 LOGGER = logging.getLogger(__name__)
 
-# Module-level singletons — replaced by DI from main.py at startup.
-_storage: OSSStorageService | None = None
-_document: DocumentParser | None = None
+_gateway: ProviderGateway | None = None
 
 
-def configure(
-    storage: OSSStorageService,
-    document: DocumentParser,
-) -> None:
-    """Inject provider instances (called once at application startup)."""
-    global _storage, _document  # noqa: PLW0603
-    _storage = storage
-    _document = document
+def configure(gateway: ProviderGateway) -> None:
+    """Inject the gateway instance (called once at application startup)."""
+    global _gateway  # noqa: PLW0603
+    _gateway = gateway
 
 
 @tool
@@ -44,23 +37,50 @@ def parse_document(object_key: str, file_type: str = "PDF") -> str:
     Returns:
         Extracted text content from the document.
     """
-    if _storage is None or _document is None:
+    if _gateway is None:
         return "Error: document parsing service is not configured."
 
     try:
-        content = _storage.download_bytes(object_key)
-        parts = _document.build_parse_content(file_type.upper(), object_key, content)
-        del content  # free raw bytes early
+        result = _gateway.execute_with_resilience(
+            "parse",
+            {
+                "assetRefs": [
+                    {
+                        "objectKey": object_key,
+                        "fileType": file_type.upper(),
+                    }
+                ]
+            },
+        )
+        if not result.success:
+            return f"Error: failed to parse document — {result.error_code}"
 
-        # Extract text from the content parts list
-        texts: list[str] = []
-        for part in parts:
-            if isinstance(part, dict) and part.get("type") == "text":
-                texts.append(str(part.get("text", "")))
-        result = "\n".join(texts).strip()
-        if not result:
+        structured = (
+            result.payload.get("structuredResult", {})
+            if isinstance(result.payload.get("structuredResult", {}), dict)
+            else {}
+        )
+        fields = structured.get("fields", [])
+        if not isinstance(fields, list) or not fields:
             return "Warning: no text could be extracted from the document."
-        return result
+
+        lines: list[str] = []
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            name = str(field.get("name", "")).strip()
+            value = str(field.get("value", "")).strip()
+            if not name or not value:
+                continue
+            unit = str(field.get("unit", "")).strip()
+            reference_range = str(field.get("referenceRange", "")).strip()
+            suffix_parts = [part for part in [unit, reference_range] if part]
+            suffix = f" ({' / '.join(suffix_parts)})" if suffix_parts else ""
+            lines.append(f"{name}: {value}{suffix}")
+
+        if not lines:
+            return "Warning: no text could be extracted from the document."
+        return "\n".join(lines)
 
     except Exception as exc:
         LOGGER.warning("parse_document tool failed: %s", exc, exc_info=True)

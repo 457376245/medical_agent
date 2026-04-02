@@ -6,14 +6,12 @@ import base64
 import io
 import json
 import logging
-import os
 from typing import Any
 
 import fitz  # type: ignore[import-not-found]
 from pypdf import PdfReader  # type: ignore[import-not-found]
 
-from app.providers.ocr_google import GoogleVisionOCRService, OCRError
-from app.utils import read_int_env, to_bool
+from app.utils import read_int_env
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,23 +20,15 @@ MAX_PDF_TEXT_CHARS = 18_000
 
 
 class DocumentParser:
-    """Converts raw file bytes into LLM-ready content payloads."""
+    """Converts raw file bytes into OpenAI-compatible multimodal payloads."""
 
-    def __init__(self, ocr: GoogleVisionOCRService | None = None) -> None:
-        self._ocr = ocr or GoogleVisionOCRService()
-        self._vision_fallback_to_gemini = to_bool(
-            os.getenv("VISION_OCR_FALLBACK_TO_GEMINI", "true")
-        )
+    def __init__(self) -> None:
         self._vision_pdf_max_pages = read_int_env("VISION_OCR_MAX_PAGES", 3, 1)
 
     def build_parse_content(
         self, file_type: str, object_key: str, content: bytes
     ) -> list[dict[str, Any]]:
-        """Build a multimodal content list suitable for LangChain HumanMessage.
-
-        After building the payload the caller should ``del content`` to free
-        the raw bytes as early as possible.
-        """
+        """Build a multimodal content list suitable for chat completions."""
         schema_hint = {
             "fields": [
                 {
@@ -66,7 +56,7 @@ class DocumentParser:
         if is_pdf:
             text = self._extract_pdf_text(content)
             if text:
-                self._log_ocr_path("pdf_text", object_key)
+                self._log_parse_route("pdf_text", object_key)
                 return [
                     {
                         "type": "text",
@@ -77,46 +67,23 @@ class DocumentParser:
             page_images = self._render_pdf_pages(content, max_pages=self._vision_pdf_max_pages)
             if not page_images:
                 raise ValueError("BIZ_PDF_PARSE_FAILED")
-            try:
-                ocr_result = self._ocr.extract_text_from_pages(page_images, mime_type="image/png")
-                self._log_ocr_path("vision", object_key)
-                return [
-                    {
-                        "type": "text",
-                        "text": (
-                            f"{prompt}\nDocument text:\n"
-                            f"{ocr_result.text[:MAX_PDF_TEXT_CHARS]}"
-                        ),
-                    }
-                ]
-            except OCRError as exc:
-                LOGGER.warning(
-                    "Vision OCR failed for PDF, object_key=%s code=%s fallback=%s",
-                    object_key,
-                    exc.code,
-                    self._vision_fallback_to_gemini,
-                )
-                if not self._vision_fallback_to_gemini:
-                    raise
-                self._log_ocr_path("gemini_fallback", object_key)
-                return self._build_gemini_image_parts(prompt, page_images, mime_type="image/png")
+            self._log_parse_route("openai_vision", object_key)
+            return self._build_openai_image_parts(
+                prompt,
+                page_images,
+                mime_type="image/png",
+            )
 
         mime_type = self._guess_image_mime(object_key)
-        try:
-            ocr_text = self._ocr.extract_text_from_image(content, mime_type=mime_type)
-            self._log_ocr_path("vision", object_key)
-            return [{"type": "text", "text": f"{prompt}\nDocument text:\n{ocr_text}"}]
-        except OCRError as exc:
-            LOGGER.warning(
-                "Vision OCR failed for image, object_key=%s code=%s fallback=%s",
-                object_key,
-                exc.code,
-                self._vision_fallback_to_gemini,
-            )
-            if not self._vision_fallback_to_gemini:
-                raise
-            self._log_ocr_path("gemini_fallback", object_key)
-            return self._build_gemini_image_parts(prompt, [content], mime_type=mime_type)
+        self._log_parse_route("openai_vision", object_key)
+        return self._build_openai_image_parts(prompt, [content], mime_type=mime_type)
+
+    @staticmethod
+    def contains_visual_parts(parts: list[dict[str, Any]]) -> bool:
+        return any(
+            isinstance(item, dict) and str(item.get("type", "")).strip() == "image_url"
+            for item in parts
+        )
 
     # ------------------------------------------------------------------
     # PDF helpers
@@ -173,7 +140,7 @@ class DocumentParser:
         return "image/png"
 
     @staticmethod
-    def _build_gemini_image_parts(
+    def _build_openai_image_parts(
         prompt: str, images: list[bytes], *, mime_type: str
     ) -> list[dict[str, Any]]:
         parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
@@ -182,15 +149,17 @@ class DocumentParser:
             parts.append(
                 {
                     "type": "image_url",
-                    "image_url": f"data:{mime_type};base64,{image_b64}",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{image_b64}",
+                    },
                 }
             )
         return parts
 
     @staticmethod
-    def _log_ocr_path(path: str, object_key: str) -> None:
+    def _log_parse_route(path: str, object_key: str) -> None:
         LOGGER.info(
-            "Document parse route selected: ocr_path=%s object_key=%s",
+            "Document parse route selected: path=%s object_key=%s",
             path,
             object_key,
             extra={"ocr_path": path, "object_key": object_key},

@@ -22,7 +22,7 @@
 |------|------|------|
 | Web 框架 | FastAPI + Uvicorn | 0.115+ |
 | Agent 框架 | LangChain + LangGraph | 1.2.x / 1.0.x |
-| LLM 集成 | langchain-google-genai (Gemini) | 4.2.x |
+| LLM 集成 | langchain-openai + OpenAI 兼容服务 | 1.1.x |
 | 记忆持久化 | SQLite (langgraph-checkpoint-sqlite) | 3.0.x |
 | 异步 SQLite | aiosqlite | 0.20+ |
 | 消息队列 | aio-pika (RabbitMQ) | 9.4.x |
@@ -94,7 +94,7 @@ backend-agent/
     │   ├── __init__.py
     │   ├── storage.py          # 阿里云 OSS 文件下载
     │   ├── document.py         # PDF/图片解析
-    │   ├── llm.py              # LLM 调用（Gemini 结构化输出）
+    │   ├── llm.py              # LLM 调用（OpenAI 兼容 chat completions）
     │   └── gateway.py          # 弹性编排器（重试、退避、错误分类）
     │
     ├── workers/                # MQ 任务处理器（已有）
@@ -216,7 +216,7 @@ backend-agent/
 |------|------|
 | `storage.py` | 阿里云 OSS 文件下载，含文件大小校验 |
 | `document.py` | PDF/图片内容提取，多引擎降级（pypdf → PyMuPDF） |
-| `llm.py` | LangChain + Gemini 结构化输出调用 |
+| `llm.py` | OpenAI 兼容 chat completions 调用 |
 | `gateway.py` | 弹性编排器：重试、指数退避、错误分类（`BIZ_*` / `EXT_*`） |
 
 ### 4.9 `app/workers/` — MQ 任务处理器（已有）
@@ -258,7 +258,7 @@ backend-agent/
               └──────────────────────────────────┘
                               │
               ┌───────────────▼───────────────────┐
-              │     外部服务 (Gemini, OSS, etc.)    │
+              │   外部服务 (OpenAI Compatible, OSS) │
               └───────────────────────────────────┘
 ```
 
@@ -317,7 +317,7 @@ RabbitMQ ──▶ mq/consumer.py ──▶ workers/*.py ──▶ providers/gat
 
 | 配置类型 | 存放位置 | 示例 |
 |----------|---------|------|
-| 敏感/环境相关 | `.env` | `GOOGLE_API_KEY`, `RABBITMQ_URL`, `OSS_ACCESS_KEY_ID` |
+| 敏感/环境相关 | `.env` | `OPENAI_API_KEY`, `RABBITMQ_URL`, `OSS_ACCESS_KEY_ID` |
 | 应用行为配置 | `config.py` | 默认模型名、温度、最大工具调用轮次、会话超时时间 |
 | 业务常量 | `config.py` | `MAX_DOWNLOAD_BYTES`, `MAX_PDF_TEXT_CHARS` |
 | 并发/资源配置 | `.env` | `WORKER_THREAD_POOL_SIZE`, `MAX_CONCURRENT_TASKS` |
@@ -369,7 +369,7 @@ RabbitMQ ──▶ mq/consumer.py ──▶ workers/*.py ──▶ providers/gat
 
 ```
 langchain==1.2.10
-langchain-google-genai==4.2.1
+langchain-openai==1.1.11
 langgraph==1.0.9
 langgraph-checkpoint-sqlite==3.0.3
 aiosqlite==0.20.0
