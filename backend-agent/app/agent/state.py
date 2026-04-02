@@ -6,7 +6,7 @@ All nodes in the graph read from and write to this shared state.
 
 from typing import Annotated, Any
 
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
@@ -25,3 +25,7 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     thread_id: str
     metadata: dict[str, Any]
+    active_context_signature: NotRequired[str | None]
+    active_context_bundle: NotRequired[dict[str, Any] | None]
+    active_context_status: NotRequired[str | None]
+    pending_context_signature: NotRequired[str | None]

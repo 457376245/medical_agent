@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
+from app.tools.disease_profile_context import fetch_disease_profile_context
 from app.tools.document_parse import parse_document
 from app.tools.text_generate import generate_medical_text
 
@@ -16,12 +17,14 @@ from app.tools.text_generate import generate_medical_text
 # ---------------------------------------------------------------------------
 
 ALL_TOOLS: list[BaseTool] = [
+    fetch_disease_profile_context,
     parse_document,
     generate_medical_text,
 ]
 
 # Predefined subsets for common scenarios
 CONSULTATION_TOOLS: list[BaseTool] = [
+    fetch_disease_profile_context,
     parse_document,
     generate_medical_text,
 ]

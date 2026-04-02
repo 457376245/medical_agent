@@ -1,30 +1,76 @@
-import Link from "next/link";
+import { AgentWorkbench } from "../../components/agent/AgentWorkbench";
+import type { AgentProfile, AgentRecord } from "../../components/agent/types";
 
-export default function AgentPage() {
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+
+type SearchParams = {
+  profileId?: string;
+  recordId?: string;
+};
+
+export default async function AgentPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  const initialProfileId = searchParams?.profileId?.trim() || "";
+  const initialRecordId = searchParams?.recordId?.trim() || "";
+
+  const loadProfiles = async (): Promise<AgentProfile[]> => {
+    try {
+      const response = await fetch(`${API_BASE}/disease-profiles/overview`, { cache: "no-store" });
+      if (!response.ok) {
+        return [];
+      }
+      const payload = await response.json();
+      const profiles = Array.isArray(payload?.data?.profiles) ? payload.data.profiles : [];
+      return profiles
+        .map((item: Record<string, unknown>) => ({
+          profileId: String(item.profileId ?? item.profile_id ?? item.id ?? ""),
+          diseaseName: String(item.diseaseName ?? item.disease_name ?? item.name ?? "未分类疾病"),
+          recordCount: Number(item.recordCount ?? item.record_count ?? 0),
+          latestRecordAt: typeof item.latestRecordAt === "string" ? item.latestRecordAt : typeof item.latest_record_at === "string" ? item.latest_record_at : undefined,
+          latestRecordTitle: typeof item.latestRecordTitle === "string" ? item.latestRecordTitle : typeof item.latest_record_title === "string" ? item.latest_record_title : undefined,
+          latestParseStatus: typeof item.latestParseStatus === "string" ? item.latestParseStatus : typeof item.latest_parse_status === "string" ? item.latest_parse_status : undefined,
+        }))
+        .filter((item: AgentProfile) => Boolean(item.profileId));
+    } catch {
+      return [];
+    }
+  };
+
+  const loadInitialRecords = async (): Promise<AgentRecord[]> => {
+    if (!initialProfileId) {
+      return [];
+    }
+    try {
+      const response = await fetch(`${API_BASE}/disease-profiles/${encodeURIComponent(initialProfileId)}/records`, { cache: "no-store" });
+      if (!response.ok) {
+        return [];
+      }
+      const payload = await response.json();
+      const records = Array.isArray(payload?.data?.records) ? payload.data.records : [];
+      return records.map((item: Record<string, unknown>) => ({
+        id: String(item.id ?? ""),
+        title: String(item.title ?? "未命名报告"),
+        recordDate: String(item.recordDate ?? item.record_date ?? ""),
+        sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
+      }));
+    } catch {
+      return [];
+    }
+  };
+
+  const [profiles, initialRecords] = await Promise.all([loadProfiles(), loadInitialRecords()]);
+  const safeInitialRecordId =
+    initialRecordId && initialRecords.some((record) => record.id === initialRecordId) ? initialRecordId : "";
+
   return (
-    <main className="page-stack">
-      <section className="panel">
-        <p className="hero-kicker">医疗 Agent</p>
-        <h2 className="panel-title">病情聊天分析入口（预留）</h2>
-        <p className="muted panel-subtitle">
-          该页面用于后续接入医疗 Agent 对话能力，支持围绕病历记录进行问答、趋势分析与就医建议辅助。
-        </p>
-
-        <div className="agent-placeholder">
-          <p>即将支持：</p>
-          <ul className="guide-list mt-8">
-            <li>结合疾病时间线进行上下文问答</li>
-            <li>自动提取关键指标变化并给出提示</li>
-            <li>对话式生成复诊前准备清单</li>
-          </ul>
-        </div>
-
-        <div className="actions mt-14">
-          <Link className="btn btn-ghost" href="/">
-            返回时间线首页
-          </Link>
-        </div>
-      </section>
-    </main>
+    <AgentWorkbench
+      profiles={profiles}
+      initialProfileId={initialProfileId || undefined}
+      initialRecordId={safeInitialRecordId || undefined}
+      initialRecords={initialRecords}
+    />
   );
 }

@@ -466,6 +466,12 @@ export function DiseaseTimelineView({
           <button className="btn btn-primary" type="button" onClick={openUploadDialog}>
             上传该疾病报告
           </button>
+          <Link
+            className="btn btn-ghost"
+            href={`/agent?profileId=${encodeURIComponent(profileId)}${selectedRecordId ? `&recordId=${encodeURIComponent(selectedRecordId)}` : ""}`}
+          >
+            进入 Agent 对话
+          </Link>
           <Link className="btn btn-ghost" href="/">
             返回首页
           </Link>
@@ -564,6 +570,12 @@ export function DiseaseTimelineView({
                   ) : null}
                 </div>
                 <DeleteRecordButton recordId={selectedRecord.id} profileId={profileId} isSelected />
+                <Link
+                  className="btn btn-ghost btn-small"
+                  href={`/agent?profileId=${encodeURIComponent(profileId)}&recordId=${encodeURIComponent(selectedRecord.id)}`}
+                >
+                  围绕此报告对话
+                </Link>
                 <button
                   className="btn btn-ghost btn-small"
                   type="button"
