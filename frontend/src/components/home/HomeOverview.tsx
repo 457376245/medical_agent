@@ -171,6 +171,24 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
 
   return (
     <main className="home-dashboard">
+      <div className="mb-8 p-6 bg-[var(--surface-strong)] rounded-2xl border border-[var(--primary-soft)] flex items-center justify-between shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-[var(--ink)] mb-2 flex items-center">
+            <svg className="w-6 h-6 mr-2 text-[var(--primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            全局医疗 Agent 助理
+          </h2>
+          <p className="text-[var(--muted)] text-[14px]">不需要选中特定疾病档案，直接在此向您的专属医疗 AI 助理发起提问或健康咨询。</p>
+        </div>
+        <Link 
+          href="/agent" 
+          className="bg-[var(--primary)] text-white px-6 py-2.5 rounded-lg font-medium shadow-[var(--shadow-md)] hover:-translate-y-0.5 hover:shadow-lg transition-all"
+        >
+          立即对话
+        </Link>
+      </div>
+
       <div className="home-disease-grid">
         <article className="home-profile-card">
           <div className="home-profile-header">
@@ -253,20 +271,9 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
                 {item.recordCount > 0 && (
                   <Link
                     className="home-view-btn-full"
-                    href={`/profiles/${encodeURIComponent(item.profileId)}`}
-                    onClick={(e) => {
-                      const el = e.currentTarget;
-                      el.innerHTML = `
-                        <svg class="btn-loading-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-                        </svg>
-                        加载中...
-                      `;
-                      el.style.pointerEvents = 'none';
-                      el.style.opacity = '0.7';
-                    }}
+                    href={`/agent?profileId=${encodeURIComponent(item.profileId)}`}
                   >
-                    查看分析
+                    AI 智能对话
                   </Link>
                 )}
                 <button

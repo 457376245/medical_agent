@@ -56,6 +56,7 @@ type UseAgentWorkbenchResult = {
   records: AgentRecord[];
   selectedRecord?: AgentRecord;
   recordId: string;
+  sourceType: string;
   sessions: AgentSessionSummary[];
   activeThreadId: string | null;
   activeSessionSummary: AgentSessionSummary | null;
@@ -76,6 +77,7 @@ type UseAgentWorkbenchResult = {
   setDraft: (value: string) => void;
   setProfileId: (nextProfileId: string) => void;
   setRecordId: (nextRecordId: string) => void;
+  setSourceType: (nextSourceType: string) => void;
   selectSession: (threadId: string) => Promise<void>;
   startDraftSession: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
@@ -92,6 +94,7 @@ export function useAgentWorkbench({
 }: AgentWorkbenchProps): UseAgentWorkbenchResult {
   const [profileId, setProfileIdState] = useState(initialProfileId ?? "");
   const [recordId, setRecordIdState] = useState(initialRecordId ?? "");
+  const [sourceType, setSourceTypeState] = useState("");
   const [records, setRecords] = useState<AgentRecord[]>(initialRecords);
   const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -132,8 +135,9 @@ export function useAgentWorkbench({
         diseaseName: selectedProfile?.diseaseName,
         recordId: recordId || undefined,
         recordTitle: selectedRecord?.title,
+        sourceType: sourceType || undefined,
       }),
-    [profileId, recordId, selectedProfile?.diseaseName, selectedRecord?.title],
+    [profileId, recordId, selectedProfile?.diseaseName, selectedRecord?.title, sourceType],
   );
 
   const contextLoading = useMemo(() => {
@@ -413,6 +417,25 @@ export function useAgentWorkbench({
     }
   };
 
+  const setSourceType = (nextSourceType: string) => {
+    if (nextSourceType === sourceType) {
+      return;
+    }
+    setSourceTypeState(nextSourceType);
+    setRecordIdState(""); // Clear specific record if switching category
+    setStreamError("");
+    if (messages.length > 0) {
+      setMessages((prev) =>
+        appendSystemMessage(
+          prev,
+          nextSourceType
+            ? `对话上下文已定位到分类：${nextSourceType}。`
+            : "对话上下文已切换为所有分类 / 疾病全局。",
+        ),
+      );
+    }
+  };
+
   const selectSession = async (threadId: string) => {
     setActiveThreadId(threadId);
     setLoadingConversation(true);
@@ -683,6 +706,7 @@ export function useAgentWorkbench({
     records,
     selectedRecord,
     recordId,
+    sourceType,
     sessions: visibleSessions,
     activeThreadId,
     activeSessionSummary,
@@ -703,6 +727,7 @@ export function useAgentWorkbench({
     setDraft,
     setProfileId,
     setRecordId,
+    setSourceType,
     selectSession,
     startDraftSession,
     sendPrompt,

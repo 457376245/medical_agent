@@ -181,12 +181,14 @@ export function toRequestMetadata(args: {
   diseaseName?: string;
   recordId?: string;
   recordTitle?: string;
+  sourceType?: string;
 }): AgentRequestMetadata {
   return {
     disease_profile_id: args.diseaseProfileId,
     disease_name: args.diseaseName,
     record_id: args.recordId,
     record_title: args.recordTitle,
+    source_type: args.sourceType,
     entry: "agent_page",
   };
 }
