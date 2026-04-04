@@ -2,7 +2,7 @@ param(
     [int]$Port = 8080,
     [string]$Profile = "",
     [string]$EnvFile = "",
-    [string]$JavaHome = "D:\JDK21",
+    [string]$JavaHome = "D:\jdk-21.0.7",
     [switch]$UseLocalInfra,
     [switch]$DisableOss,
     [switch]$ForceUpdate,
