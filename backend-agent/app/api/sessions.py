@@ -11,12 +11,17 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel
 
 from app.memory.models import AgentSessionRecord, AgentSessionTurn
 
 LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str
 
 
 def _serialise_session(session: AgentSessionRecord) -> dict[str, Any]:
@@ -165,6 +170,18 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
     except Exception as exc:
         LOGGER.warning("Failed to load session %s: %s", thread_id, exc)
         return {"thread_id": thread_id, "messages": [], "found": False}
+
+
+@router.patch("/{thread_id}")
+async def update_session(thread_id: str, body: SessionUpdateRequest, request: Request) -> dict[str, Any]:
+    """Update session metadata (e.g. title)."""
+    memory_store = getattr(request.app.state, "memory_store", None)
+    if memory_store is None:
+        return {"thread_id": thread_id, "updated": False, "error": "memory store unavailable"}
+
+    await memory_store.update_agent_session_title(thread_id, body.title)
+    LOGGER.info("Session renamed: %s -> %s", thread_id, body.title)
+    return {"thread_id": thread_id, "title": body.title, "updated": True}
 
 
 @router.delete("/{thread_id}")

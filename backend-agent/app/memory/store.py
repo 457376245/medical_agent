@@ -78,6 +78,8 @@ class MemoryStore(Protocol):
 
     async def delete_agent_session(self, thread_id: str) -> None: ...
 
+    async def update_agent_session_title(self, thread_id: str, title: str) -> None: ...
+
     async def close(self) -> None: ...    
 
 
@@ -533,6 +535,13 @@ class SqliteMemoryStore:
         await self._conn.execute(
             "DELETE FROM agent_sessions WHERE thread_id = ?",
             (thread_id,),
+        )
+        await self._conn.commit()
+
+    async def update_agent_session_title(self, thread_id: str, title: str) -> None:
+        await self._conn.execute(
+            "UPDATE agent_sessions SET title = ?, updated_at = ? WHERE thread_id = ?",
+            (title, datetime.utcnow().isoformat(), thread_id),
         )
         await self._conn.commit()
 
