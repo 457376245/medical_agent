@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmDialog } from "../common/ConfirmDialog";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+import { useAuth } from "../auth/AuthProvider";
+import { usePatient } from "../auth/PatientProvider";
+import { authFetch } from "../../lib/api";
 
 type DiseaseProfile = {
   id: string;
@@ -32,6 +33,10 @@ type NoticeState = {
 
 export function UserTopBar() {
   const router = useRouter();
+  const { user, logout } = useAuth();
+  const { patients, currentPatient, switchPatient } = usePatient();
+  const [patientMenuOpen, setPatientMenuOpen] = useState(false);
+  const patientMenuRef = useRef<HTMLDivElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -80,7 +85,7 @@ export function UserTopBar() {
   const diseaseQuery = useQuery<DiseaseProfile[]>({
     queryKey: ["header-disease-profiles"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/disease-profiles`);
+      const response = await authFetch("/disease-profiles");
       if (!response.ok) {
         throw new Error("加载疾病分类失败，请稍后重试。");
       }
@@ -105,7 +110,7 @@ export function UserTopBar() {
   const reportCategoryQuery = useQuery<ReportCategory[]>({
     queryKey: ["header-report-categories"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/report-categories`);
+      const response = await authFetch("/report-categories");
       if (!response.ok) {
         throw new Error("加载报告分类失败，请稍后重试。");
       }
@@ -199,6 +204,9 @@ export function UserTopBar() {
       if (reportSelectRef.current && !reportSelectRef.current.contains(target)) {
         setReportMenuOpen(false);
       }
+      if (patientMenuRef.current && !patientMenuRef.current.contains(target)) {
+        setPatientMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
@@ -213,7 +221,7 @@ export function UserTopBar() {
 
     setIsCreatingDisease(true);
     try {
-      const response = await fetch(`${API_BASE}/disease-profiles`, {
+      const response = await authFetch("/disease-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: diseaseName }),
@@ -255,7 +263,7 @@ export function UserTopBar() {
 
     setIsCreatingReportCategory(true);
     try {
-      const response = await fetch(`${API_BASE}/report-categories`, {
+      const response = await authFetch("/report-categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: categoryName }),
@@ -315,7 +323,7 @@ export function UserTopBar() {
 
     setDeletingDiseaseId(profile.id);
     try {
-      const response = await fetch(`${API_BASE}/disease-profiles/${profile.id}?onlyIfEmpty=true`, {
+      const response = await authFetch(`/disease-profiles/${profile.id}?onlyIfEmpty=true`, {
         method: "DELETE",
       });
 
@@ -351,7 +359,7 @@ export function UserTopBar() {
     const category = pendingDeleteReportCategory;
     setDeletingReportCategoryId(category.id);
     try {
-      const response = await fetch(`${API_BASE}/report-categories/${category.id}?onlyIfEmpty=true`, {
+      const response = await authFetch(`/report-categories/${category.id}?onlyIfEmpty=true`, {
         method: "DELETE",
       });
       const payload = await response.json().catch(() => ({}));
@@ -404,7 +412,7 @@ export function UserTopBar() {
       const contentType = selectedFile.type || "application/octet-stream";
 
       setUploadStage("正在申请上传地址...");
-      const presignResp = await fetch(`${API_BASE}/ingestions/presign`, {
+      const presignResp = await authFetch("/ingestions/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileName: selectedFile.name, contentType, size: selectedFile.size }),
@@ -438,7 +446,7 @@ export function UserTopBar() {
       } catch (error) {
         setUploadStage("浏览器直传失败，正在使用服务端通道上传...");
         const base64Data = await fileToBase64(selectedFile);
-        const proxyUploadResp = await fetch(`${API_BASE}/ingestions/proxy-upload`, {
+        const proxyUploadResp = await authFetch("/ingestions/proxy-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ objectKey, contentType, base64Data }),
@@ -451,7 +459,7 @@ export function UserTopBar() {
       }
 
       setUploadStage("正在归档文件...");
-      const assetResp = await fetch(`${API_BASE}/ingestions/assets`, {
+      const assetResp = await authFetch("/ingestions/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -477,7 +485,7 @@ export function UserTopBar() {
       }
 
       setUploadStage("正在创建解析任务...");
-      const parseResp = await fetch(`${API_BASE}/ingestions/parse-jobs`, {
+      const parseResp = await authFetch("/ingestions/parse-jobs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -529,6 +537,47 @@ export function UserTopBar() {
         </div>
 
         <div className="header-actions">
+          <div className="patient-selector" ref={patientMenuRef}>
+            <button
+              className="patient-selector-trigger"
+              type="button"
+              onClick={() => setPatientMenuOpen((prev) => !prev)}
+            >
+              {currentPatient?.name ?? "选择病人"}
+              <span className="dialog-select-caret" aria-hidden="true" />
+            </button>
+            {patientMenuOpen && (
+              <ul className="patient-selector-menu">
+                {patients.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      className={`patient-selector-item ${currentPatient?.id === p.id ? "active" : ""}`}
+                      type="button"
+                      onClick={() => {
+                        switchPatient(p.id);
+                        setPatientMenuOpen(false);
+                      }}
+                    >
+                      <span>{p.name}</span>
+                      {p.isDefault && <span className="patient-selector-default">本人</span>}
+                    </button>
+                  </li>
+                ))}
+                <li style={{ borderTop: "1px solid var(--line)", margin: "4px 0" }} />
+                <li>
+                  <Link
+                    href="/patients"
+                    className="patient-selector-item"
+                    onClick={() => setPatientMenuOpen(false)}
+                    style={{ textDecoration: "none" }}
+                  >
+                    管理病人
+                  </Link>
+                </li>
+              </ul>
+            )}
+          </div>
+
           <button className="action-btn action-btn-upload minimal-upload" type="button" onClick={() => openDialog()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 4V16M12 4L8 8M12 4L16 8M4 20H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -538,6 +587,13 @@ export function UserTopBar() {
           <Link className="action-btn action-btn-agent minimal-agent" href="/agent">
             AI 智能分析
           </Link>
+
+          <div className="user-menu">
+            <span className="user-name">{user?.displayName ?? ""}</span>
+            <button className="logout-btn" type="button" onClick={logout}>
+              退出
+            </button>
+          </div>
         </div>
       </header>
 

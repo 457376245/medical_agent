@@ -1,41 +1,17 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
-import { normalizeSessionDetail, normalizeSessionSummary, normalizeStructuredFields, toRequestMetadata } from "./agent-utils";
+import { useMemo, useRef, useState } from "react";
+import { agentFetch } from "../../lib/api";
+import { createSseEventParser, toRequestMetadata } from "./agent-utils";
 import type {
   AgentMessage,
   AgentProfile,
-  AgentRecord,
-  AgentRecordDetail,
   AgentSessionSummary,
   AgentTraceEvent,
-  AgentTrendData,
   AgentWorkbenchProps,
 } from "./types";
-import { createSseEventParser } from "./agent-utils";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
-const AGENT_API_BASE = process.env.NEXT_PUBLIC_AGENT_API_BASE_URL ?? "http://localhost:8090/api/v1";
-
-function mergeSessionSummary(
-  current: AgentSessionSummary[],
-  next: AgentSessionSummary,
-): AgentSessionSummary[] {
-  const merged = [next, ...current.filter((item) => item.threadId !== next.threadId)];
-  return merged.sort((left, right) => {
-    const leftTime = new Date(left.updatedAt ?? left.createdAt ?? 0).getTime();
-    const rightTime = new Date(right.updatedAt ?? right.createdAt ?? 0).getTime();
-    return rightTime - leftTime;
-  });
-}
-
-function updateAssistantMessage(
-  messages: AgentMessage[],
-  assistantId: string,
-  updater: (message: AgentMessage) => AgentMessage,
-): AgentMessage[] {
-  return messages.map((message) => (message.id === assistantId ? updater(message) : message));
-}
+import { useRecordContext } from "./useRecordContext";
+import { useSessionManager } from "./useSessionManager";
 
 function appendSystemMessage(messages: AgentMessage[], content: string): AgentMessage[] {
   return [
@@ -49,15 +25,23 @@ function appendSystemMessage(messages: AgentMessage[], content: string): AgentMe
   ];
 }
 
-type UseAgentWorkbenchResult = {
+function updateAssistantMessage(
+  messages: AgentMessage[],
+  assistantId: string,
+  updater: (message: AgentMessage) => AgentMessage,
+): AgentMessage[] {
+  return messages.map((message) => (message.id === assistantId ? updater(message) : message));
+}
+
+export type UseAgentWorkbenchResult = {
   profiles: AgentProfile[];
   profileId: string;
   selectedProfile?: AgentProfile;
-  records: AgentRecord[];
-  selectedRecord?: AgentRecord;
+  records: ReturnType<typeof useRecordContext>["records"];
+  selectedRecord?: ReturnType<typeof useRecordContext>["records"][number];
   recordId: string;
   sourceType: string;
-  sessions: AgentSessionSummary[];
+  sessions: ReturnType<typeof useSessionManager>["sessions"];
   activeThreadId: string | null;
   activeSessionSummary: AgentSessionSummary | null;
   messages: AgentMessage[];
@@ -70,9 +54,9 @@ type UseAgentWorkbenchResult = {
   sessionError: string;
   contextError: string;
   streamError: string;
-  recordDetail: AgentRecordDetail | null;
-  recordAnalysis: string | null;
-  trendData: AgentTrendData | null;
+  recordDetail: ReturnType<typeof useRecordContext>["recordDetail"];
+  recordAnalysis: ReturnType<typeof useRecordContext>["recordAnalysis"];
+  trendData: ReturnType<typeof useRecordContext>["trendData"];
   requestMetadata: ReturnType<typeof toRequestMetadata>;
   setDraft: (value: string) => void;
   setProfileId: (nextProfileId: string) => void;
@@ -84,6 +68,8 @@ type UseAgentWorkbenchResult = {
   stopStreaming: () => void;
   retryLastPrompt: () => Promise<void>;
   reloadSessions: () => Promise<void>;
+  deleteSession: (threadId: string) => Promise<void>;
+  renameSession: (threadId: string, newTitle: string) => Promise<void>;
 };
 
 export function useAgentWorkbench({
@@ -95,38 +81,28 @@ export function useAgentWorkbench({
   const [profileId, setProfileIdState] = useState(initialProfileId ?? "");
   const [recordId, setRecordIdState] = useState(initialRecordId ?? "");
   const [sourceType, setSourceTypeState] = useState("");
-  const [records, setRecords] = useState<AgentRecord[]>(initialRecords);
-  const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [activeSessionSummary, setActiveSessionSummary] = useState<AgentSessionSummary | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [loadingRecords, setLoadingRecords] = useState(false);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [loadingConversation, setLoadingConversation] = useState(false);
-  const [sessionError, setSessionError] = useState("");
-  const [contextError, setContextError] = useState("");
-  const [streamError, setStreamError] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [recordDetails, setRecordDetails] = useState<Record<string, AgentRecordDetail | null | undefined>>({});
-  const [recordAnalyses, setRecordAnalyses] = useState<Record<string, string | null | undefined>>({});
-  const [trendDataMap, setTrendDataMap] = useState<Record<string, AgentTrendData | null | undefined>>({});
+  const [streamError, setStreamError] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
   const lastPromptRef = useRef("");
-  const hydratedInitialRecordsRef = useRef(Boolean(initialProfileId));
+
+  // Delegate record/context loading
+  const context = useRecordContext(profileId, recordId, initialProfileId, initialRecords);
+
+  // Delegate session management
+  const sessionMgr = useSessionManager(profileId, isStreaming);
 
   const selectedProfile = useMemo(
     () => profiles.find((item) => item.profileId === profileId),
     [profileId, profiles],
   );
   const selectedRecord = useMemo(
-    () => records.find((item) => item.id === recordId),
-    [recordId, records],
+    () => context.records.find((item) => item.id === recordId),
+    [recordId, context.records],
   );
-  const recordDetail = recordId ? recordDetails[recordId] ?? null : null;
-  const recordAnalysis = recordId ? recordAnalyses[recordId] ?? null : null;
-  const trendData = recordId ? trendDataMap[recordId] ?? null : null;
 
   const requestMetadata = useMemo(
     () =>
@@ -140,255 +116,8 @@ export function useAgentWorkbench({
     [profileId, recordId, selectedProfile?.diseaseName, selectedRecord?.title, sourceType],
   );
 
-  const contextLoading = useMemo(() => {
-    if (!recordId) {
-      return false;
-    }
-    const detailPending = recordDetails[recordId] === undefined;
-    const trendPending = trendDataMap[recordId] === undefined;
-    const analysisPending =
-      recordDetails[recordId] &&
-      (recordDetails[recordId]?.fields.length ?? 0) > 0 &&
-      recordAnalyses[recordId] === undefined;
-    return Boolean(detailPending || trendPending || analysisPending);
-  }, [recordAnalyses, recordDetails, recordId, trendDataMap]);
-
-  const reloadSessions = async () => {
-    if (!profileId) {
-      setSessions([]);
-      return;
-    }
-
-    setLoadingSessions(true);
-    setSessionError("");
-    try {
-      const response = await fetch(`${AGENT_API_BASE}/sessions?disease_profile_id=${encodeURIComponent(profileId)}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("加载会话列表失败，请稍后重试。");
-      }
-      const payload = await response.json();
-      const nextSessions = Array.isArray(payload.sessions)
-        ? payload.sessions.map(normalizeSessionSummary)
-        : [];
-      startTransition(() => {
-        setSessions(nextSessions);
-      });
-    } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "加载会话列表失败，请稍后重试。");
-    } finally {
-      setLoadingSessions(false);
-    }
-  };
-
-  useEffect(() => {
-    void reloadSessions();
-  }, [profileId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!profileId) {
-      setRecords([]);
-      return;
-    }
-
-    if (hydratedInitialRecordsRef.current && profileId === initialProfileId) {
-      hydratedInitialRecordsRef.current = false;
-      setRecords(initialRecords);
-      return;
-    }
-
-    const loadRecords = async () => {
-      setLoadingRecords(true);
-      try {
-        const response = await fetch(`${API_BASE}/disease-profiles/${encodeURIComponent(profileId)}/records`, {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("加载疾病报告失败，请稍后重试。");
-        }
-        const payload = await response.json();
-        const nextRecords: AgentRecord[] = Array.isArray(payload?.data?.records)
-          ? payload.data.records.map((item: Record<string, unknown>) => ({
-              id: String(item.id ?? ""),
-              title: String(item.title ?? "未命名报告"),
-              recordDate: String(item.recordDate ?? item.record_date ?? ""),
-              sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
-            }))
-          : [];
-        if (!cancelled) {
-          startTransition(() => {
-            setRecords(nextRecords);
-            if (!nextRecords.some((item) => item.id === recordId)) {
-              setRecordIdState("");
-            }
-          });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setContextError(error instanceof Error ? error.message : "加载疾病报告失败，请稍后重试。");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingRecords(false);
-        }
-      }
-    };
-
-    void loadRecords();
-    return () => {
-      cancelled = true;
-    };
-  }, [API_BASE, initialProfileId, initialRecords, profileId, recordId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!recordId || recordDetails[recordId] !== undefined) {
-      return;
-    }
-    const loadRecordDetail = async () => {
-      setContextError("");
-      try {
-        const response = await fetch(`${API_BASE}/records/${encodeURIComponent(recordId)}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("加载报告详情失败，请稍后重试。");
-        }
-        const payload = await response.json();
-        const detail = payload?.data;
-        const normalized: AgentRecordDetail = {
-          recordId: String(detail?.recordId ?? recordId),
-          summary: String(detail?.summary ?? ""),
-          parseStatus: String(detail?.parseStatus ?? "NOT_PARSED"),
-          fields: normalizeStructuredFields(detail?.structuredResult?.payload),
-        };
-        if (!cancelled) {
-          setRecordDetails((prev) => ({ ...prev, [recordId]: normalized }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRecordDetails((prev) => ({ ...prev, [recordId]: null }));
-          setContextError(error instanceof Error ? error.message : "加载报告详情失败，请稍后重试。");
-        }
-      }
-    };
-    void loadRecordDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [recordDetails, recordId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!recordId || trendDataMap[recordId] !== undefined) {
-      return;
-    }
-    const loadTrend = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/records/${encodeURIComponent(recordId)}/trend?limit=3`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("加载趋势摘要失败，请稍后重试。");
-        }
-        const payload = await response.json();
-        const data = payload?.data;
-        const normalized: AgentTrendData = {
-          recordId: String(data?.recordId ?? recordId),
-          sourceType: String(data?.sourceType ?? ""),
-          diseaseProfileId: String(data?.diseaseProfileId ?? ""),
-          limit: Number(data?.limit ?? 3),
-          snapshots: Array.isArray(data?.snapshots)
-            ? data.snapshots.map((snapshot: Record<string, unknown>) => ({
-                recordId: String(snapshot.recordId ?? ""),
-                recordDate: String(snapshot.recordDate ?? ""),
-                title: String(snapshot.title ?? "未命名报告"),
-                sourceType: String(snapshot.sourceType ?? ""),
-                fields: Array.isArray(snapshot.fields)
-                  ? snapshot.fields
-                      .map((field: Record<string, unknown>) => {
-                        const name = String(field.name ?? "").trim();
-                        const value = String(field.value ?? "").trim();
-                        if (!name || !value) {
-                          return null;
-                        }
-                        return {
-                          name,
-                          value,
-                          unit: String(field.unit ?? "").trim() || undefined,
-                          referenceRange: String(field.referenceRange ?? field.reference_range ?? "").trim() || undefined,
-                        };
-                      })
-                      .filter((field): field is NonNullable<typeof field> => Boolean(field))
-                  : [],
-              }))
-            : [],
-        };
-        if (!cancelled) {
-          setTrendDataMap((prev) => ({ ...prev, [recordId]: normalized }));
-        }
-      } catch {
-        if (!cancelled) {
-          setTrendDataMap((prev) => ({ ...prev, [recordId]: null }));
-        }
-      }
-    };
-    void loadTrend();
-    return () => {
-      cancelled = true;
-    };
-  }, [recordId, trendDataMap]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const detail = recordId ? recordDetails[recordId] : null;
-    if (!recordId || detail === undefined || recordAnalyses[recordId] !== undefined) {
-      return;
-    }
-    if (!detail || detail.fields.length === 0 || detail.parseStatus.toUpperCase() !== "SUCCESS") {
-      setRecordAnalyses((prev) => ({ ...prev, [recordId]: null }));
-      return;
-    }
-
-    const loadAnalysis = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/records/${encodeURIComponent(recordId)}/analysis`, { cache: "no-store" });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          setRecordAnalyses((prev) => ({ ...prev, [recordId]: null }));
-          if (response.status !== 409 && !cancelled) {
-            setContextError(String(payload?.message ?? "加载 AI 分析失败，请稍后重试。"));
-          }
-          return;
-        }
-        const content = String(payload?.data?.content ?? "").trim();
-        if (!cancelled) {
-          setRecordAnalyses((prev) => ({ ...prev, [recordId]: content || null }));
-        }
-      } catch {
-        if (!cancelled) {
-          setRecordAnalyses((prev) => ({ ...prev, [recordId]: null }));
-        }
-      }
-    };
-    void loadAnalysis();
-    return () => {
-      cancelled = true;
-    };
-  }, [recordAnalyses, recordDetails, recordId]);
-
-  const startDraftSession = () => {
-    if (isStreaming) {
-      return;
-    }
-    setActiveThreadId(null);
-    setActiveSessionSummary(null);
-    setMessages([]);
-    setStreamError("");
-  };
-
   const setProfileId = (nextProfileId: string) => {
-    if (nextProfileId === profileId) {
-      return;
-    }
+    if (nextProfileId === profileId) return;
     setProfileIdState(nextProfileId);
     setRecordIdState("");
     setStreamError("");
@@ -399,13 +128,11 @@ export function useAgentWorkbench({
   };
 
   const setRecordId = (nextRecordId: string) => {
-    if (nextRecordId === recordId) {
-      return;
-    }
+    if (nextRecordId === recordId) return;
     setRecordIdState(nextRecordId);
     setStreamError("");
     if (messages.length > 0) {
-      const nextRecord = records.find((item) => item.id === nextRecordId);
+      const nextRecord = context.records.find((item) => item.id === nextRecordId);
       setMessages((prev) =>
         appendSystemMessage(
           prev,
@@ -418,11 +145,9 @@ export function useAgentWorkbench({
   };
 
   const setSourceType = (nextSourceType: string) => {
-    if (nextSourceType === sourceType) {
-      return;
-    }
+    if (nextSourceType === sourceType) return;
     setSourceTypeState(nextSourceType);
-    setRecordIdState(""); // Clear specific record if switching category
+    setRecordIdState("");
     setStreamError("");
     if (messages.length > 0) {
       setMessages((prev) =>
@@ -437,54 +162,35 @@ export function useAgentWorkbench({
   };
 
   const selectSession = async (threadId: string) => {
-    setActiveThreadId(threadId);
-    setLoadingConversation(true);
     setStreamError("");
-    try {
-      const response = await fetch(`${AGENT_API_BASE}/sessions/${encodeURIComponent(threadId)}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("加载会话详情失败，请稍后重试。");
-      }
-      const payload = await response.json();
-      const detail = normalizeSessionDetail(payload);
-      startTransition(() => {
-        setMessages(detail.messages);
-        setActiveThreadId(detail.threadId);
-        setActiveSessionSummary((prev) => ({
-          ...(prev ?? {}),
-          ...normalizeSessionSummary(payload),
-          threadId: detail.threadId,
-          title: detail.title,
-          turnCount: detail.turnCount,
-        }));
-      });
-      if (detail.diseaseProfileId && detail.diseaseProfileId !== profileId) {
-        setProfileIdState(detail.diseaseProfileId);
-      }
-      if (detail.recordId) {
-        setRecordIdState(detail.recordId);
-      }
-    } catch (error) {
-      setSessionError(error instanceof Error ? error.message : "加载会话详情失败，请稍后重试。");
-    } finally {
-      setLoadingConversation(false);
+    const result = await sessionMgr.selectSession(threadId);
+    if (!result) return;
+
+    setMessages(result.messages);
+    if (result.diseaseProfileId && result.diseaseProfileId !== profileId) {
+      setProfileIdState(result.diseaseProfileId);
     }
+    if (result.recordId) {
+      setRecordIdState(result.recordId);
+    }
+  };
+
+  const startDraftSession = () => {
+    sessionMgr.startDraftSession();
+    setMessages([]);
+    setStreamError("");
   };
 
   const sendPrompt = async (explicitPrompt?: string) => {
     const prompt = (explicitPrompt ?? draft).trim();
-    if (!prompt || isStreaming || !profileId) {
-      return;
-    }
+    if (!prompt || isStreaming || !profileId) return;
 
     const userId = `user-${Date.now()}`;
     const assistantId = `assistant-${Date.now()}`;
     const sentAt = new Date().toISOString();
     const currentProfileId = profileId;
-    const currentSummary = activeSessionSummary;
-    let resolvedThreadId = activeThreadId;
+    const currentSummary = sessionMgr.activeSessionSummary;
+    let resolvedThreadId = sessionMgr.activeThreadId;
     let assistantContent = "";
 
     lastPromptRef.current = prompt;
@@ -493,33 +199,19 @@ export function useAgentWorkbench({
     setStreamError("");
     setMessages((prev) => [
       ...prev,
-      {
-        id: userId,
-        role: "user",
-        content: prompt,
-        createdAt: sentAt,
-      },
-      {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        createdAt: sentAt,
-        traceEvents: [],
-        isStreaming: true,
-      },
+      { id: userId, role: "user", content: prompt, createdAt: sentAt },
+      { id: assistantId, role: "assistant", content: "", createdAt: sentAt, traceEvents: [], isStreaming: true },
     ]);
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      const response = await fetch(`${AGENT_API_BASE}/chat`, {
+      const response = await agentFetch("/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          thread_id: activeThreadId ?? undefined,
+          thread_id: sessionMgr.activeThreadId ?? undefined,
           message: prompt,
           metadata: requestMetadata,
         }),
@@ -551,9 +243,9 @@ export function useAgentWorkbench({
               updatedAt: new Date().toISOString(),
               isStreaming: true,
             };
-            setActiveThreadId(resolvedThreadId);
-            setActiveSessionSummary(nextSummary);
-            setSessions((prev) => mergeSessionSummary(prev, nextSummary));
+            sessionMgr.setActiveThreadId(resolvedThreadId);
+            sessionMgr.setActiveSessionSummary(nextSummary);
+            sessionMgr.mergeSummary(nextSummary);
           }
           return;
         }
@@ -562,10 +254,7 @@ export function useAgentWorkbench({
           const token = typeof event.data.content === "string" ? event.data.content : "";
           assistantContent += token;
           setMessages((prev) =>
-            updateAssistantMessage(prev, assistantId, (message) => ({
-              ...message,
-              content: `${message.content}${token}`,
-            })),
+            updateAssistantMessage(prev, assistantId, (m) => ({ ...m, content: `${m.content}${token}` })),
           );
           return;
         }
@@ -578,13 +267,13 @@ export function useAgentWorkbench({
             createdAt: new Date().toISOString(),
           };
           setMessages((prev) =>
-            updateAssistantMessage(prev, assistantId, (message) => ({
-              ...message,
-              traceEvents: [...(message.traceEvents ?? []), traceEvent],
+            updateAssistantMessage(prev, assistantId, (m) => ({
+              ...m,
+              traceEvents: [...(m.traceEvents ?? []), traceEvent],
               errorMessage:
                 traceEvent.event === "error" && typeof traceEvent.data.message === "string"
                   ? traceEvent.data.message
-                  : message.errorMessage,
+                  : m.errorMessage,
             })),
           );
           if (traceEvent.event === "error" && typeof traceEvent.data.message === "string") {
@@ -597,13 +286,12 @@ export function useAgentWorkbench({
           const doneContent = typeof event.data.content === "string" ? event.data.content : undefined;
           assistantContent = doneContent ?? assistantContent;
           setMessages((prev) =>
-            updateAssistantMessage(prev, assistantId, (message) => ({
-              ...message,
-              content: assistantContent || message.content,
+            updateAssistantMessage(prev, assistantId, (m) => ({
+              ...m,
+              content: assistantContent || m.content,
               isStreaming: false,
             })),
           );
-          const preview = assistantContent;
           if (resolvedThreadId) {
             const nextSummary: AgentSessionSummary = {
               threadId: resolvedThreadId,
@@ -615,24 +303,22 @@ export function useAgentWorkbench({
               sourceType: selectedRecord?.sourceType,
               title: currentSummary?.title || prompt.slice(0, 28) || "新对话",
               lastUserMessage: prompt,
-              lastAssistantMessage: preview,
-              lastMessagePreview: preview || prompt,
+              lastAssistantMessage: assistantContent,
+              lastMessagePreview: assistantContent || prompt,
               turnCount: (currentSummary?.turnCount ?? 0) + 1,
               createdAt: currentSummary?.createdAt ?? sentAt,
               updatedAt: new Date().toISOString(),
               isStreaming: false,
             };
-            setActiveSessionSummary(nextSummary);
-            setSessions((prev) => mergeSessionSummary(prev, nextSummary));
+            sessionMgr.setActiveSessionSummary(nextSummary);
+            sessionMgr.mergeSummary(nextSummary);
           }
         }
       });
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
+        if (done) break;
         parser.push(decoder.decode(value, { stream: true }));
       }
       parser.push(decoder.decode());
@@ -648,26 +334,19 @@ export function useAgentWorkbench({
             errorMessage: message,
             traceEvents: [
               ...(item.traceEvents ?? []),
-              {
-                event: "error",
-                data: { message },
-                createdAt: new Date().toISOString(),
-              },
+              { event: "error", data: { message }, createdAt: new Date().toISOString() },
             ],
           })),
         );
       } else {
         setMessages((prev) =>
-          updateAssistantMessage(prev, assistantId, (item) => ({
-            ...item,
-            isStreaming: false,
-          })),
+          updateAssistantMessage(prev, assistantId, (item) => ({ ...item, isStreaming: false })),
         );
       }
     } finally {
       abortRef.current = null;
       setIsStreaming(false);
-      await reloadSessions();
+      await sessionMgr.reloadSessions();
     }
   };
 
@@ -675,54 +354,46 @@ export function useAgentWorkbench({
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
-    setActiveSessionSummary((prev) => (prev ? { ...prev, isStreaming: false } : prev));
+    sessionMgr.setActiveSessionSummary((prev) => (prev ? { ...prev, isStreaming: false } : prev));
   };
 
   const retryLastPrompt = async () => {
-    if (!lastPromptRef.current || isStreaming) {
-      return;
-    }
+    if (!lastPromptRef.current || isStreaming) return;
     await sendPrompt(lastPromptRef.current);
   };
 
-  const visibleSessions = useMemo(() => {
-    if (!activeSessionSummary) {
-      return sessions;
+  const deleteSession = async (threadId: string) => {
+    await sessionMgr.deleteSession(threadId);
+    if (sessionMgr.activeThreadId === threadId) {
+      setMessages([]);
+      setStreamError("");
     }
-    if (
-      activeSessionSummary.diseaseProfileId &&
-      profileId &&
-      activeSessionSummary.diseaseProfileId !== profileId
-    ) {
-      return sessions;
-    }
-    return mergeSessionSummary(sessions, activeSessionSummary);
-  }, [activeSessionSummary, profileId, sessions]);
+  };
 
   return {
     profiles,
     profileId,
     selectedProfile,
-    records,
+    records: context.records,
     selectedRecord,
     recordId,
     sourceType,
-    sessions: visibleSessions,
-    activeThreadId,
-    activeSessionSummary,
+    sessions: sessionMgr.sessions,
+    activeThreadId: sessionMgr.activeThreadId,
+    activeSessionSummary: sessionMgr.activeSessionSummary,
     messages,
     draft,
     isStreaming,
-    loadingRecords,
-    loadingSessions,
-    loadingConversation,
-    contextLoading,
-    sessionError,
-    contextError,
+    loadingRecords: context.loadingRecords,
+    loadingSessions: sessionMgr.loadingSessions,
+    loadingConversation: sessionMgr.loadingConversation,
+    contextLoading: context.contextLoading,
+    sessionError: sessionMgr.sessionError,
+    contextError: context.contextError,
     streamError,
-    recordDetail,
-    recordAnalysis,
-    trendData,
+    recordDetail: context.recordDetail,
+    recordAnalysis: context.recordAnalysis,
+    trendData: context.trendData,
     requestMetadata,
     setDraft,
     setProfileId,
@@ -733,6 +404,8 @@ export function useAgentWorkbench({
     sendPrompt,
     stopStreaming,
     retryLastPrompt,
-    reloadSessions,
+    reloadSessions: sessionMgr.reloadSessions,
+    deleteSession,
+    renameSession: sessionMgr.renameSession,
   };
 }

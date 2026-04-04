@@ -1,48 +1,58 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { DiseaseTimelineView } from "../../../components/profiles/DiseaseTimelineView";
+import { authFetch } from "../../../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+export default function ProfilePage() {
+  const params = useParams();
+  const profileId = typeof params.profileId === "string" ? params.profileId : "";
+  const [diseaseName, setDiseaseName] = useState("未分类疾病");
+  const [records, setRecords] = useState<Array<{ id: string; title: string; recordDate: string; sourceType: string }>>([]);
+  const [loading, setLoading] = useState(true);
 
-type DiseaseProfileDetailResponse = {
-  data?: {
-    profileId?: string;
-    diseaseName?: string;
-    records?: Array<{
-      id?: string;
-      title?: string;
-      record_date?: string;
-      recordDate?: string;
-      source_type?: string;
-      sourceType?: string;
-    }>;
-  };
-};
-
-export default async function ProfilePage({ params }: { params: { profileId: string } }) {
-  const profileId = params.profileId;
-  let diseaseName = "未分类疾病";
-  let records: Array<{ id: string; title: string; recordDate: string; sourceType: string }> = [];
-
-  if (profileId) {
-    try {
-      const res = await fetch(`${API_BASE}/disease-profiles/${profileId}/records`, { cache: "no-store" });
-      if (res.ok) {
-        const payload = (await res.json()) as DiseaseProfileDetailResponse;
+  useEffect(() => {
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await authFetch(`/disease-profiles/${profileId}/records`);
+        if (!res.ok) throw new Error();
+        const payload = await res.json();
+        if (cancelled) return;
         const fromApi = String(payload.data?.diseaseName ?? "").trim();
         if (fromApi && fromApi !== "Unassigned" && fromApi !== "未分类疾病") {
-          diseaseName = fromApi;
+          setDiseaseName(fromApi);
         }
-        records = (payload.data?.records ?? []).map((item) => ({
-          id: String(item.id ?? ""),
-          title: String(item.title ?? "未命名报告"),
-          recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
-          sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
-        }));
+        setRecords(
+          (payload.data?.records ?? []).map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ""),
+            title: String(item.title ?? "未命名报告"),
+            recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
+            sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
+          })),
+        );
+      } catch {
+        if (!cancelled) setRecords([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch {
-      records = [];
     }
+    load();
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "60px 0", color: "var(--muted)" }}>
+        加载中...
+      </div>
+    );
   }
 
   return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} />;
 }
-

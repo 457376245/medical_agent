@@ -1,12 +1,13 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AgentThoughtProcess } from "./AgentThoughtProcess";
 import type { AgentMessage } from "./types";
 import { Loader2 } from "lucide-react";
 
-export function AgentMessageBubble({ message }: { message: AgentMessage }) {
+export const AgentMessageBubble = memo(function AgentMessageBubble({ message }: { message: AgentMessage }) {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
 
@@ -57,4 +58,4 @@ export function AgentMessageBubble({ message }: { message: AgentMessage }) {
        </div>
     </div>
   );
-}
+});

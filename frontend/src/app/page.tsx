@@ -1,62 +1,60 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { HomeOverview } from "../components/home/HomeOverview";
+import { apiFetch } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
-
-type DiseaseProfileOverviewResponse = {
-  data?: {
-    profiles?: Array<{
-      id?: string;
-      profile_id?: string;
-      profileId?: string;
-      name?: string;
-      disease_name?: string;
-      diseaseName?: string;
-      record_count?: number;
-      recordCount?: number;
-      latest_record_at?: string;
-      latestRecordAt?: string;
-      updatedAt?: string;
-      latest_record_id?: string;
-      latestRecordId?: string;
-      latest_record_title?: string;
-      latestRecordTitle?: string;
-      latest_parse_status?: string;
-      latestParseStatus?: string;
-    }>;
-  };
+type HomeProfile = {
+  profileId: string;
+  diseaseName: string;
+  recordCount: number;
+  latestRecordAt?: string;
+  latestRecordId?: string;
+  latestRecordTitle?: string;
+  latestParseStatus?: string;
 };
 
-export default async function HomePage() {
-  let profiles: Array<{
-    profileId: string;
-    diseaseName: string;
-    recordCount: number;
-    latestRecordAt?: string;
-    latestRecordId?: string;
-    latestRecordTitle?: string;
-    latestParseStatus?: string;
-  }> = [];
+export default function HomePage() {
+  const [profiles, setProfiles] = useState<HomeProfile[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  try {
-    const response = await fetch(`${API_BASE}/disease-profiles/overview`, { cache: "no-store" });
-    if (response.ok) {
-      const payload = (await response.json()) as DiseaseProfileOverviewResponse;
-      profiles = (payload.data?.profiles ?? [])
-        .map((item) => ({
-          profileId: item.profileId ?? item.profile_id ?? item.id ?? "unknown-profile",
-          diseaseName: item.diseaseName ?? item.disease_name ?? item.name ?? "未分类疾病",
-          recordCount: item.recordCount ?? item.record_count ?? 0,
-          latestRecordAt: item.latestRecordAt ?? item.latest_record_at ?? item.updatedAt,
-          latestRecordId: item.latestRecordId ?? item.latest_record_id,
-          latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title,
-          latestParseStatus: item.latestParseStatus ?? item.latest_parse_status,
-        }))
-        .filter((item) => item.profileId !== "unknown" && item.diseaseName !== "Unassigned");
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const payload = await apiFetch<{
+          profiles?: Array<Record<string, unknown>>;
+        }>("/disease-profiles/overview");
+        if (cancelled) return;
+        const list = (payload.data?.profiles ?? [])
+          .map((item) => ({
+            profileId: String(item.profileId ?? item.profile_id ?? item.id ?? "unknown-profile"),
+            diseaseName: String(item.diseaseName ?? item.disease_name ?? item.name ?? "未分类疾病"),
+            recordCount: Number(item.recordCount ?? item.record_count ?? 0),
+            latestRecordAt: String(item.latestRecordAt ?? item.latest_record_at ?? item.updatedAt ?? ""),
+            latestRecordId: item.latestRecordId ?? item.latest_record_id ? String(item.latestRecordId ?? item.latest_record_id) : undefined,
+            latestRecordTitle: item.latestRecordTitle ?? item.latest_record_title ? String(item.latestRecordTitle ?? item.latest_record_title) : undefined,
+            latestParseStatus: item.latestParseStatus ?? item.latest_parse_status ? String(item.latestParseStatus ?? item.latest_parse_status) : undefined,
+          }))
+          .filter((item) => item.profileId !== "unknown" && item.diseaseName !== "Unassigned");
+        setProfiles(list);
+      } catch {
+        setProfiles([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  } catch {
-    profiles = [];
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "60px 0", color: "var(--muted)" }}>
+        加载中...
+      </div>
+    );
   }
 
   return <HomeOverview profiles={profiles} />;
 }
-

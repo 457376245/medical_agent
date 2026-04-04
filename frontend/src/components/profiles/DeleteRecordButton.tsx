@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmDialog } from "../common/ConfirmDialog";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+import { authFetch } from "../../lib/api";
 
 type DeleteRecordButtonProps = {
   recordId: string;
@@ -22,7 +21,7 @@ export function DeleteRecordButton({ recordId, profileId, isSelected }: DeleteRe
     setIsDeleting(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/records/${recordId}`, {
+      const response = await authFetch(`/records/${recordId}`, {
         method: "DELETE",
       });
       if (!response.ok) {

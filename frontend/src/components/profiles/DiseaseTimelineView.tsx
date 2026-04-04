@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { authFetch } from "../../lib/api";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 const REPORT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "UPLOAD", label: "常规检查" },
@@ -272,7 +271,7 @@ export function DiseaseTimelineView({
     setAnalysisLoading(true);
     setAnalysisError("");
     try {
-      const response = await fetch(`${API_BASE}/records/${recordId}/analysis`);
+      const response = await authFetch(`/records/${recordId}/analysis`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (String(payload?.code ?? "") === "ANALYSIS_NOT_READY") {
@@ -318,7 +317,7 @@ export function DiseaseTimelineView({
     setTrendError("");
     setDetailLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/records/${target.record.id}`);
+      const response = await authFetch(`/records/${target.record.id}`);
       if (!response.ok) {
         throw new Error("加载报告详情失败，请稍后重试。");
       }
@@ -352,7 +351,7 @@ export function DiseaseTimelineView({
     setTrendLoading(true);
     setTrendError("");
     try {
-      const response = await fetch(`${API_BASE}/records/${recordId}/trend?limit=6`);
+      const response = await authFetch(`/records/${recordId}/trend?limit=6`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         const message = String(payload?.message ?? "加载趋势对比失败，请稍后重试。");
@@ -401,7 +400,7 @@ export function DiseaseTimelineView({
     setCategoryUpdating(true);
     setCategoryUpdateError("");
     try {
-      const response = await fetch(`${API_BASE}/records/${selectedRecordId}/source-type`, {
+      const response = await authFetch(`/records/${selectedRecordId}/source-type`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -456,6 +455,8 @@ export function DiseaseTimelineView({
     );
   }
 
+  const currentStep = !selectedDate ? 0 : !selectedCategory ? 1 : 2;
+
   return (
     <main className="page-stack">
       <section className="panel reveal">
@@ -477,6 +478,28 @@ export function DiseaseTimelineView({
           </Link>
         </div>
       </section>
+
+      {/* Step indicator */}
+      <nav className="timeline-step-indicator reveal" aria-label="操作步骤">
+        <div className={`timeline-step ${currentStep >= 0 ? "active" : ""} ${currentStep > 0 ? "done" : ""}`}>
+          <span className="timeline-step-number">{currentStep > 0 ? "✓" : "1"}</span>
+          <span className="timeline-step-label">选择时间</span>
+        </div>
+        <div className="timeline-step-connector" aria-hidden="true">
+          <div className={`timeline-step-connector-fill ${currentStep > 0 ? "filled" : ""}`} />
+        </div>
+        <div className={`timeline-step ${currentStep >= 1 ? "active" : ""} ${currentStep > 1 ? "done" : ""}`}>
+          <span className="timeline-step-number">{currentStep > 1 ? "✓" : "2"}</span>
+          <span className="timeline-step-label">选择分类</span>
+        </div>
+        <div className="timeline-step-connector" aria-hidden="true">
+          <div className={`timeline-step-connector-fill ${currentStep > 1 ? "filled" : ""}`} />
+        </div>
+        <div className={`timeline-step ${currentStep >= 2 ? "active" : ""}`}>
+          <span className="timeline-step-number">3</span>
+          <span className="timeline-step-label">查看结果</span>
+        </div>
+      </nav>
 
       <section className="timeline-selector-grid reveal reveal-delay-1">
         <article className="panel">
@@ -577,7 +600,7 @@ export function DiseaseTimelineView({
                   围绕此报告对话
                 </Link>
                 <button
-                  className="btn btn-ghost btn-small"
+                  className={`btn ${trendOpen ? "btn-primary" : "btn-ghost"} btn-small`}
                   type="button"
                   onClick={() => {
                     const nextOpen = !trendOpen;
@@ -587,7 +610,7 @@ export function DiseaseTimelineView({
                     }
                   }}
                 >
-                  {trendOpen ? "收起趋势" : "趋势对比"}
+                  {trendOpen ? "收起趋势" : "📊 趋势对比"}
                 </button>
               </div>
 
