@@ -45,9 +45,9 @@ export function AgentMessageBubble({ message }: { message: AgentMessage }) {
            ) : (
              <p className="whitespace-pre-wrap leading-relaxed m-0">{message.content}</p>
            )
-         ) : (
-           <p className="text-[var(--muted)] flex items-center gap-2 m-0 mt-1">
-              <Loader2 className="w-5 h-5 animate-spin text-[var(--primary)]" />
+        ) : (
+          <p className="agent-message-loading">
+             <Loader2 className="agent-message-loading-icon btn-loading-icon" aria-hidden="true" />
               正在仔细为您分析...
            </p>
          )}

@@ -18,6 +18,10 @@ function toOptionalText(value: unknown): string | undefined {
   return rendered || undefined;
 }
 
+function toSingleLineText(value?: string): string | undefined {
+  return value?.replace(/\s+/g, " ").trim() || undefined;
+}
+
 function asObject(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
@@ -223,6 +227,14 @@ export function formatRelativeDate(value?: string): string {
     return `${diffHours} 小时前`;
   }
   return date.toLocaleDateString("zh-CN");
+}
+
+export function getSessionDisplayTitle(session: Pick<AgentSessionSummary, "title" | "lastUserMessage">): string {
+  const baseTitle = toSingleLineText(session.lastUserMessage) ?? toSingleLineText(session.title) ?? "新对话";
+  if (baseTitle.length <= 30) {
+    return baseTitle;
+  }
+  return `${baseTitle.slice(0, 30).trimEnd()}...`;
 }
 
 export function tracePreview(event: AgentTraceEvent): string {

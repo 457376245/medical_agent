@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { TrendComparisonPanel } from "../profiles/TrendComparisonPanel";
-import { formatRelativeDate, quickPrompts } from "./agent-utils";
+import { formatRelativeDate, getSessionDisplayTitle, quickPrompts } from "./agent-utils";
 import type { AgentWorkbenchProps } from "./types";
 import { useAgentWorkbench } from "./useAgentWorkbench";
 import { AgentMessageBubble } from "./AgentMessageBubble";
@@ -76,10 +76,9 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
                   }}
                 >
                   <div className="agent-session-meta">
-                    <strong>{session.title}</strong>
+                    <strong className="agent-session-title">{getSessionDisplayTitle(session)}</strong>
                     <span>{formatRelativeDate(session.updatedAt)}</span>
                   </div>
-                  <p>{session.lastMessagePreview || session.lastUserMessage || "等待第一条消息"}</p>
                   <div className="agent-session-foot">
                     <span className="badge">{session.turnCount} 轮</span>
                     {session.isStreaming ? <span className="status-chip status-processing">生成中</span> : null}
@@ -160,7 +159,9 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
             />
             <div className="agent-composer-actions">
               <div className="meta-row">
-                {workbench.activeSessionSummary?.title ? <span className="badge">当前会话：{workbench.activeSessionSummary.title}</span> : null}
+                {workbench.activeSessionSummary?.title ? (
+                  <span className="badge">当前会话：{getSessionDisplayTitle(workbench.activeSessionSummary)}</span>
+                ) : null}
                 {workbench.requestMetadata.record_title ? <span className="badge">当前报告：{workbench.requestMetadata.record_title}</span> : null}
               </div>
               <div className="actions">

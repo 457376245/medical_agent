@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildMessagesFromTurns, createSseEventParser, normalizeSessionDetail, toRequestMetadata } from "./agent-utils";
+import {
+  buildMessagesFromTurns,
+  createSseEventParser,
+  getSessionDisplayTitle,
+  normalizeSessionDetail,
+  toRequestMetadata,
+} from "./agent-utils";
 import type { AgentSessionTurn } from "./types";
 
 describe("buildMessagesFromTurns", () => {
@@ -120,5 +126,25 @@ describe("toRequestMetadata", () => {
       entry: "agent_page",
     });
     expect((metadata as Record<string, unknown>).context_snapshot).toBeUndefined();
+  });
+});
+
+describe("getSessionDisplayTitle", () => {
+  it("prefers the first user question over backend summary text", () => {
+    expect(
+      getSessionDisplayTitle({
+        title: "问题和回答混合摘要",
+        lastUserMessage: "最近血常规指标变化如何\n请帮我解释一下",
+      }),
+    ).toBe("最近血常规指标变化如何 请帮我解释一下");
+  });
+
+  it("falls back to a trimmed session title when there is no user message", () => {
+    const title = getSessionDisplayTitle({
+      title: "  这是一个比较长的会话标题，会被裁剪成更适合侧边栏显示的形式并继续延长  ",
+    });
+
+    expect(title.endsWith("...")).toBe(true);
+    expect(title.length).toBeLessThanOrEqual(33);
   });
 });

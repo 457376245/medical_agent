@@ -171,23 +171,20 @@ export function HomeOverview({ profiles }: HomeOverviewProps) {
 
   return (
     <main className="home-dashboard">
-      <div className="mb-8 p-6 bg-[var(--surface-strong)] rounded-2xl border border-[var(--primary-soft)] flex items-center justify-between shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-[var(--ink)] mb-2 flex items-center">
-            <svg className="w-6 h-6 mr-2 text-[var(--primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <section className="home-agent-hero">
+        <div className="home-agent-hero-copy">
+          <h2 className="home-agent-hero-title">
+            <svg className="home-agent-hero-icon" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             全局医疗 Agent 助理
           </h2>
-          <p className="text-[var(--muted)] text-[14px]">不需要选中特定疾病档案，直接在此向您的专属医疗 AI 助理发起提问或健康咨询。</p>
+          <p className="home-agent-hero-text">不需要选中特定疾病档案，直接在此向您的专属医疗 AI 助理发起提问或健康咨询。</p>
         </div>
-        <Link 
-          href="/agent" 
-          className="bg-[var(--primary)] text-white px-6 py-2.5 rounded-lg font-medium shadow-[var(--shadow-md)] hover:-translate-y-0.5 hover:shadow-lg transition-all"
-        >
+        <Link href="/agent" className="home-agent-hero-link">
           立即对话
         </Link>
-      </div>
+      </section>
 
       <div className="home-disease-grid">
         <article className="home-profile-card">
