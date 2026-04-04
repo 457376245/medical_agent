@@ -26,7 +26,7 @@ import com.medical.agent.domain.vo.StructuredResultData;
 import com.medical.agent.domain.vo.TrendField;
 import com.medical.agent.domain.vo.TrendSnapshot;
 import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.AssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
@@ -61,6 +61,7 @@ public class RecordService {
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final ReportCategoryMapper reportCategoryMapper;
   private final ObjectMapper objectMapper;
+  private final TenantContextProvider tenantContextProvider;
 
   public RecordService(
       RecordMapper recordMapper,
@@ -72,7 +73,8 @@ public class RecordService {
       DataRightsRequestMapper dataRightsRequestMapper,
       DiseaseProfileMapper diseaseProfileMapper,
       ReportCategoryMapper reportCategoryMapper,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      TenantContextProvider tenantContextProvider) {
     this.recordMapper = recordMapper;
     this.assetMapper = assetMapper;
     this.parseJobMapper = parseJobMapper;
@@ -83,6 +85,7 @@ public class RecordService {
     this.diseaseProfileMapper = diseaseProfileMapper;
     this.reportCategoryMapper = reportCategoryMapper;
     this.objectMapper = objectMapper;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
   @Operation(summary = "按ID确保记录存在", description = "在最小参数场景下确保记录存在，不存在时按默认值创建")
@@ -109,8 +112,9 @@ public class RecordService {
     if (existing == null) {
       RecordEntity toCreate = new RecordEntity();
       toCreate.setId(finalRecordId);
-      toCreate.setTenantId(ScopeConstants.DEFAULT_TENANT_ID);
-      toCreate.setUserId(ScopeConstants.DEFAULT_USER_ID);
+      toCreate.setTenantId(tenantContextProvider.currentTenantId());
+      toCreate.setUserId(tenantContextProvider.currentUserId());
+      toCreate.setPatientId(tenantContextProvider.currentPatientId());
       toCreate.setDiseaseProfileId(diseaseProfileId);
       toCreate.setRecordDate(finalReportDate);
       toCreate.setTitle(finalTitle);
@@ -158,7 +162,7 @@ public class RecordService {
     UUID assetId = UUID.randomUUID();
     AssetEntity asset = new AssetEntity();
     asset.setId(assetId);
-    asset.setTenantId(ScopeConstants.DEFAULT_TENANT_ID);
+    asset.setTenantId(tenantContextProvider.currentTenantId());
     asset.setRecordId(ensureRecord(recordId, diseaseProfileId, reportDate, title, sourceType));
     asset.setObjectKey(objectKey);
     asset.setFileType(fileType);
@@ -199,8 +203,8 @@ public class RecordService {
   public RecordDetail fetchRecord(UUID recordId) {
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (record == null) {
       throw new IllegalArgumentException("record not found");
@@ -216,16 +220,16 @@ public class RecordService {
   public RecordTrendData fetchTrend(UUID recordId, int limit) {
     RecordEntity currentRecord = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (currentRecord == null) {
       throw new IllegalArgumentException("record not found");
     }
 
     LambdaQueryWrapper<RecordEntity> scopedQuery = new LambdaQueryWrapper<RecordEntity>()
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .eq(RecordEntity::getSourceType, currentRecord.getSourceType())
         .orderByDesc(RecordEntity::getRecordDate)
         .orderByDesc(RecordEntity::getUpdatedAt)
@@ -324,8 +328,8 @@ public class RecordService {
 
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (record == null) {
       return new UpdateRecordSourceTypeResult(false, null, null, null, null);
@@ -343,8 +347,8 @@ public class RecordService {
     String nextTitle = diseaseName + "-" + sourceTypeLabel(normalizedSourceType) + "-" + recordDate;
     int updated = recordMapper.update(null, new LambdaUpdateWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .set(RecordEntity::getSourceType, normalizedSourceType)
         .set(RecordEntity::getTitle, nextTitle)
         .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
@@ -360,7 +364,7 @@ public class RecordService {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .select(RecordEntity::getId)
         .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID));
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId()));
     if (records.isEmpty()) {
       return List.of();
     }
@@ -375,8 +379,8 @@ public class RecordService {
   public Optional<RecordAnalysisContext> fetchRecordAnalysisContext(UUID recordId) {
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (record == null) {
       return Optional.empty();
@@ -489,8 +493,8 @@ public class RecordService {
       return;
     }
     ReportCategoryEntity existing = reportCategoryMapper.selectOne(new LambdaQueryWrapper<ReportCategoryEntity>()
-        .eq(ReportCategoryEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(ReportCategoryEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(ReportCategoryEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(ReportCategoryEntity::getPatientId, tenantContextProvider.currentPatientId())
         .apply("lower(name) = lower({0})", name)
         .last("limit 1"));
     if (existing != null) {
@@ -499,8 +503,9 @@ public class RecordService {
 
     ReportCategoryEntity toCreate = new ReportCategoryEntity();
     toCreate.setId(UUID.randomUUID());
-    toCreate.setTenantId(ScopeConstants.DEFAULT_TENANT_ID);
-    toCreate.setUserId(ScopeConstants.DEFAULT_USER_ID);
+    toCreate.setTenantId(tenantContextProvider.currentTenantId());
+    toCreate.setUserId(tenantContextProvider.currentUserId());
+    toCreate.setPatientId(tenantContextProvider.currentPatientId());
     toCreate.setName(name);
     toCreate.setCreatedAt(LocalDateTime.now());
     toCreate.setUpdatedAt(LocalDateTime.now());

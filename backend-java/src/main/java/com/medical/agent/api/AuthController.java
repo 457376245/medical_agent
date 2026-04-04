@@ -11,49 +11,47 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.medical.agent.application.AuthService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.LoginRequest;
 import com.medical.agent.domain.dto.request.RegisterRequest;
 import com.medical.agent.domain.dto.response.EmptyData;
 import com.medical.agent.domain.dto.response.LoginResponseData;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
-import com.medical.agent.infrastructure.security.JwtUtil;
 
 @RestController
 @RequestMapping("/api/auth")
 @Tag(name = "认证", description = "登录与注册接口")
 public class AuthController {
 
-  private final JwtUtil jwtUtil;
+  private final AuthService authService;
 
-  public AuthController(JwtUtil jwtUtil) {
-    this.jwtUtil = jwtUtil;
+  public AuthController(AuthService authService) {
+    this.authService = authService;
   }
 
   @PostMapping("/register")
   @Operation(
       summary = "用户注册",
-      description = "注册用户账号（当前为模拟实现，不返回 token）",
+      description = "注册用户账号，自动创建默认病人档案（本人）",
       requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
           required = true,
           description = "注册参数",
           content = @Content(
               mediaType = "application/json",
-              examples = @ExampleObject(value = "{\"email\":\"doctor@example.com\",\"password\":\"P@ssw0rd!\",\"displayName\":\"张医生\"}"))))
+              examples = @ExampleObject(value = "{\"email\":\"user@example.com\",\"password\":\"P@ssw0rd!\",\"displayName\":\"张三\"}"))))
   @ApiResponses(value = {
       @io.swagger.v3.oas.annotations.responses.ApiResponse(
           responseCode = "200",
           description = "注册成功",
           content = @Content(
               mediaType = "application/json",
-              examples = @ExampleObject(value = "{\"code\":\"OK\",\"message\":\"mock registration successful\",\"requestId\":\"req_20260224_001\",\"data\":{}}")))
+              examples = @ExampleObject(value = "{\"code\":\"OK\",\"message\":\"注册成功\",\"requestId\":\"...\",\"data\":{}}")))
   })
   public ResponseEntity<ApiResponse<EmptyData>> register(@RequestBody RegisterRequest request) {
-    // In a real system, you would hash password and store user here
-    // For now we simulate success but do not return a token directly on register
+    authService.register(request.email(), request.password(), request.displayName());
     return ResponseEntity.ok(new ApiResponse<>(
         "OK",
-        "mock registration successful",
+        "注册成功",
         RequestIdUtil.newRequestId(),
         new EmptyData()));
   }
@@ -67,28 +65,21 @@ public class AuthController {
           description = "登录参数",
           content = @Content(
               mediaType = "application/json",
-              examples = @ExampleObject(value = "{\"email\":\"doctor@example.com\",\"password\":\"P@ssw0rd!\"}"))))
+              examples = @ExampleObject(value = "{\"email\":\"user@example.com\",\"password\":\"P@ssw0rd!\"}"))))
   @ApiResponses(value = {
       @io.swagger.v3.oas.annotations.responses.ApiResponse(
           responseCode = "200",
           description = "登录成功",
           content = @Content(
               mediaType = "application/json",
-              examples = @ExampleObject(value = "{\"code\":\"OK\",\"message\":\"login successful\",\"requestId\":\"req_20260224_002\",\"data\":{\"token\":\"eyJhbGciOiJIUzI1NiJ9...\",\"type\":\"Bearer\"}}")))
+              examples = @ExampleObject(value = "{\"code\":\"OK\",\"message\":\"登录成功\",\"requestId\":\"...\",\"data\":{\"token\":\"eyJ...\",\"type\":\"Bearer\",\"userId\":\"...\",\"displayName\":\"张三\",\"defaultPatientId\":\"...\"}}")))
   })
   public ResponseEntity<ApiResponse<LoginResponseData>> login(@RequestBody LoginRequest request) {
-    // In a real system, authenticate via AuthenticationManager using
-    // UserDetailsService
-    // For now, we bypass DB credential checking and issue a valid JWT for the
-    // provided email
-
-    String email = request.email() != null ? request.email() : "mock_user@example.com";
-    String token = jwtUtil.generateToken(email, ScopeConstants.DEFAULT_TENANT_ID.toString());
-
+    LoginResponseData data = authService.login(request.email(), request.password());
     return ResponseEntity.ok(new ApiResponse<>(
         "OK",
-        "login successful",
+        "登录成功",
         RequestIdUtil.newRequestId(),
-        new LoginResponseData(token, "Bearer")));
+        data));
   }
 }

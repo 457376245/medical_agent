@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.domain.vo.GeneratedOutputSnapshot;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
 import com.medical.agent.infrastructure.persistence.mapper.GeneratedOutputMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,14 +21,17 @@ public class GeneratedOutputService {
   private final GeneratedOutputMapper generatedOutputMapper;
   private final RecordService recordService;
   private final ObjectMapper objectMapper;
+  private final TenantContextProvider tenantContextProvider;
 
   public GeneratedOutputService(
       GeneratedOutputMapper generatedOutputMapper,
       RecordService recordService,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      TenantContextProvider tenantContextProvider) {
     this.generatedOutputMapper = generatedOutputMapper;
     this.recordService = recordService;
     this.objectMapper = objectMapper;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
   @Operation(summary = "使用默认元数据创建生成内容", description = "创建带默认模型元信息的生成内容记录，并返回新版本号")
@@ -41,7 +44,7 @@ public class GeneratedOutputService {
     int version = nextVersion(recordId, type);
     generatedOutputMapper.insertWithJsonMeta(
         UUID.randomUUID(),
-        ScopeConstants.DEFAULT_TENANT_ID,
+        tenantContextProvider.currentTenantId(),
         recordService.ensureRecord(recordId),
         type,
         version,

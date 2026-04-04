@@ -2,7 +2,7 @@ package com.medical.agent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.medical.agent.domain.vo.DiseaseProfileSummary;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.AssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
@@ -39,6 +39,7 @@ public class DiseaseProfileService {
   private final GeneratedOutputMapper generatedOutputMapper;
   private final DataRightsRequestMapper dataRightsRequestMapper;
   private final OssPresignService ossPresignService;
+  private final TenantContextProvider tenantContextProvider;
 
   public DiseaseProfileService(
       DiseaseProfileMapper diseaseProfileMapper,
@@ -49,7 +50,8 @@ public class DiseaseProfileService {
       StructuredResultMapper structuredResultMapper,
       GeneratedOutputMapper generatedOutputMapper,
       DataRightsRequestMapper dataRightsRequestMapper,
-      OssPresignService ossPresignService) {
+      OssPresignService ossPresignService,
+      TenantContextProvider tenantContextProvider) {
     this.diseaseProfileMapper = diseaseProfileMapper;
     this.recordMapper = recordMapper;
     this.assetMapper = assetMapper;
@@ -59,6 +61,7 @@ public class DiseaseProfileService {
     this.generatedOutputMapper = generatedOutputMapper;
     this.dataRightsRequestMapper = dataRightsRequestMapper;
     this.ossPresignService = ossPresignService;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
   @Operation(summary = "创建或复用疾病档案", description = "按名称幂等创建疾病档案；若同租户同用户下存在同名档案则直接复用")
@@ -69,8 +72,8 @@ public class DiseaseProfileService {
     }
 
     DiseaseProfileEntity existing = diseaseProfileMapper.selectOne(new LambdaQueryWrapper<DiseaseProfileEntity>()
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId())
         .apply("lower(name) = lower({0})", normalizedName)
         .last("limit 1"));
     if (existing != null) {
@@ -79,8 +82,9 @@ public class DiseaseProfileService {
 
     DiseaseProfileEntity entity = new DiseaseProfileEntity();
     entity.setId(UUID.randomUUID());
-    entity.setTenantId(ScopeConstants.DEFAULT_TENANT_ID);
-    entity.setUserId(ScopeConstants.DEFAULT_USER_ID);
+    entity.setTenantId(tenantContextProvider.currentTenantId());
+    entity.setUserId(tenantContextProvider.currentUserId());
+    entity.setPatientId(tenantContextProvider.currentPatientId());
     entity.setName(normalizedName);
     entity.setCreatedAt(LocalDateTime.now());
     entity.setUpdatedAt(LocalDateTime.now());
@@ -91,8 +95,8 @@ public class DiseaseProfileService {
   @Operation(summary = "查询疾病档案摘要", description = "返回疾病档案基础信息并附带每个档案下的记录数量")
   public List<DiseaseProfileSummary> listProfiles() {
     List<DiseaseProfileEntity> profiles = diseaseProfileMapper.selectList(new LambdaQueryWrapper<DiseaseProfileEntity>()
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId())
         .orderByDesc(DiseaseProfileEntity::getUpdatedAt)
         .orderByAsc(DiseaseProfileEntity::getName));
 
@@ -100,7 +104,7 @@ public class DiseaseProfileService {
     for (DiseaseProfileEntity profile : profiles) {
       Long count = recordMapper.selectCount(new LambdaQueryWrapper<RecordEntity>()
           .eq(RecordEntity::getDiseaseProfileId, profile.getId())
-          .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID));
+          .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId()));
       result.add(new DiseaseProfileSummary(
           String.valueOf(profile.getId()),
           String.valueOf(profile.getName()),
@@ -114,8 +118,8 @@ public class DiseaseProfileService {
   public boolean profileExists(UUID diseaseProfileId) {
     Long count = diseaseProfileMapper.selectCount(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, diseaseProfileId)
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID));
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId()));
     return count != null && count > 0;
   }
 
@@ -123,7 +127,7 @@ public class DiseaseProfileService {
   public int countRecords(UUID diseaseProfileId) {
     Long count = recordMapper.selectCount(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID));
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId()));
     return count == null ? 0 : count.intValue();
   }
 
@@ -157,8 +161,8 @@ public class DiseaseProfileService {
 
     int deleted = diseaseProfileMapper.delete(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, diseaseProfileId)
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID));
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId()));
     if (deleted <= 0) {
       return new DeleteDiseaseProfileIfEmptyResult(false, "DELETE_FAILED", 0);
     }
@@ -169,7 +173,7 @@ public class DiseaseProfileService {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .select(RecordEntity::getId)
         .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID));
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId()));
     if (records.isEmpty()) {
       return List.of();
     }
@@ -184,12 +188,12 @@ public class DiseaseProfileService {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .select(RecordEntity::getId)
         .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID));
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId()));
     if (records.isEmpty()) {
       diseaseProfileMapper.delete(new LambdaQueryWrapper<DiseaseProfileEntity>()
           .eq(DiseaseProfileEntity::getId, diseaseProfileId)
-          .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-          .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID));
+          .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+          .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId()));
       return 0;
     }
 
@@ -219,8 +223,8 @@ public class DiseaseProfileService {
 
     diseaseProfileMapper.delete(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, diseaseProfileId)
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID));
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId()));
     return deletedRecords;
   }
 

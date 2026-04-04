@@ -24,7 +24,7 @@ import com.medical.agent.domain.vo.AssetRef;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.ParseRequestEvent;
 import com.medical.agent.infrastructure.mq.ParseRequestPublisher;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+
 import com.medical.agent.infrastructure.persistence.entity.AssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity;
@@ -145,7 +145,7 @@ public class ParseJobService {
       LocalDateTime now = LocalDateTime.now();
       structuredResultMapper.insertWithJson(
           UUID.randomUUID(),
-          ScopeConstants.DEFAULT_TENANT_ID,
+          tenantContextProvider.currentTenantId(),
           jobId,
           job.getRecordId(),
           "v1",
@@ -159,7 +159,7 @@ public class ParseJobService {
       int finalVersion = nextGeneratedOutputVersion(job.getRecordId(), "SUMMARY");
       generatedOutputMapper.insertWithJsonMeta(
           UUID.randomUUID(),
-          ScopeConstants.DEFAULT_TENANT_ID,
+          tenantContextProvider.currentTenantId(),
           recordService.ensureRecord(job.getRecordId()),
           "SUMMARY",
           finalVersion,
@@ -242,7 +242,7 @@ public class ParseJobService {
     return new ParseJobContext(
         String.valueOf(job.getRecordId()),
         String.valueOf(job.getTenantId()),
-        ScopeConstants.DEFAULT_USER_ID.toString());
+        tenantContextProvider.currentUserId().toString());
   }
 
   private UUID createOrReuseParseJob(UUID recordId, String idempotencyKey, UUID tenantId) {

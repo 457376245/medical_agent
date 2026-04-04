@@ -6,4 +6,6 @@ public interface TenantContextProvider {
   UUID currentTenantId();
 
   UUID currentUserId();
+
+  UUID currentPatientId();
 }

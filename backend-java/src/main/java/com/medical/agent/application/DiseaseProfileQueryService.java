@@ -3,7 +3,7 @@ package com.medical.agent.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.medical.agent.domain.vo.DiseaseProfileOverview;
 import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
 import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
@@ -25,14 +25,17 @@ public class DiseaseProfileQueryService {
   private final RecordMapper recordMapper;
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final ParseJobMapper parseJobMapper;
+  private final TenantContextProvider tenantContextProvider;
 
   public DiseaseProfileQueryService(
       RecordMapper recordMapper,
       DiseaseProfileMapper diseaseProfileMapper,
-      ParseJobMapper parseJobMapper) {
+      ParseJobMapper parseJobMapper,
+      TenantContextProvider tenantContextProvider) {
     this.recordMapper = recordMapper;
     this.diseaseProfileMapper = diseaseProfileMapper;
     this.parseJobMapper = parseJobMapper;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
   @Operation(summary = "查询疾病档案总览数据", description = "按最新记录时间聚合疾病档案，返回记录数、最新记录与解析状态")
@@ -40,14 +43,14 @@ public class DiseaseProfileQueryService {
     // 1. Load all disease profiles for this user
     List<DiseaseProfileEntity> allProfiles = diseaseProfileMapper.selectList(
         new LambdaQueryWrapper<DiseaseProfileEntity>()
-            .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-            .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+            .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+            .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId())
             .orderByDesc(DiseaseProfileEntity::getUpdatedAt));
 
     // 2. Load all records and group by profileId
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .isNotNull(RecordEntity::getDiseaseProfileId)
         .orderByDesc(RecordEntity::getRecordDate)
         .orderByDesc(RecordEntity::getUpdatedAt)
@@ -101,8 +104,8 @@ public class DiseaseProfileQueryService {
   @Operation(summary = "按疾病档案查询记录", description = "查询指定疾病档案下的记录清单，支持 unknown 代表未分类疾病")
   public List<DiseaseProfileRecordSummary> listProfileRecords(String profileId) {
     LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .orderByDesc(RecordEntity::getRecordDate);
 
     if ("unknown".equalsIgnoreCase(profileId)) {
@@ -143,8 +146,8 @@ public class DiseaseProfileQueryService {
 
     DiseaseProfileEntity profile = diseaseProfileMapper.selectOne(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, targetProfileId)
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (profile == null || profile.getName() == null || profile.getName().isBlank()) {
       return "未分类疾病";

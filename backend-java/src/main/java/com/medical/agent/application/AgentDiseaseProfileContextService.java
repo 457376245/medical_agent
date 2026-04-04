@@ -14,7 +14,7 @@ import com.medical.agent.domain.vo.RecordTrendData;
 import com.medical.agent.domain.vo.ReportAnalysisResult;
 import com.medical.agent.domain.vo.TrendField;
 import com.medical.agent.domain.vo.TrendSnapshot;
-import com.medical.agent.infrastructure.persistence.ScopeConstants;
+import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
 import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
@@ -41,18 +41,21 @@ public class AgentDiseaseProfileContextService {
   private final ParseJobMapper parseJobMapper;
   private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
+  private final TenantContextProvider tenantContextProvider;
 
   public AgentDiseaseProfileContextService(
       DiseaseProfileMapper diseaseProfileMapper,
       RecordMapper recordMapper,
       ParseJobMapper parseJobMapper,
       RecordService recordService,
-      ReportAnalysisService reportAnalysisService) {
+      ReportAnalysisService reportAnalysisService,
+      TenantContextProvider tenantContextProvider) {
     this.diseaseProfileMapper = diseaseProfileMapper;
     this.recordMapper = recordMapper;
     this.parseJobMapper = parseJobMapper;
     this.recordService = recordService;
     this.reportAnalysisService = reportAnalysisService;
+    this.tenantContextProvider = tenantContextProvider;
   }
 
   @Operation(summary = "聚合 Agent 病例上下文", description = "返回疾病级摘要、可选报告摘要、趋势和告警")
@@ -114,8 +117,8 @@ public class AgentDiseaseProfileContextService {
   private DiseaseProfileEntity getProfileOrThrow(UUID profileUuid) {
     DiseaseProfileEntity profile = diseaseProfileMapper.selectOne(new LambdaQueryWrapper<DiseaseProfileEntity>()
         .eq(DiseaseProfileEntity::getId, profileUuid)
-        .eq(DiseaseProfileEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(DiseaseProfileEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(DiseaseProfileEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(DiseaseProfileEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (profile == null) {
       throw new ContextException(404, "PROFILE_NOT_FOUND", "disease profile not found");
@@ -125,8 +128,8 @@ public class AgentDiseaseProfileContextService {
 
   private List<RecordEntity> listProfileRecords(UUID profileUuid) {
     return recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .eq(RecordEntity::getDiseaseProfileId, profileUuid)
         .orderByDesc(RecordEntity::getRecordDate)
         .orderByDesc(RecordEntity::getUpdatedAt)
@@ -137,8 +140,8 @@ public class AgentDiseaseProfileContextService {
     UUID recordUuid = parseUuidOrThrow(recordId, 400, "INVALID_RECORD_ID", "recordId is invalid");
     RecordEntity record = recordMapper.selectOne(new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getId, recordUuid)
-        .eq(RecordEntity::getTenantId, ScopeConstants.DEFAULT_TENANT_ID)
-        .eq(RecordEntity::getUserId, ScopeConstants.DEFAULT_USER_ID)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
         .last("limit 1"));
     if (record == null) {
       throw new ContextException(404, "RECORD_NOT_FOUND", "record not found");

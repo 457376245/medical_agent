@@ -5,14 +5,16 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@TableName("report_categories")
-public class ReportCategoryEntity {
+@TableName("users")
+public class UserEntity {
   @TableId("id")
   private UUID id;
   private UUID tenantId;
-  private UUID userId;
-  private UUID patientId;
-  private String name;
+  private String account;
+  private String passwordHash;
+  private String displayName;
+  private String status;
+  private String role;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -20,12 +22,16 @@ public class ReportCategoryEntity {
   public void setId(UUID id) { this.id = id; }
   public UUID getTenantId() { return tenantId; }
   public void setTenantId(UUID tenantId) { this.tenantId = tenantId; }
-  public UUID getUserId() { return userId; }
-  public void setUserId(UUID userId) { this.userId = userId; }
-  public UUID getPatientId() { return patientId; }
-  public void setPatientId(UUID patientId) { this.patientId = patientId; }
-  public String getName() { return name; }
-  public void setName(String name) { this.name = name; }
+  public String getAccount() { return account; }
+  public void setAccount(String account) { this.account = account; }
+  public String getPasswordHash() { return passwordHash; }
+  public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+  public String getDisplayName() { return displayName; }
+  public void setDisplayName(String displayName) { this.displayName = displayName; }
+  public String getStatus() { return status; }
+  public void setStatus(String status) { this.status = status; }
+  public String getRole() { return role; }
+  public void setRole(String role) { this.role = role; }
   public LocalDateTime getCreatedAt() { return createdAt; }
   public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
   public LocalDateTime getUpdatedAt() { return updatedAt; }

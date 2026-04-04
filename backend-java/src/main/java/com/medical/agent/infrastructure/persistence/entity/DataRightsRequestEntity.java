@@ -11,6 +11,7 @@ public class DataRightsRequestEntity {
   private UUID id;
   private UUID tenantId;
   private UUID userId;
+  private UUID patientId;
   private UUID recordId;
   private String requestType;
   private String status;
@@ -25,6 +26,8 @@ public class DataRightsRequestEntity {
   public void setTenantId(UUID tenantId) { this.tenantId = tenantId; }
   public UUID getUserId() { return userId; }
   public void setUserId(UUID userId) { this.userId = userId; }
+  public UUID getPatientId() { return patientId; }
+  public void setPatientId(UUID patientId) { this.patientId = patientId; }
   public UUID getRecordId() { return recordId; }
   public void setRecordId(UUID recordId) { this.recordId = recordId; }
   public String getRequestType() { return requestType; }

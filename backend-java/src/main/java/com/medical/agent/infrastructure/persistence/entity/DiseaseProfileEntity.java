@@ -11,6 +11,7 @@ public class DiseaseProfileEntity {
   private UUID id;
   private UUID tenantId;
   private UUID userId;
+  private UUID patientId;
   private String name;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
@@ -21,6 +22,8 @@ public class DiseaseProfileEntity {
   public void setTenantId(UUID tenantId) { this.tenantId = tenantId; }
   public UUID getUserId() { return userId; }
   public void setUserId(UUID userId) { this.userId = userId; }
+  public UUID getPatientId() { return patientId; }
+  public void setPatientId(UUID patientId) { this.patientId = patientId; }
   public String getName() { return name; }
   public void setName(String name) { this.name = name; }
   public LocalDateTime getCreatedAt() { return createdAt; }
