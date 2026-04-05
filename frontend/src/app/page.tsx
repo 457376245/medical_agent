@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HomeOverview } from "../components/home/HomeOverview";
+import { usePatient } from "../components/auth/PatientProvider";
 import { apiFetch } from "../lib/api";
 
 type HomeProfile = {
@@ -17,10 +18,12 @@ type HomeProfile = {
 export default function HomePage() {
   const [profiles, setProfiles] = useState<HomeProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const { currentPatient } = usePatient();
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setLoading(true);
       try {
         const payload = await apiFetch<{
           profiles?: Array<Record<string, unknown>>;
@@ -46,7 +49,7 @@ export default function HomePage() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [currentPatient?.id]);
 
   if (loading) {
     return (
