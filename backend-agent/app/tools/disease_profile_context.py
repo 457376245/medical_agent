@@ -24,6 +24,7 @@ def configure(client: DiseaseProfileContextClient) -> None:
 def fetch_disease_profile_context(
     disease_profile_id: str,
     record_id: str | None = None,
+    patient_id: str | None = None,
 ) -> str:
     """Fetch compact disease-profile context for the current conversation.
 
@@ -33,6 +34,7 @@ def fetch_disease_profile_context(
     Args:
         disease_profile_id: Required disease profile identifier.
         record_id: Optional focused report identifier under this profile.
+        patient_id: Optional patient identifier for access scoping.
 
     Returns:
         JSON text with context_status, profile summary, selected record
@@ -65,6 +67,7 @@ def fetch_disease_profile_context(
     bundle = _client.fetch_context_bundle(
         disease_profile_id=profile_id,
         record_id=(record_id or "").strip() or None,
+        patient_id=(patient_id or "").strip() or None,
     )
     status = str(bundle.get("context_status", "unavailable")).lower()
     if status == "ready":

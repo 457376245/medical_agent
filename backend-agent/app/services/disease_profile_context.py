@@ -161,6 +161,7 @@ class DiseaseProfileContextClient:
         *,
         disease_profile_id: str,
         record_id: str | None = None,
+        patient_id: str | None = None,
     ) -> dict[str, Any]:
         profile_id = _txt(disease_profile_id)
         query = f"?{urllib.parse.urlencode({'recordId': _txt(record_id)})}" if _txt(record_id) else ""
@@ -171,6 +172,8 @@ class DiseaseProfileContextClient:
         headers = {"Accept": "application/json"}
         if self._api_key:
             headers[self._api_key_header] = self._api_key
+        if patient_id and _txt(patient_id):
+            headers["X-Patient-Id"] = _txt(patient_id)
 
         try:
             raw_payload = _http_get_json(url, headers=headers, timeout_seconds=self._timeout_seconds)

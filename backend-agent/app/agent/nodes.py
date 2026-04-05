@@ -45,9 +45,12 @@ def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
     """Build an AI tool-call message that forces context fetch."""
     disease_profile_id = str(metadata.get("disease_profile_id") or "").strip()
     record_id = str(metadata.get("record_id") or "").strip()
+    patient_id = str(metadata.get("patient_id") or "").strip()
     call_args: dict[str, Any] = {"disease_profile_id": disease_profile_id}
     if record_id:
         call_args["record_id"] = record_id
+    if patient_id:
+        call_args["patient_id"] = patient_id
     return AIMessage(
         content="",
         tool_calls=[

@@ -124,12 +124,18 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     memory_store = getattr(request.app.state, "memory_store", None)
     thread_id = body.thread_id or uuid.uuid4().hex
     config = {"configurable": {"thread_id": thread_id}}
+    turn_metadata: dict[str, Any] = dict(body.metadata)
+
+    # Forward patient scope from HTTP header into metadata for downstream tools
+    patient_id_header = request.headers.get("X-Patient-Id", "").strip()
+    if patient_id_header and not turn_metadata.get("patient_id"):
+        turn_metadata["patient_id"] = patient_id_header
+
     input_msg = {
         "messages": [HumanMessage(content=body.message)],
         "thread_id": thread_id,
-        "metadata": body.metadata,
+        "metadata": turn_metadata,
     }
-    turn_metadata: dict[str, Any] = dict(body.metadata)
 
     existing_session: AgentSessionRecord | None = None
     turn_index = 1
