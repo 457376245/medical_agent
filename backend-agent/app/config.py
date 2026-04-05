@@ -94,6 +94,16 @@ JAVA_AGENT_API_KEY_HEADER: str = os.getenv(
 LLM_PROXY_MODE: str = os.getenv("LLM_PROXY_MODE", "sanitize").strip().lower()
 
 # ---------------------------------------------------------------------------
+# LangSmith observability
+# ---------------------------------------------------------------------------
+LANGCHAIN_TRACING_V2: bool = to_bool(os.getenv("LANGCHAIN_TRACING_V2", "false"))
+LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "").strip()
+LANGCHAIN_PROJECT: str = os.getenv("LANGCHAIN_PROJECT", "medical-agent").strip()
+LANGCHAIN_ENDPOINT: str = os.getenv(
+    "LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"
+).strip()
+
+# ---------------------------------------------------------------------------
 # Business constants (migrated from existing code)
 # ---------------------------------------------------------------------------
 MAX_DOWNLOAD_BYTES: int = 20 * 1024 * 1024  # 20 MB

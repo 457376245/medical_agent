@@ -19,6 +19,9 @@ from app.config import (
     JAVA_AGENT_CONTEXT_PATH,
     JAVA_AGENT_CONTEXT_TIMEOUT_SECONDS,
     JAVA_API_BASE_URL,
+    LANGCHAIN_API_KEY,
+    LANGCHAIN_PROJECT,
+    LANGCHAIN_TRACING_V2,
     LLM_PROXY_MODE,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -128,6 +131,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.checkpointer = checkpointer
 
     LOGGER.info("Agent graph and memory stores initialised")
+
+    # --- LangSmith observability ---
+    if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
+        LOGGER.info(
+            "LangSmith tracing ENABLED: project=%s", LANGCHAIN_PROJECT
+        )
+    elif LANGCHAIN_TRACING_V2:
+        LOGGER.warning(
+            "LANGCHAIN_TRACING_V2=true but LANGCHAIN_API_KEY is empty — tracing will not work"
+        )
+    else:
+        LOGGER.info("LangSmith tracing disabled")
 
     # --- MQ consumer startup (existing) ---
     LOGGER.info(
