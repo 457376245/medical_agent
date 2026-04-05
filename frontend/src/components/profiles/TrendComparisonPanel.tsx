@@ -58,6 +58,11 @@ const RESULT_STATE_META: Record<ResultState, { label: string; color: string }> =
   unknown: { label: "无法判定", color: "#8b9aa6" },
 };
 
+const SERIES_PALETTE = [
+  "#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de",
+  "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#48b8d0",
+];
+
 function toNumeric(value: string): number | null {
   const match = value.match(/[+-]?\d+(?:\.\d+)?/);
   if (!match) {
@@ -260,7 +265,8 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
       itemMap.set(item.key, item.label);
     }
     const xAxisDates = snapshots.map((snapshot) => snapshot.recordDate);
-    const metricSeries = selectedKeys.map((key) => {
+    const isMultiRaw = viewMode === "raw" && selectedKeys.length > 1;
+    const metricSeries = selectedKeys.map((key, index) => {
       const dataPoints = snapshots.map<TrendPoint>((snapshot) => {
         const field = snapshot.fields.find((item) => fieldKey(item) === key);
         if (!field) {
@@ -282,12 +288,14 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
           normalizedScore,
         };
       });
+      const seriesColor = SERIES_PALETTE[index % SERIES_PALETTE.length];
       return {
         name: itemMap.get(key) ?? key,
         type: "line",
         smooth: true,
         connectNulls: false,
-        symbolSize: 8,
+        symbolSize: isMultiRaw ? 10 : 8,
+        ...(isMultiRaw ? { color: seriesColor } : {}),
         lineStyle: {
           width: 2,
         },
@@ -297,6 +305,23 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
             return RESULT_STATE_META[state].color;
           },
         },
+        ...(isMultiRaw
+          ? {
+              label: {
+                show: true,
+                formatter: (params: { data?: TrendPoint }) => {
+                  const state = params?.data?.state;
+                  if (state === "high") return "↑";
+                  if (state === "low") return "↓";
+                  return "";
+                },
+                color: "inherit",
+                fontSize: 12,
+                fontWeight: "bold" as const,
+                position: "top" as const,
+              },
+            }
+          : {}),
         z: 3,
         data: dataPoints,
       };
