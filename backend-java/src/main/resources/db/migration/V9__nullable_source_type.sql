@@ -1,0 +1,1 @@
+ALTER TABLE records ALTER COLUMN source_type DROP NOT NULL;

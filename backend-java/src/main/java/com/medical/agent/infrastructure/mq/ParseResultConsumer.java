@@ -56,6 +56,16 @@ public class ParseResultConsumer {
           parseJobService.applyParseResult(jobId, status, structuredJson, confidence, errorCode);
       LOGGER.info("Applied parse result for jobId={} status={} finalStatus={}", jobId, status, applyResult.finalStatus());
       if (applyResult.stateChanged() && "SUCCESS".equals(applyResult.finalStatus())) {
+        Object classifiedRaw = event.get("classifiedSourceType");
+        String classifiedSourceType = classifiedRaw != null ? String.valueOf(classifiedRaw).trim() : null;
+        if (classifiedSourceType != null && !classifiedSourceType.isBlank()) {
+          try {
+            recordService.applyAutoClassification(applyResult.recordId(), classifiedSourceType);
+            LOGGER.info("Auto-classified record {} as '{}'", applyResult.recordId(), classifiedSourceType);
+          } catch (Exception ex) {
+            LOGGER.warn("Failed to apply auto-classification for record {}", applyResult.recordId(), ex);
+          }
+        }
         triggerReportAnalysisGeneration(applyResult.recordId(), jobId);
       }
     } catch (JsonProcessingException ex) {

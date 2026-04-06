@@ -2,6 +2,7 @@ package com.medical.agent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.service.RecordService;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileContextResponse;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileSummary;
@@ -18,15 +19,21 @@ import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.DiseaseProfileEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
 import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
+import com.medical.agent.infrastructure.persistence.entity.StructuredResultEntity;
 import com.medical.agent.infrastructure.persistence.mapper.DiseaseProfileMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
+import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -35,27 +42,34 @@ public class AgentDiseaseProfileContextService {
   private static final int RECENT_RECORD_LIMIT = 5;
   private static final int MAX_KEY_FIELDS = 8;
   private static final int MAX_TREND_SNAPSHOTS = 3;
+  private static final int PER_CATEGORY_RECORD_LIMIT = 3;
 
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final RecordMapper recordMapper;
   private final ParseJobMapper parseJobMapper;
+  private final StructuredResultMapper structuredResultMapper;
   private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
   private final TenantContextProvider tenantContextProvider;
+  private final ObjectMapper objectMapper;
 
   public AgentDiseaseProfileContextService(
       DiseaseProfileMapper diseaseProfileMapper,
       RecordMapper recordMapper,
       ParseJobMapper parseJobMapper,
+      StructuredResultMapper structuredResultMapper,
       RecordService recordService,
       ReportAnalysisService reportAnalysisService,
-      TenantContextProvider tenantContextProvider) {
+      TenantContextProvider tenantContextProvider,
+      ObjectMapper objectMapper) {
     this.diseaseProfileMapper = diseaseProfileMapper;
     this.recordMapper = recordMapper;
     this.parseJobMapper = parseJobMapper;
+    this.structuredResultMapper = structuredResultMapper;
     this.recordService = recordService;
     this.reportAnalysisService = reportAnalysisService;
     this.tenantContextProvider = tenantContextProvider;
+    this.objectMapper = objectMapper;
   }
 
   @Operation(summary = "聚合 Agent 病例上下文", description = "返回疾病级摘要、可选报告摘要、趋势和告警")
@@ -80,7 +94,9 @@ public class AgentDiseaseProfileContextService {
     AgentRecordContextSummary selectedRecord = null;
     AgentRecordContextData recordSummary = null;
     List<AgentTrendSnapshotSummary> trendSummary = List.of();
+
     if (hasText(recordId)) {
+      // 有明确的 recordId：聚焦单份报告
       RecordEntity focusRecord = getRecordInProfileOrThrow(profileUuid, recordId);
       selectedRecord = toRecordSummary(focusRecord);
 
@@ -102,6 +118,22 @@ public class AgentDiseaseProfileContextService {
       }
 
       recordSummary = new AgentRecordContextData(trimToNull(detail.summary()), analysis, keyFields);
+    } else if (!profileRecords.isEmpty()) {
+      // 无 recordId：聚合各分类下最近的报告数据
+      List<AgentKeyFieldSummary> aggregatedKeyFields = aggregateKeyFieldsByCategory(profileRecords, warnings);
+      trendSummary = aggregateTrendSummaryByCategory(profileRecords, warnings);
+
+      if (aggregatedKeyFields.isEmpty()) {
+        partial = true;
+        warnings.add("所有报告均未完成解析或无结构化字段。");
+      }
+      if (trendSummary.isEmpty()) {
+        partial = true;
+        warnings.add("趋势摘要暂不可用。");
+      }
+
+      // 不设置 selectedRecord 和 analysis，因为用户没有聚焦特定报告
+      recordSummary = new AgentRecordContextData(null, null, aggregatedKeyFields);
     }
 
     return new AgentDiseaseProfileContextResponse(
@@ -281,6 +313,188 @@ public class AgentDiseaseProfileContextService {
 
   private String trimToNull(String value) {
     return hasText(value) ? value.trim() : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Aggregation methods for disease-level context (no specific record selected)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Aggregate key fields from the most recent records per source type.
+   * Returns up to MAX_KEY_FIELDS unique field names with their latest values.
+   */
+  private List<AgentKeyFieldSummary> aggregateKeyFieldsByCategory(
+      List<RecordEntity> profileRecords, List<String> warnings) {
+    // Group records by sourceType
+    Map<String, List<RecordEntity>> recordsBySourceType = profileRecords.stream()
+        .collect(Collectors.groupingBy(
+            r -> r.getSourceType() == null ? "未分类" : r.getSourceType(),
+            LinkedHashMap::new,
+            Collectors.toList()));
+
+    List<AgentKeyFieldSummary> aggregatedFields = new ArrayList<>();
+    Map<String, Boolean> seenFieldNames = new LinkedHashMap<>();
+
+    for (Map.Entry<String, List<RecordEntity>> entry : recordsBySourceType.entrySet()) {
+      String sourceType = entry.getKey();
+      List<RecordEntity> categoryRecords = entry.getValue();
+
+      // Take up to PER_CATEGORY_RECORD_LIMIT most recent records per category
+      List<RecordEntity> recentRecords = categoryRecords.stream()
+          .sorted((a, b) -> {
+            int dateCompare = (b.getRecordDate() == null ? LocalDate.MIN : b.getRecordDate())
+                .compareTo(a.getRecordDate() == null ? LocalDate.MIN : a.getRecordDate());
+            if (dateCompare != 0) return dateCompare;
+            return b.getUpdatedAt().compareTo(a.getUpdatedAt());
+          })
+          .limit(PER_CATEGORY_RECORD_LIMIT)
+          .toList();
+
+      // Fetch structured results for these records
+      List<UUID> recordIds = recentRecords.stream().map(RecordEntity::getId).toList();
+      Map<UUID, JsonNode> payloadLookup = fetchLatestPayloads(recordIds);
+
+      // Extract key fields, preferring most recent values for each field name
+      for (RecordEntity record : recentRecords) {
+        JsonNode payload = payloadLookup.get(record.getId());
+        if (payload == null) continue;
+
+        JsonNode fieldNodes = payload.path("fields");
+        if (!fieldNodes.isArray()) continue;
+
+        for (JsonNode fieldNode : fieldNodes) {
+          String name = readText(fieldNode, "name");
+          String value = readText(fieldNode, "value");
+          if (name.isBlank() || value.isBlank()) continue;
+
+          // Skip if we already have this field from a more recent record
+          if (seenFieldNames.containsKey(name)) continue;
+          seenFieldNames.put(name, true);
+
+          aggregatedFields.add(new AgentKeyFieldSummary(
+              name + " [" + sourceType + "]",
+              value,
+              trimToNull(readText(fieldNode, "unit")),
+              trimToNull(readText(fieldNode, "referenceRange"))));
+
+          if (aggregatedFields.size() >= MAX_KEY_FIELDS) break;
+        }
+        if (aggregatedFields.size() >= MAX_KEY_FIELDS) break;
+      }
+      if (aggregatedFields.size() >= MAX_KEY_FIELDS) break;
+    }
+
+    return aggregatedFields;
+  }
+
+  /**
+   * Aggregate trend summary from the most recent records per source type.
+   * Returns up to MAX_TREND_SNAPSHOTS per category, labeled by category.
+   */
+  private List<AgentTrendSnapshotSummary> aggregateTrendSummaryByCategory(
+      List<RecordEntity> profileRecords, List<String> warnings) {
+    // Group records by sourceType
+    Map<String, List<RecordEntity>> recordsBySourceType = profileRecords.stream()
+        .collect(Collectors.groupingBy(
+            r -> r.getSourceType() == null ? "未分类" : r.getSourceType(),
+            LinkedHashMap::new,
+            Collectors.toList()));
+
+    List<AgentTrendSnapshotSummary> aggregatedTrends = new ArrayList<>();
+
+    for (Map.Entry<String, List<RecordEntity>> entry : recordsBySourceType.entrySet()) {
+      String sourceType = entry.getKey();
+      List<RecordEntity> categoryRecords = entry.getValue();
+
+      // Take up to PER_CATEGORY_RECORD_LIMIT most recent records per category
+      List<RecordEntity> recentRecords = categoryRecords.stream()
+          .sorted((a, b) -> {
+            int dateCompare = (b.getRecordDate() == null ? LocalDate.MIN : b.getRecordDate())
+                .compareTo(a.getRecordDate() == null ? LocalDate.MIN : a.getRecordDate());
+            if (dateCompare != 0) return dateCompare;
+            return b.getUpdatedAt().compareTo(a.getUpdatedAt());
+          })
+          .limit(PER_CATEGORY_RECORD_LIMIT)
+          .toList();
+
+      // Fetch structured results for these records
+      List<UUID> recordIds = recentRecords.stream().map(RecordEntity::getId).toList();
+      Map<UUID, JsonNode> payloadLookup = fetchLatestPayloads(recordIds);
+
+      // Build trend snapshots for this category
+      for (RecordEntity record : recentRecords) {
+        JsonNode payload = payloadLookup.get(record.getId());
+        String fieldSummary = summarizePayloadFields(payload);
+
+        aggregatedTrends.add(new AgentTrendSnapshotSummary(
+            record.getId().toString(),
+            String.valueOf(record.getRecordDate()),
+            trimOrDefault(record.getTitle(), "未命名报告") + " [" + sourceType + "]",
+            fieldSummary));
+
+        if (aggregatedTrends.size() >= MAX_TREND_SNAPSHOTS * 3) break;
+      }
+      if (aggregatedTrends.size() >= MAX_TREND_SNAPSHOTS * 3) break;
+    }
+
+    return aggregatedTrends;
+  }
+
+  /**
+   * Fetch the latest structured result payloads for given record IDs.
+   */
+  private Map<UUID, JsonNode> fetchLatestPayloads(List<UUID> recordIds) {
+    if (recordIds.isEmpty()) return Map.of();
+
+    List<StructuredResultEntity> results = structuredResultMapper.selectList(
+        new LambdaQueryWrapper<StructuredResultEntity>()
+            .select(StructuredResultEntity::getRecordId,
+                StructuredResultEntity::getPayloadJson,
+                StructuredResultEntity::getRevision)
+            .in(StructuredResultEntity::getRecordId, recordIds)
+            .orderByDesc(StructuredResultEntity::getRevision));
+
+    Map<UUID, JsonNode> payloadLookup = new LinkedHashMap<>();
+    for (StructuredResultEntity result : results) {
+      payloadLookup.putIfAbsent(result.getRecordId(), parsePayloadJson(result.getPayloadJson()));
+    }
+    return payloadLookup;
+  }
+
+  /**
+   * Parse payload JSON into a JsonNode, returning empty object on failure.
+   */
+  private JsonNode parsePayloadJson(String payloadJson) {
+    try {
+      JsonNode parsed = objectMapper.readTree(payloadJson == null ? "{}" : payloadJson);
+      return parsed.isObject() ? parsed : objectMapper.createObjectNode();
+    } catch (Exception ignored) {
+      return objectMapper.createObjectNode();
+    }
+  }
+
+  /**
+   * Summarize fields from a payload into a compact string.
+   */
+  private String summarizePayloadFields(JsonNode payload) {
+    if (payload == null) return "暂无关键字段";
+
+    JsonNode fieldNodes = payload.path("fields");
+    if (!fieldNodes.isArray() || fieldNodes.isEmpty()) return "暂无关键字段";
+
+    StringJoiner joiner = new StringJoiner("；");
+    int count = 0;
+    for (JsonNode fieldNode : fieldNodes) {
+      if (count >= 3) break;
+      String name = readText(fieldNode, "name");
+      String value = readText(fieldNode, "value");
+      String unit = readText(fieldNode, "unit");
+      if (name.isBlank() || value.isBlank()) continue;
+      joiner.add(name + ":" + value + (unit.isBlank() ? "" : unit));
+      count++;
+    }
+    String summary = joiner.toString();
+    return summary.isBlank() ? "暂无关键字段" : summary;
   }
 
   public static final class ContextException extends RuntimeException {

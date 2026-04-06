@@ -23,14 +23,17 @@ import com.medical.agent.domain.repository.ParseJobRepository;
 import com.medical.agent.domain.vo.AssetRef;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.ParseRequestEvent;
+import com.medical.agent.domain.vo.ReportCategorySummary;
 import com.medical.agent.infrastructure.mq.ParseRequestPublisher;
 
 import com.medical.agent.infrastructure.persistence.entity.AssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.GeneratedOutputEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobAssetEntity;
 import com.medical.agent.infrastructure.persistence.entity.ParseJobEntity;
+import com.medical.agent.infrastructure.persistence.entity.RecordEntity;
 import com.medical.agent.infrastructure.persistence.mapper.GeneratedOutputMapper;
 import com.medical.agent.infrastructure.persistence.mapper.ParseJobAssetMapper;
+import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +48,8 @@ public class ParseJobService {
   private final StructuredResultMapper structuredResultMapper;
   private final GeneratedOutputMapper generatedOutputMapper;
   private final RecordService recordService;
+  private final RecordMapper recordMapper;
+  private final ReportCategoryService reportCategoryService;
   private final ParseRequestPublisher parseRequestPublisher;
   private final TenantContextProvider tenantContextProvider;
 
@@ -54,6 +59,8 @@ public class ParseJobService {
       StructuredResultMapper structuredResultMapper,
       GeneratedOutputMapper generatedOutputMapper,
       RecordService recordService,
+      RecordMapper recordMapper,
+      ReportCategoryService reportCategoryService,
       ParseRequestPublisher parseRequestPublisher,
       TenantContextProvider tenantContextProvider) {
     this.parseJobRepository = parseJobRepository;
@@ -61,6 +68,8 @@ public class ParseJobService {
     this.structuredResultMapper = structuredResultMapper;
     this.generatedOutputMapper = generatedOutputMapper;
     this.recordService = recordService;
+    this.recordMapper = recordMapper;
+    this.reportCategoryService = reportCategoryService;
     this.parseRequestPublisher = parseRequestPublisher;
     this.tenantContextProvider = tenantContextProvider;
   }
@@ -84,6 +93,11 @@ public class ParseJobService {
     List<AssetRef> assetRefs = recordService.listAssetRefs(assetIds);
     ParseJobContext context = parseJobContext(jobId);
 
+    RecordEntity record = recordMapper.selectById(recordId);
+    String currentSourceType = record != null ? record.getSourceType() : null;
+    List<String> existingCategories = reportCategoryService.listCategories()
+        .stream().map(ReportCategorySummary::name).toList();
+
     parseRequestPublisher.publish(new ParseRequestEvent(
         jobId.toString(),
         context.tenantId(),
@@ -91,7 +105,10 @@ public class ParseJobService {
         assetRefs,
         UUID.randomUUID().toString().replace("-", ""),
         "v1",
-        idempotencyKey));
+        idempotencyKey,
+        recordId.toString(),
+        currentSourceType,
+        existingCategories));
 
     return new ParseJobResponseData(jobId.toString(), ParseJobStatus.QUEUED.name());
   }

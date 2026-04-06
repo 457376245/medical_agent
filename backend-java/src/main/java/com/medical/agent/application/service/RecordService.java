@@ -105,8 +105,9 @@ public class RecordService {
     LocalDate finalReportDate = reportDate == null ? LocalDate.now() : reportDate;
     String finalTitle = title == null || title.isBlank() ? "Imported record" : title;
     String normalizedSourceType = normalizeReportCategoryName(sourceType);
-    String finalSourceType = normalizedSourceType == null ? "未分类" : normalizedSourceType;
-    ensureReportCategoryByName(finalSourceType);
+    if (normalizedSourceType != null) {
+      ensureReportCategoryByName(normalizedSourceType);
+    }
 
     RecordEntity existing = recordMapper.selectById(finalRecordId);
     if (existing == null) {
@@ -118,7 +119,7 @@ public class RecordService {
       toCreate.setDiseaseProfileId(diseaseProfileId);
       toCreate.setRecordDate(finalReportDate);
       toCreate.setTitle(finalTitle);
-      toCreate.setSourceType(finalSourceType);
+      toCreate.setSourceType(normalizedSourceType);
       toCreate.setCreatedAt(LocalDateTime.now());
       toCreate.setUpdatedAt(LocalDateTime.now());
       recordMapper.insert(toCreate);
@@ -421,6 +422,40 @@ public class RecordService {
         structured));
   }
 
+  @Transactional
+  @Operation(summary = "应用自动分类", description = "MQ消费者调用，根据LLM分类结果更新记录的sourceType和标题")
+  public void applyAutoClassification(UUID recordId, String sourceType) {
+    String normalized = normalizeReportCategoryName(sourceType);
+    if (normalized == null) {
+      return;
+    }
+
+    RecordEntity record = recordMapper.selectById(recordId);
+    if (record == null || record.getSourceType() != null) {
+      return;
+    }
+
+    ensureReportCategoryByNameForRecord(normalized, record);
+
+    String diseaseName = "未分类疾病";
+    if (record.getDiseaseProfileId() != null) {
+      DiseaseProfileEntity profile = diseaseProfileMapper.selectById(record.getDiseaseProfileId());
+      if (profile != null && profile.getName() != null && !profile.getName().isBlank()) {
+        diseaseName = profile.getName();
+      }
+    }
+    String recordDate = String.valueOf(
+        record.getRecordDate() == null ? LocalDate.now() : record.getRecordDate());
+    String nextTitle = diseaseName + "-" + normalized + "-" + recordDate;
+
+    recordMapper.update(null, new LambdaUpdateWrapper<RecordEntity>()
+        .eq(RecordEntity::getId, recordId)
+        .isNull(RecordEntity::getSourceType)
+        .set(RecordEntity::getSourceType, normalized)
+        .set(RecordEntity::getTitle, nextTitle)
+        .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
+  }
+
   private String querySummary(UUID recordId) {
     List<GeneratedOutputEntity> outputs = generatedOutputMapper
         .selectList(new LambdaQueryWrapper<GeneratedOutputEntity>()
@@ -506,6 +541,30 @@ public class RecordService {
     toCreate.setTenantId(tenantContextProvider.currentTenantId());
     toCreate.setUserId(tenantContextProvider.currentUserId());
     toCreate.setPatientId(tenantContextProvider.currentPatientId());
+    toCreate.setName(name);
+    toCreate.setCreatedAt(LocalDateTime.now());
+    toCreate.setUpdatedAt(LocalDateTime.now());
+    reportCategoryMapper.insert(toCreate);
+  }
+
+  private void ensureReportCategoryByNameForRecord(String name, RecordEntity record) {
+    if (name == null || name.isBlank()) {
+      return;
+    }
+    ReportCategoryEntity existing = reportCategoryMapper.selectOne(new LambdaQueryWrapper<ReportCategoryEntity>()
+        .eq(ReportCategoryEntity::getTenantId, record.getTenantId())
+        .eq(ReportCategoryEntity::getPatientId, record.getPatientId())
+        .apply("lower(name) = lower({0})", name)
+        .last("limit 1"));
+    if (existing != null) {
+      return;
+    }
+
+    ReportCategoryEntity toCreate = new ReportCategoryEntity();
+    toCreate.setId(UUID.randomUUID());
+    toCreate.setTenantId(record.getTenantId());
+    toCreate.setUserId(record.getUserId());
+    toCreate.setPatientId(record.getPatientId());
     toCreate.setName(name);
     toCreate.setCreatedAt(LocalDateTime.now());
     toCreate.setUpdatedAt(LocalDateTime.now());

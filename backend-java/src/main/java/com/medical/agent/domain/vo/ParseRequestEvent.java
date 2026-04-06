@@ -9,4 +9,7 @@ public record ParseRequestEvent(
     List<AssetRef> assetRefs,
     String traceId,
     String schemaVersion,
-    String idempotencyKey) {}
+    String idempotencyKey,
+    String recordId,
+    String sourceType,
+    List<String> existingCategories) {}
