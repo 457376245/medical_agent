@@ -674,6 +674,215 @@ a {
   gap: 8px;
 }
 
+/* ---- Batch Upload ---- */
+
+.batch-drop-zone {
+  margin-top: 10px;
+  border: 2px dashed var(--input-border);
+  border-radius: var(--radius-md);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  background: var(--bg-soft-blue);
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.batch-drop-zone:hover,
+.batch-drop-zone:focus-visible {
+  border-color: var(--primary);
+  background: #eaf4fb;
+  outline: none;
+}
+
+.batch-drop-zone.drag-over {
+  border-color: var(--primary);
+  background: #dceefb;
+}
+
+.batch-file-table {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.batch-file-header {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) 110px 44px 36px;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.batch-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) 110px 44px 36px;
+  gap: 6px;
+  padding: 8px 10px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+
+.batch-file-row:first-child {
+  border-top: none;
+}
+
+.batch-file-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.batch-file-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-file-name small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.batch-category-select {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+
+.batch-category-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.batch-category-select:disabled {
+  opacity: 0.5;
+}
+
+.batch-col-date input {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+
+.batch-col-date input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.batch-col-date input:disabled {
+  opacity: 0.5;
+}
+
+.batch-col-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-col-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-status-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.batch-status-dot.pending {
+  background: var(--line);
+  color: var(--muted);
+}
+
+.batch-status-dot.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.batch-status-dot.error {
+  background: #f8d7da;
+  color: #721c24;
+  cursor: help;
+}
+
+.batch-status-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: batch-spin 0.7s linear infinite;
+}
+
+@keyframes batch-spin {
+  to { transform: rotate(360deg); }
+}
+
+.batch-remove-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.batch-remove-btn:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.batch-file-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
+.batch-progress-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary-dark), var(--primary));
+  transition: width 0.3s ease;
+}
+
+/* ---- end Batch Upload ---- */
+
 .btn {
   border: 0;
   border-radius: var(--radius-pill);
@@ -2695,6 +2904,21 @@ a {
 
   .dialog-select-inline-actions .btn {
     flex: 1;
+  }
+
+  .batch-file-header,
+  .batch-file-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .batch-file-header {
+    display: none;
+  }
+
+  .batch-col-category,
+  .batch-col-date {
+    display: block;
   }
 
   .disease-item {
