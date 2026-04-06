@@ -124,6 +124,7 @@ export type AgentWorkbenchProps = {
   initialProfileId?: string;
   initialRecordId?: string;
   initialRecords: AgentRecord[];
+  patientId?: string;
 };
 
 export type AgentSseEvent = {

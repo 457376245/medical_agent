@@ -42,6 +42,7 @@ export type UseSessionManagerResult = {
 export function useSessionManager(
   profileId: string,
   isStreaming: boolean,
+  patientId?: string,
 ): UseSessionManagerResult {
   const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -49,6 +50,14 @@ export function useSessionManager(
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [sessionError, setSessionError] = useState("");
+
+  // Clear sessions when patient changes
+  useEffect(() => {
+    setSessions([]);
+    setActiveThreadId(null);
+    setActiveSessionSummary(null);
+    setSessionError("");
+  }, [patientId]);
 
   const reloadSessions = async () => {
     if (!profileId) {

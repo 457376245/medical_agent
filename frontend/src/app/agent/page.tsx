@@ -5,9 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { AgentWorkbench } from "../../components/agent/AgentWorkbench";
 import type { AgentProfile, AgentRecord } from "../../components/agent/types";
 import { authFetch } from "../../lib/api";
+import { usePatient } from "../../components/auth/PatientProvider";
 
 export default function AgentPage() {
   const searchParams = useSearchParams();
+  const { currentPatient } = usePatient();
+  const patientId = currentPatient?.id;
   const initialProfileId = searchParams.get("profileId")?.trim() || "";
   const initialRecordId = searchParams.get("recordId")?.trim() || "";
 
@@ -57,6 +60,7 @@ export default function AgentPage() {
       }
     }
 
+    setLoading(true);
     Promise.all([loadProfiles(), loadInitialRecords()]).then(([p, r]) => {
       if (cancelled) return;
       setProfiles(p);
@@ -65,7 +69,7 @@ export default function AgentPage() {
     });
 
     return () => { cancelled = true; };
-  }, [initialProfileId]);
+  }, [initialProfileId, patientId]);
 
   if (loading) {
     return (
@@ -84,6 +88,7 @@ export default function AgentPage() {
       initialProfileId={initialProfileId || undefined}
       initialRecordId={safeInitialRecordId || undefined}
       initialRecords={initialRecords}
+      patientId={patientId}
     />
   );
 }

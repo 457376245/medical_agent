@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { agentFetch } from "../../lib/api";
 import { createSseEventParser, toRequestMetadata } from "./agent-utils";
 import type {
@@ -77,6 +77,7 @@ export function useAgentWorkbench({
   initialProfileId,
   initialRecordId,
   initialRecords,
+  patientId,
 }: AgentWorkbenchProps): UseAgentWorkbenchResult {
   const [profileId, setProfileIdState] = useState(initialProfileId ?? "");
   const [recordId, setRecordIdState] = useState(initialRecordId ?? "");
@@ -89,11 +90,21 @@ export function useAgentWorkbench({
   const abortRef = useRef<AbortController | null>(null);
   const lastPromptRef = useRef("");
 
+  // Clear state when patient changes
+  useEffect(() => {
+    setProfileIdState("");
+    setRecordIdState("");
+    setSourceTypeState("");
+    setMessages([]);
+    setDraft("");
+    setStreamError("");
+  }, [patientId]);
+
   // Delegate record/context loading
-  const context = useRecordContext(profileId, recordId, initialProfileId, initialRecords);
+  const context = useRecordContext(profileId, recordId, initialProfileId, initialRecords, patientId);
 
   // Delegate session management
-  const sessionMgr = useSessionManager(profileId, isStreaming);
+  const sessionMgr = useSessionManager(profileId, isStreaming, patientId);
 
   const selectedProfile = useMemo(
     () => profiles.find((item) => item.profileId === profileId),

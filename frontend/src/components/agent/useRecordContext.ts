@@ -28,6 +28,7 @@ export function useRecordContext(
   recordId: string,
   initialProfileId?: string,
   initialRecords?: AgentRecord[],
+  patientId?: string,
 ): UseRecordContextResult {
   const [records, setRecords] = useState<AgentRecord[]>(initialRecords ?? []);
   const [loadingRecords, setLoadingRecords] = useState(false);
@@ -41,6 +42,16 @@ export function useRecordContext(
   const recordDetail = recordId ? recordDetails[recordId] ?? null : null;
   const recordAnalysis = recordId ? recordAnalyses[recordId] ?? null : null;
   const trendData = recordId ? trendDataMap[recordId] ?? null : null;
+
+  // Clear state when patient changes
+  useEffect(() => {
+    setRecords([]);
+    setRecordDetails({});
+    setRecordAnalyses({});
+    setTrendDataMap({});
+    setContextError("");
+    hydratedInitialRecordsRef.current = false;
+  }, [patientId]);
 
   const contextLoading = (() => {
     if (!recordId) return false;
