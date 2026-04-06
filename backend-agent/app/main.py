@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
+import sys
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -161,7 +163,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # pragma: no cover
             LOGGER.exception("Failed to start MQ consumer", exc_info=exc)
 
-    yield
+    try:
+        yield
+    except asyncio.CancelledError:
+        # Gracefully handle cancellation (e.g., Ctrl+C on Windows)
+        LOGGER.info("Application shutdown triggered (CancelledError)")
 
     # --- Shutdown ---
     try:
@@ -233,8 +239,40 @@ async def generate_task(task: TaskPayload) -> dict[str, Any]:
     return {"code": "OK", "message": "success", "data": result}
 
 
+# ---------------------------------------------------------------------------
+# Shutdown endpoint for graceful termination (useful on Windows)
+# ---------------------------------------------------------------------------
+@app.post("/internal/shutdown")
+async def shutdown_server() -> dict[str, str]:
+    """Trigger graceful shutdown. Useful when Ctrl+C doesn't work on Windows."""
+    LOGGER.info("Shutdown requested via API endpoint")
+    # Schedule shutdown after returning response
+    loop = asyncio.get_running_loop()
+    loop.call_later(1, lambda: os.kill(os.getpid(), signal.SIGTERM))
+    return {"status": "shutting_down"}
+
+
+def setup_signal_handlers() -> None:
+    """Setup signal handlers for graceful shutdown on Windows."""
+    if sys.platform == "win32":
+        # On Windows, SIGINT and SIGTERM handling is different
+        # We need to ensure proper cleanup
+        signal.signal(signal.SIGINT, _handle_shutdown_signal)
+        signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+        LOGGER.info("Windows signal handlers configured")
+
+
+def _handle_shutdown_signal(signum: int, frame: Any) -> None:
+    """Handle shutdown signals gracefully."""
+    LOGGER.info("Received signal %s, initiating shutdown", signum)
+    # On Windows, we may need to force exit if normal shutdown doesn't work
+    sys.exit(0)
+
+
 if __name__ == "__main__":
     import uvicorn
+
+    setup_signal_handlers()
 
     uvicorn.run(
         "app.main:app",

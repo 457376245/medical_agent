@@ -41,9 +41,24 @@ $args = @(
 )
 
 if (-not $NoReload) {
+    # Use reload-delay to reduce issues on Windows with file watcher
     $args += "--reload"
+    $args += "--reload-delay"
+    $args += "2"
 }
 
 Write-Host "Starting backend-agent with uv"
-& uv @args
-exit $LASTEXITCODE
+Write-Host "Press Ctrl+C to stop (may require multiple presses on Windows)"
+
+try {
+    & uv @args
+}
+catch [System.Management.Automation.PipelineStoppedException] {
+    # Handle Ctrl+C gracefully - this exception is thrown when pipeline is stopped
+    Write-Host "Server stopped by user"
+}
+catch {
+    Write-Host "Server stopped: $_"
+}
+
+exit 0

@@ -222,6 +222,50 @@ class LLMService:
             },
         }
 
+    def classify_report_category(
+        self,
+        fields: list[dict[str, Any]],
+        existing_categories: list[str],
+    ) -> str:
+        """Classify a parsed medical report into a category name (max 5 Chinese chars)."""
+        fields_text = "\n".join(
+            f"- {f.get('name', '')}: {f.get('value', '')} {f.get('unit', '') or ''}".strip()
+            for f in fields[:30]
+        )
+        categories_text = (
+            "、".join(existing_categories) if existing_categories else "（暂无）"
+        )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是医疗报告分类助手。根据报告内容判断其所属分类。"
+                    "分类名必须≤5个汉字，简洁准确。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"已有报告分类：{categories_text}\n\n"
+                    f"报告检测字段：\n{fields_text}\n\n"
+                    "请判断该报告应归入哪个分类。"
+                    "如果可以归入已有分类，请直接返回该分类名称。"
+                    "如果不适合任何已有分类，请生成一个新的分类名（≤5个汉字）。"
+                    "只返回分类名称，不要返回任何其他内容。"
+                ),
+            },
+        ]
+        text = self._invoke_text(
+            messages=messages,
+            model_name=self._openai_generate_model,
+            attempt=1,
+        )
+        classified = text.strip().strip("\"'""''")
+        if len(classified) > 5:
+            classified = classified[:5]
+        return classified
+
     def _model_for_parse_content(
         self,
         *,

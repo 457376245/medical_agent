@@ -97,6 +97,7 @@ class AgentMqConsumer:
                 "errors": result.get("errors", []),
                 "traceId": payload.get("traceId", ""),
                 "schemaVersion": payload.get("schemaVersion", "v1"),
+                "classifiedSourceType": result.get("classifiedSourceType"),
             }
             await self._publish_error(
                 exchange,

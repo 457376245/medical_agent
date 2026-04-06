@@ -111,4 +111,36 @@ class ParseWorker:
             final.get("confidence"),
             result.attempts,
         )
+
+        source_type = payload.get("sourceType")
+        if not source_type:
+            existing_categories = payload.get("existingCategories", [])
+            fields = structured.get("fields", [])
+            classified = await self._classify_report(fields, existing_categories)
+            if classified:
+                final["classifiedSourceType"] = classified
+                LOGGER.info(
+                    "Auto-classified report: jobId=%s category='%s'",
+                    payload.get("jobId"),
+                    classified,
+                )
+
         return final
+
+    async def _classify_report(
+        self,
+        fields: list[dict[str, Any]],
+        existing_categories: list[str],
+    ) -> str | None:
+        """Call LLM to classify the report, returning a category name (max 5 chars)."""
+        if not fields:
+            return None
+        try:
+            return await asyncio.to_thread(
+                self.gateway.llm.classify_report_category,
+                fields,
+                existing_categories,
+            )
+        except Exception:
+            LOGGER.warning("Report auto-classification failed", exc_info=True)
+            return None

@@ -48,6 +48,10 @@ class ProviderGateway:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def llm(self) -> LLMService:
+        return self._llm
+
     def execute_with_resilience(
         self, operation: str, payload: dict[str, Any]
     ) -> ProviderResponse:
