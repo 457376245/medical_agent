@@ -30,6 +30,7 @@ class DocumentParser:
     ) -> list[dict[str, Any]]:
         """Build a multimodal content list suitable for chat completions."""
         schema_hint = {
+            "reportDate": "2024-01-15",
             "fields": [
                 {
                     "name": "test_name",
@@ -47,6 +48,7 @@ class DocumentParser:
         }
         prompt = (
             "Extract key medical test fields from the report and respond in JSON. "
+            "Also extract reportDate in YYYY-MM-DD format if visible on the report. "
             "Keep confidence in [0,1]. "
             f"Schema: {json.dumps(schema_hint, ensure_ascii=False)}. "
             f"Source file: {object_key}"

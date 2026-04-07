@@ -81,6 +81,7 @@ public class ParseJobService {
   }
 
   @Operation(summary = "创建解析任务并投递请求", description = "根据记录与资产创建任务，绑定幂等键后向消息队列发布解析请求")
+  @Transactional
   public ParseJobResponseData create(CreateParseJobRequest request, String idempotencyKey) {
     UUID recordId = UUID.fromString(request.recordId());
     UUID tenantId = tenantContextProvider.currentTenantId();

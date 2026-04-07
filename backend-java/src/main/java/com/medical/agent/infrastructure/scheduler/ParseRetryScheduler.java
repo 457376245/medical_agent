@@ -85,7 +85,10 @@ public class ParseRetryScheduler {
           assetRefs,
           UUID.randomUUID().toString().replace("-", ""),
           "v1",
-          "parse-retry-" + jobId + "-" + candidate.retryCount()));
+          "parse-retry-" + jobId + "-" + candidate.retryCount(),
+          context.recordId(),
+          null,
+          List.of()));
       LOGGER.info(
           "Requeued failed parse job: jobId={} retryCount={}",
           jobId,

@@ -18,6 +18,7 @@ type FileItemStatus = "pending" | "uploading" | "success" | "error";
 type BatchFileItem = {
   id: string;
   file: File;
+  fileHash: string;
   reportCategory: string;
   reportDate: string;
   status: FileItemStatus;
@@ -43,6 +44,13 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const formatFileSize = (size: number) => {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const computeFileHash = async (file: File): Promise<string> => {
+  const buffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
 const fileToBase64 = (file: File) =>
@@ -225,10 +233,13 @@ export function BatchUploadDialog({
   }, []);
 
   /* ---------- file management ---------- */
-  const handleFilesSelected = useCallback((files: FileList | File[]) => {
+  const handleFilesSelected = useCallback(async (files: FileList | File[]) => {
     const today = todayISO();
+    const fileArray = Array.from(files);
     const newItems: BatchFileItem[] = [];
-    for (const file of Array.from(files)) {
+    let skippedCount = 0;
+
+    for (const file of fileArray) {
       if (
         ACCEPTED_TYPES.length > 0 &&
         !ACCEPTED_TYPES.includes(file.type) &&
@@ -236,9 +247,20 @@ export function BatchUploadDialog({
       ) {
         continue;
       }
+
+      // Compute file hash for duplicate detection
+      let fileHash = "";
+      try {
+        fileHash = await computeFileHash(file);
+      } catch {
+        // If hash computation fails, use name+size as fallback
+        fileHash = `${file.name}:${file.size}`;
+      }
+
       newItems.push({
         id: crypto.randomUUID(),
         file,
+        fileHash,
         reportCategory: "",
         reportDate: today,
         status: "pending",
@@ -247,12 +269,23 @@ export function BatchUploadDialog({
         jobId: null,
       });
     }
+
     if (newItems.length === 0) return;
+
     setFileItems((prev) => {
-      const existing = new Set(prev.map((f) => `${f.file.name}:${f.file.size}`));
-      const deduped = newItems.filter(
-        (f) => !existing.has(`${f.file.name}:${f.file.size}`),
-      );
+      const existingHashes = new Set(prev.map((f) => f.fileHash));
+      const deduped = newItems.filter((f) => {
+        if (existingHashes.has(f.fileHash)) {
+          skippedCount++;
+          return false;
+        }
+        return true;
+      });
+
+      if (skippedCount > 0) {
+        setNotice({ tone: "neutral", text: `跳过 ${skippedCount} 个重复文件。` });
+      }
+
       return [...prev, ...deduped];
     });
   }, []);

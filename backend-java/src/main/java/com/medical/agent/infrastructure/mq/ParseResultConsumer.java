@@ -56,6 +56,7 @@ public class ParseResultConsumer {
           parseJobService.applyParseResult(jobId, status, structuredJson, confidence, errorCode);
       LOGGER.info("Applied parse result for jobId={} status={} finalStatus={}", jobId, status, applyResult.finalStatus());
       if (applyResult.stateChanged() && "SUCCESS".equals(applyResult.finalStatus())) {
+        // Apply auto-classification if available
         Object classifiedRaw = event.get("classifiedSourceType");
         String classifiedSourceType = classifiedRaw != null ? String.valueOf(classifiedRaw).trim() : null;
         if (classifiedSourceType != null && !classifiedSourceType.isBlank()) {
@@ -66,6 +67,19 @@ public class ParseResultConsumer {
             LOGGER.warn("Failed to apply auto-classification for record {}", applyResult.recordId(), ex);
           }
         }
+
+        // Apply report date if extracted by LLM
+        Object reportDateRaw = event.get("reportDate");
+        String reportDateStr = reportDateRaw != null ? String.valueOf(reportDateRaw).trim() : null;
+        if (reportDateStr != null && !reportDateStr.isBlank() && !"null".equals(reportDateStr)) {
+          try {
+            recordService.applyReportDate(applyResult.recordId(), reportDateStr);
+            LOGGER.info("Applied extracted report date for record {}: {}", applyResult.recordId(), reportDateStr);
+          } catch (Exception ex) {
+            LOGGER.warn("Failed to apply report date for record {}", applyResult.recordId(), ex);
+          }
+        }
+
         triggerReportAnalysisGeneration(applyResult.recordId(), jobId);
       }
     } catch (JsonProcessingException ex) {

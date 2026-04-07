@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Service
 @Tag(name = "记录服务", description = "负责记录与资产的核心编排，包括创建、查询、趋势分析、更新与级联删除")
 public class RecordService {
+  private static final Logger LOGGER = LoggerFactory.getLogger(RecordService.class);
   private static final int MAX_REPORT_CATEGORY_NAME_LENGTH = 64;
 
   private final RecordMapper recordMapper;
@@ -452,6 +455,44 @@ public class RecordService {
         .eq(RecordEntity::getId, recordId)
         .isNull(RecordEntity::getSourceType)
         .set(RecordEntity::getSourceType, normalized)
+        .set(RecordEntity::getTitle, nextTitle)
+        .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
+  }
+
+  @Transactional
+  @Operation(summary = "应用报告日期", description = "MQ消费者调用，根据LLM提取的报告日期更新记录")
+  public void applyReportDate(UUID recordId, String reportDateStr) {
+    if (reportDateStr == null || reportDateStr.isBlank()) {
+      return;
+    }
+
+    LocalDate extractedDate;
+    try {
+      extractedDate = LocalDate.parse(reportDateStr);
+    } catch (Exception ex) {
+      LOGGER.warn("Failed to parse report date: {}", reportDateStr);
+      return;
+    }
+
+    RecordEntity record = recordMapper.selectById(recordId);
+    if (record == null) {
+      return;
+    }
+
+    // Update record date and title
+    String diseaseName = "未分类疾病";
+    if (record.getDiseaseProfileId() != null) {
+      DiseaseProfileEntity profile = diseaseProfileMapper.selectById(record.getDiseaseProfileId());
+      if (profile != null && profile.getName() != null && !profile.getName().isBlank()) {
+        diseaseName = profile.getName();
+      }
+    }
+    String sourceType = record.getSourceType() != null ? record.getSourceType() : "报告";
+    String nextTitle = diseaseName + "-" + sourceType + "-" + reportDateStr;
+
+    recordMapper.update(null, new LambdaUpdateWrapper<RecordEntity>()
+        .eq(RecordEntity::getId, recordId)
+        .set(RecordEntity::getRecordDate, extractedDate)
         .set(RecordEntity::getTitle, nextTitle)
         .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
   }

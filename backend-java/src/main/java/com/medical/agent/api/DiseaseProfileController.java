@@ -94,13 +94,13 @@ public class DiseaseProfileController {
   public ApiResponse<DiseaseProfileDetailResponseData> profileRecords(
       @Parameter(description = "疾病档案ID，传 unknown 可查询未分类疾病", example = "d5a113ca-56cf-4aca-a265-8f4ec0a3292c")
       @PathVariable("profileId") String profileId) {
-    List<DiseaseProfileRecordSummary> records = diseaseProfileQueryService.listProfileRecords(profileId);
+    DiseaseProfileQueryService.ProfileRecordsResult result = diseaseProfileQueryService.listProfileRecords(profileId);
     String diseaseName = diseaseProfileQueryService.diseaseNameByProfile(profileId);
     return new ApiResponse<>(
         "OK",
         "success",
         RequestIdUtil.newRequestId(),
-        new DiseaseProfileDetailResponseData(profileId, diseaseName, records));
+        new DiseaseProfileDetailResponseData(profileId, diseaseName, result.records(), result.parsingCount()));
   }
 
   @PostMapping

@@ -42,6 +42,7 @@ class ParseAgentOutput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     fields: list[ParseField] = Field(default_factory=list)
+    report_date: str | None = Field(default=None, alias="reportDate")
 
 
 class GenerateAgentOutput(BaseModel):
@@ -148,7 +149,7 @@ class LLMService:
             "framework": "chat-completions",
             "model": effective_model,
         }
-        return {
+        result: dict[str, Any] = {
             "structuredResult": {
                 "schemaVersion": "v1",
                 "fields": fields,
@@ -157,6 +158,13 @@ class LLMService:
             "confidence": confidence,
             "modelMeta": meta,
         }
+
+        # Extract report date if available
+        report_date = structured.report_date
+        if report_date:
+            result["reportDate"] = report_date
+
+        return result
 
     def generate(
         self, payload: dict[str, Any], model_name: str, attempt: int
@@ -321,6 +329,11 @@ class LLMService:
             raise self._to_http_error(status_code, body)
         content = _extract_message_content(body)
         if not content:
+            LOGGER.warning(
+                "LLM returned empty content: status=%s body=%s",
+                status_code,
+                json.dumps(body, ensure_ascii=False)[:500],
+            )
             raise LLMError(
                 "LLM returned empty response content",
                 code="BIZ_EMPTY_LLM_RESPONSE",
@@ -342,13 +355,17 @@ class LLMService:
     ) -> tuple[int, dict[str, Any]]:
         self._ensure_configured()
         url = f"{self._openai_base_url}/chat/completions"
+
+        # Use streaming to handle LLM services that return null content in non-streaming mode
+        stream_payload = {**payload, "stream": True}
+
         request = urllib.request.Request(
             url=url,
-            data=json.dumps(payload).encode("utf-8"),
+            data=json.dumps(stream_payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._openai_api_key}",
                 "Content-Type": "application/json",
-                "Accept": "application/json",
+                "Accept": "text/event-stream",
             },
             method="POST",
         )
@@ -356,10 +373,14 @@ class LLMService:
         try:
             with opener.open(request, timeout=self._openai_request_timeout_seconds) as response:
                 raw_body = response.read().decode("utf-8")
-                parsed_body = json.loads(raw_body) if raw_body else {}
+                parsed_body = self._parse_streaming_response(raw_body)
                 return response.status, parsed_body
         except urllib.error.HTTPError as exc:
             raw_body = exc.read().decode("utf-8", errors="replace")
+            # Try to parse as streaming response first
+            if raw_body.startswith("data:"):
+                parsed_body = self._parse_streaming_response(raw_body)
+                return exc.code, parsed_body
             try:
                 parsed_body = json.loads(raw_body) if raw_body else {}
             except json.JSONDecodeError:
@@ -370,6 +391,49 @@ class LLMService:
             if isinstance(reason, TimeoutError | socket.timeout):
                 raise TimeoutError(f"OpenAI request timed out: {reason}") from exc
             raise ConnectionError(f"OpenAI request failed: {reason}") from exc
+
+    def _parse_streaming_response(self, raw_body: str) -> dict[str, Any]:
+        """Parse SSE streaming response and reconstruct the full response."""
+        content_parts: list[str] = []
+        model = ""
+        usage: dict[str, Any] = {}
+
+        for line in raw_body.split("\n"):
+            line = line.strip()
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+
+            if not model and chunk.get("model"):
+                model = chunk["model"]
+
+            choices = chunk.get("choices", [])
+            if choices:
+                delta = choices[0].get("delta", {})
+                if isinstance(delta.get("content"), str):
+                    content_parts.append(delta["content"])
+
+            if chunk.get("usage"):
+                usage = chunk["usage"]
+
+        return {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "".join(content_parts),
+                },
+                "finish_reason": "stop",
+            }],
+            "model": model,
+            "usage": usage,
+        }
 
     def _build_opener(self, attempt: int) -> urllib.request.OpenerDirector:
         trust_env = self._openai_trust_env

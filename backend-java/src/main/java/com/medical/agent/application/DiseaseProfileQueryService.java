@@ -101,8 +101,8 @@ public class DiseaseProfileQueryService {
     return result;
   }
 
-  @Operation(summary = "按疾病档案查询记录", description = "查询指定疾病档案下的记录清单，支持 unknown 代表未分类疾病")
-  public List<DiseaseProfileRecordSummary> listProfileRecords(String profileId) {
+  @Operation(summary = "按疾病档案查询记录", description = "查询指定疾病档案下的记录清单，支持 unknown 代表未分类疾病，仅返回解析成功的记录")
+  public ProfileRecordsResult listProfileRecords(String profileId) {
     LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
         .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
         .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
@@ -115,22 +115,33 @@ public class DiseaseProfileQueryService {
       try {
         targetProfileId = UUID.fromString(profileId);
       } catch (IllegalArgumentException error) {
-        return List.of();
+        return new ProfileRecordsResult(List.of(), 0);
       }
       query.eq(RecordEntity::getDiseaseProfileId, targetProfileId);
     }
 
     List<RecordEntity> records = recordMapper.selectList(query);
-    List<DiseaseProfileRecordSummary> summaries = new ArrayList<>();
+    List<DiseaseProfileRecordSummary> successRecords = new ArrayList<>();
+    int parsingCount = 0;
+
     for (RecordEntity record : records) {
-      summaries.add(new DiseaseProfileRecordSummary(
-          String.valueOf(record.getId()),
-          record.getTitle() == null ? "未命名报告" : record.getTitle(),
-          String.valueOf(record.getRecordDate()),
-          String.valueOf(record.getSourceType())));
+      String parseStatus = queryLatestParseStatus(record.getId());
+      if ("SUCCESS".equals(parseStatus)) {
+        successRecords.add(new DiseaseProfileRecordSummary(
+            String.valueOf(record.getId()),
+            record.getTitle() == null ? "未命名报告" : record.getTitle(),
+            String.valueOf(record.getRecordDate()),
+            String.valueOf(record.getSourceType())));
+      } else {
+        // Count records that are still being parsed (QUEUED, RETRYING, or no parse job yet)
+        parsingCount++;
+      }
     }
-    return summaries;
+
+    return new ProfileRecordsResult(successRecords, parsingCount);
   }
+
+  public record ProfileRecordsResult(List<DiseaseProfileRecordSummary> records, int parsingCount) {}
 
   @Operation(summary = "按档案ID解析疾病名称", description = "根据档案ID解析展示名称，无法匹配时统一返回未分类疾病")
   public String diseaseNameByProfile(String profileId) {

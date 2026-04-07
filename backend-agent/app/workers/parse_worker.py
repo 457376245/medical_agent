@@ -105,6 +105,17 @@ class ParseWorker:
                 "modelMeta": result.payload.get("modelMeta", {}),
             },
         }
+
+        # Add report date if extracted
+        report_date = result.payload.get("reportDate")
+        if report_date:
+            final["reportDate"] = report_date
+            LOGGER.info(
+                "Extracted report date: jobId=%s reportDate=%s",
+                payload.get("jobId"),
+                report_date,
+            )
+
         LOGGER.info(
             "Parse task succeeded: jobId=%s confidence=%s attempts=%s",
             payload.get("jobId"),

@@ -10,6 +10,7 @@ export default function ProfilePage() {
   const profileId = typeof params.profileId === "string" ? params.profileId : "";
   const [diseaseName, setDiseaseName] = useState("未分类疾病");
   const [records, setRecords] = useState<Array<{ id: string; title: string; recordDate: string; sourceType: string }>>([]);
+  const [parsingCount, setParsingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function ProfilePage() {
             sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
           })),
         );
+        setParsingCount(Number(payload.data?.parsingCount ?? 0));
       } catch {
         if (!cancelled) setRecords([]);
       } finally {
@@ -54,5 +56,5 @@ export default function ProfilePage() {
     );
   }
 
-  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} />;
+  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} parsingCount={parsingCount} />;
 }

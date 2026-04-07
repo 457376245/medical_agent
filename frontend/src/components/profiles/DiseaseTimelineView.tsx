@@ -93,10 +93,12 @@ export function DiseaseTimelineView({
   profileId,
   diseaseName,
   records,
+  parsingCount = 0,
 }: {
   profileId?: string;
   diseaseName?: string;
   records: TimelineRecord[];
+  parsingCount?: number;
 }) {
   const [mutableRecords, setMutableRecords] = useState<TimelineRecord[]>(records);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -504,6 +506,11 @@ export function DiseaseTimelineView({
       <section className="timeline-selector-grid reveal reveal-delay-1">
         <article className="panel">
           <h3 className="panel-title-small">1. 选择时间节点</h3>
+          {parsingCount > 0 && (
+            <p className="status-text" style={{ marginBottom: 12 }}>
+              正在解析中：{parsingCount} 份报告...
+            </p>
+          )}
           {groupedByDate.length === 0 ? (
             <p className="muted">该疾病下暂无报告，请先上传。</p>
           ) : (
