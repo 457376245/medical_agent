@@ -24,6 +24,9 @@ target/
 # Environment and secrets
 .env
 .env.*
+.env_*
+!.env_*.example
+config.local.json
 
 # IDE / OS
 .DS_Store
