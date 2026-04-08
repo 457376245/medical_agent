@@ -20,7 +20,7 @@ MAX_PDF_TEXT_CHARS = 18_000
 
 
 class DocumentParser:
-    """Converts raw file bytes into OpenAI-compatible multimodal payloads."""
+    """将文件字节转换为 OpenAI 兼容的多模态内容。"""
 
     def __init__(self) -> None:
         self._vision_pdf_max_pages = read_int_env("VISION_OCR_MAX_PAGES", 3, 1)
@@ -28,7 +28,7 @@ class DocumentParser:
     def build_parse_content(
         self, file_type: str, object_key: str, content: bytes
     ) -> list[dict[str, Any]]:
-        """Build a multimodal content list suitable for chat completions."""
+        """构建适用于 chat completions 的多模态内容列表。"""
         schema_hint = {
             "reportDate": "2024-01-15",
             "fields": [
@@ -82,17 +82,19 @@ class DocumentParser:
 
     @staticmethod
     def contains_visual_parts(parts: list[dict[str, Any]]) -> bool:
+        """检查内容是否包含图像部分。"""
         return any(
             isinstance(item, dict) and str(item.get("type", "")).strip() == "image_url"
             for item in parts
         )
 
     # ------------------------------------------------------------------
-    # PDF helpers
+    # PDF 辅助方法
     # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_pdf_text(content: bytes) -> str:
+        """使用 pypdf 提取 PDF 文本。"""
         try:
             with io.BytesIO(content) as stream:
                 reader = PdfReader(stream)
@@ -103,11 +105,12 @@ class DocumentParser:
                         chunks.append(text)
                 return "\n".join(chunks).strip()
         except Exception:
-            LOGGER.warning("Failed to extract PDF text via pypdf", exc_info=True)
+            LOGGER.warning("通过 pypdf 提取 PDF 文本失败", exc_info=True)
             return ""
 
     @staticmethod
     def _render_pdf_pages(content: bytes, *, max_pages: int) -> list[bytes]:
+        """使用 PyMuPDF 将 PDF 页面渲染为图像。"""
         images: list[bytes] = []
         try:
             with fitz.open(stream=content, filetype="pdf") as document:
@@ -118,16 +121,17 @@ class DocumentParser:
                     pix = page_obj.get_pixmap(alpha=False)
                     images.append(pix.tobytes("png"))
         except Exception:
-            LOGGER.warning("Failed to render PDF pages via PyMuPDF", exc_info=True)
+            LOGGER.warning("通过 PyMuPDF 渲染 PDF 页面失败", exc_info=True)
             return []
         return images
 
     # ------------------------------------------------------------------
-    # MIME detection
+    # MIME 类型检测
     # ------------------------------------------------------------------
 
     @staticmethod
     def _guess_image_mime(object_key: str) -> str:
+        """根据文件扩展名推断 MIME 类型。"""
         lower = object_key.lower()
         if lower.endswith(".png"):
             return "image/png"
@@ -145,6 +149,7 @@ class DocumentParser:
     def _build_openai_image_parts(
         prompt: str, images: list[bytes], *, mime_type: str
     ) -> list[dict[str, Any]]:
+        """构建 OpenAI 图像内容部分。"""
         parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         for image_bytes in images:
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -160,6 +165,7 @@ class DocumentParser:
 
     @staticmethod
     def _log_parse_route(path: str, object_key: str) -> None:
+        """记录解析路由选择。"""
         LOGGER.info(
             "Document parse route selected: path=%s object_key=%s",
             path,

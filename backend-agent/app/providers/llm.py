@@ -20,6 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ParseEvidence(BaseModel):
+    """解析字段来源证据模型。"""
     model_config = ConfigDict(populate_by_name=True)
 
     source_file: str = Field(alias="sourceFile")
@@ -28,6 +29,7 @@ class ParseEvidence(BaseModel):
 
 
 class ParseField(BaseModel):
+    """解析字段模型。"""
     model_config = ConfigDict(populate_by_name=True)
 
     name: str
@@ -39,6 +41,7 @@ class ParseField(BaseModel):
 
 
 class ParseAgentOutput(BaseModel):
+    """解析输出模型。"""
     model_config = ConfigDict(populate_by_name=True)
 
     fields: list[ParseField] = Field(default_factory=list)
@@ -46,11 +49,12 @@ class ParseAgentOutput(BaseModel):
 
 
 class GenerateAgentOutput(BaseModel):
-    content: str = Field(description="Generated draft content")
+    """生成输出模型。"""
+    content: str = Field(description="生成的草稿内容")
 
 
 class LLMError(Exception):
-    """Raised when an LLM interaction fails."""
+    """LLM 交互失败时抛出的异常。"""
 
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
@@ -58,7 +62,7 @@ class LLMError(Exception):
 
 
 class LLMService:
-    """Manages prompt construction and LLM invocations via OpenAI chat completions."""
+    """管理提示词构建和 LLM 调用（基于 OpenAI chat completions）。"""
 
     def __init__(
         self,
@@ -104,6 +108,7 @@ class LLMService:
     def parse(
         self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
+        """解析报告内容并提取结构化字段。"""
         asset_refs = payload.get("assetRefs")
         if not isinstance(asset_refs, list) or not asset_refs:
             raise ValueError("BIZ_MISSING_ASSET_REFS")
@@ -140,7 +145,7 @@ class LLMService:
         fields = [item for item in normalized_fields if item]
         if not fields:
             raise LLMError(
-                "LLM returned no usable fields", code="BIZ_EMPTY_PARSE_RESULT"
+                "LLM 返回了无效的字段", code="BIZ_EMPTY_PARSE_RESULT"
             )
 
         confidence = _average_confidence(fields)
@@ -159,7 +164,7 @@ class LLMService:
             "modelMeta": meta,
         }
 
-        # Extract report date if available
+        # 提取报告日期（如果有）
         report_date = structured.report_date
         if report_date:
             result["reportDate"] = report_date
@@ -169,6 +174,7 @@ class LLMService:
     def generate(
         self, payload: dict[str, Any], model_name: str, attempt: int
     ) -> dict[str, Any]:
+        """生成报告摘要或分析内容。"""
         output_type = str(payload.get("type", "SUMMARY")).upper()
         system_prompt = (
             "You generate clinically cautious Chinese draft text. "
@@ -218,7 +224,7 @@ class LLMService:
 
         text = self._invoke_text(messages=messages, model_name=model_name, attempt=attempt)
         if not text:
-            raise LLMError("LLM returned empty content", code="BIZ_EMPTY_GENERATION")
+            raise LLMError("LLM 返回了空内容", code="BIZ_EMPTY_GENERATION")
 
         return {
             "type": output_type,
@@ -235,7 +241,7 @@ class LLMService:
         fields: list[dict[str, Any]],
         existing_categories: list[str],
     ) -> str:
-        """Classify a parsed medical report into a category name (max 5 Chinese chars)."""
+        """将解析后的医疗报告分类（最多5个汉字）。"""
         fields_text = "\n".join(
             f"- {f.get('name', '')}: {f.get('value', '')} {f.get('unit', '') or ''}".strip()
             for f in fields[:30]
@@ -330,12 +336,12 @@ class LLMService:
         content = _extract_message_content(body)
         if not content:
             LOGGER.warning(
-                "LLM returned empty content: status=%s body=%s",
+                "LLM 返回空内容: status=%s body=%s",
                 status_code,
                 json.dumps(body, ensure_ascii=False)[:500],
             )
             raise LLMError(
-                "LLM returned empty response content",
+                "LLM 返回了空内容",
                 code="BIZ_EMPTY_LLM_RESPONSE",
             )
         return content.strip()
@@ -345,7 +351,7 @@ class LLMService:
             parsed = _load_json_object(raw_output)
         except ValueError as exc:
             raise LLMError(
-                f"Failed to parse structured LLM output: {exc}",
+                f"解析 LLM 输出失败: {exc}",
                 code="BIZ_INVALID_LLM_OUTPUT",
             ) from exc
         return ParseAgentOutput.model_validate(parsed)
@@ -356,7 +362,7 @@ class LLMService:
         self._ensure_configured()
         url = f"{self._openai_base_url}/chat/completions"
 
-        # Use streaming to handle LLM services that return null content in non-streaming mode
+        # 使用流式模式处理非流式返回空内容的 LLM 服务
         stream_payload = {**payload, "stream": True}
 
         request = urllib.request.Request(
@@ -377,7 +383,7 @@ class LLMService:
                 return response.status, parsed_body
         except urllib.error.HTTPError as exc:
             raw_body = exc.read().decode("utf-8", errors="replace")
-            # Try to parse as streaming response first
+            # 优先尝试解析流式响应
             if raw_body.startswith("data:"):
                 parsed_body = self._parse_streaming_response(raw_body)
                 return exc.code, parsed_body
@@ -389,11 +395,11 @@ class LLMService:
         except urllib.error.URLError as exc:
             reason = exc.reason
             if isinstance(reason, TimeoutError | socket.timeout):
-                raise TimeoutError(f"OpenAI request timed out: {reason}") from exc
-            raise ConnectionError(f"OpenAI request failed: {reason}") from exc
+                raise TimeoutError(f"OpenAI 请求超时: {reason}") from exc
+            raise ConnectionError(f"OpenAI 请求失败: {reason}") from exc
 
     def _parse_streaming_response(self, raw_body: str) -> dict[str, Any]:
-        """Parse SSE streaming response and reconstruct the full response."""
+        """解析 SSE 流式响应并重建完整响应。"""
         content_parts: list[str] = []
         model = ""
         usage: dict[str, Any] = {}
@@ -464,12 +470,12 @@ class LLMService:
     def _ensure_configured(self) -> None:
         if not self._openai_base_url:
             raise LLMError(
-                "OpenAI base URL not configured",
+                "OpenAI base URL 未配置",
                 code="BIZ_OPENAI_NOT_CONFIGURED",
             )
         if not self._openai_api_key:
             raise LLMError(
-                "OpenAI API key not configured",
+                "OpenAI API key 未配置",
                 code="BIZ_OPENAI_NOT_CONFIGURED",
             )
 
@@ -486,6 +492,7 @@ class LLMService:
 
 
 def _extract_message_content(body: dict[str, Any]) -> str:
+    """从响应体中提取消息内容。"""
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices:
         return ""
@@ -510,6 +517,7 @@ def _extract_message_content(body: dict[str, Any]) -> str:
 
 
 def _extract_error_message(body: dict[str, Any]) -> str:
+    """从响应体中提取错误消息。"""
     error = body.get("error")
     if isinstance(error, dict):
         message = error.get("message")
@@ -522,6 +530,7 @@ def _extract_error_message(body: dict[str, Any]) -> str:
 
 
 def _load_json_object(raw_output: str) -> dict[str, Any]:
+    """加载 JSON 对象，支持 markdown 代码块。"""
     cleaned = raw_output.strip()
     if cleaned.startswith("```"):
         lines = cleaned.splitlines()
@@ -546,10 +555,11 @@ def _load_json_object(raw_output: str) -> dict[str, Any]:
             continue
         if isinstance(parsed, dict):
             return parsed
-    raise ValueError("response is not a valid JSON object")
+    raise ValueError("响应不是有效的 JSON 对象")
 
 
 def _normalize_field(field: dict[str, Any], object_key: str) -> dict[str, Any]:
+    """规范化解析字段。"""
     name = str(field.get("name", "")).strip()
     value = str(field.get("value", "")).strip()
     if not name or not value:
@@ -584,6 +594,7 @@ def _normalize_field(field: dict[str, Any], object_key: str) -> dict[str, Any]:
 
 
 def _average_confidence(fields: list[dict[str, Any]]) -> float:
+    """计算字段的平均置信度。"""
     valid_scores = [
         _to_confidence(item.get("confidence", 0.0)) for item in fields if item
     ]
@@ -593,6 +604,7 @@ def _average_confidence(fields: list[dict[str, Any]]) -> float:
 
 
 def _to_confidence(value: Any) -> float:
+    """将值转换为置信度浮点数。"""
     try:
         numeric = float(value)
     except (TypeError, ValueError):
@@ -605,6 +617,7 @@ def _to_confidence(value: Any) -> float:
 
 
 def _to_page(value: Any) -> int | None:
+    """将值转换为页码。"""
     try:
         page = int(value)
     except (TypeError, ValueError):

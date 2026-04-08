@@ -1,8 +1,7 @@
-"""Application configuration for non-environment settings.
+"""应用配置模块（非环境变量部分）。
 
-Environment-sensitive config (API keys, connection strings) stays in .env.
-This module holds application behavior parameters, model defaults, and
-business constants.
+环境敏感配置（API密钥、连接字符串）保存在 .env 文件中。
+本模块管理应用行为参数、模型默认值和业务常量。
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from app.utils import read_float_env, read_int_env, to_bool
 
 
 # ---------------------------------------------------------------------------
-# Model defaults
+# 模型默认配置
 # ---------------------------------------------------------------------------
 OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "").strip()
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "").strip()
@@ -46,18 +45,18 @@ DEFAULT_AGENT_TEMPERATURE: float = float(os.getenv("AGENT_TEMPERATURE", "0.3"))
 DEFAULT_AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "4096"))
 
 # ---------------------------------------------------------------------------
-# Agent behavior
+# Agent 行为配置
 # ---------------------------------------------------------------------------
 MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
-"""Maximum number of tool-call rounds per single user message."""
+"""单条用户消息允许的最大工具调用轮数。"""
 
 SESSION_IDLE_TIMEOUT_SECONDS: int = int(
     os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "1800")
 )
-"""Sessions with no activity for this duration may be cleaned up (30 min)."""
+"""会话空闲超时时间，超过此时间无活动的会话可能被清理（30分钟）。"""
 
 # ---------------------------------------------------------------------------
-# Memory / persistence
+# 内存 / 持久化配置
 # ---------------------------------------------------------------------------
 DATA_DIR: str = os.getenv("DATA_DIR", "data")
 CHECKPOINT_DB_PATH: str = os.getenv("CHECKPOINT_DB_PATH", f"{DATA_DIR}/checkpoints.db")
@@ -72,7 +71,7 @@ CORS_ALLOW_ORIGINS: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Java context aggregation API (for disease profile context tool)
+# Java 上下文聚合 API（用于疾病档案上下文工具）
 # ---------------------------------------------------------------------------
 JAVA_API_BASE_URL: str = os.getenv("JAVA_API_BASE_URL", "http://localhost:8080")
 JAVA_AGENT_CONTEXT_PATH: str = os.getenv(
@@ -89,12 +88,12 @@ JAVA_AGENT_API_KEY_HEADER: str = os.getenv(
 ).strip()
 
 # ---------------------------------------------------------------------------
-# LLM network/proxy behavior
+# LLM 网络/代理行为配置
 # ---------------------------------------------------------------------------
 LLM_PROXY_MODE: str = os.getenv("LLM_PROXY_MODE", "sanitize").strip().lower()
 
 # ---------------------------------------------------------------------------
-# LangSmith observability
+# LangSmith 可观测性配置
 # ---------------------------------------------------------------------------
 LANGCHAIN_TRACING_V2: bool = to_bool(os.getenv("LANGCHAIN_TRACING_V2", "false"))
 LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "").strip()
@@ -104,7 +103,7 @@ LANGCHAIN_ENDPOINT: str = os.getenv(
 ).strip()
 
 # ---------------------------------------------------------------------------
-# Business constants (migrated from existing code)
+# 业务常量（从现有代码迁移）
 # ---------------------------------------------------------------------------
 MAX_DOWNLOAD_BYTES: int = 20 * 1024 * 1024  # 20 MB
 MAX_PDF_TEXT_CHARS: int = 18_000

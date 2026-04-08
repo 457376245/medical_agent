@@ -1,3 +1,5 @@
+"""RabbitMQ 消息消费者，处理解析和生成任务请求。"""
+
 import json
 import logging
 import os
@@ -13,6 +15,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class AgentMqConsumer:
+    """Agent MQ 消费者，订阅解析和生成任务队列。"""
+
     def __init__(
         self,
         parse_handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
@@ -25,6 +29,7 @@ class AgentMqConsumer:
         self._closing = False
 
     async def start(self) -> None:
+        """启动 MQ 消费者，连接 RabbitMQ 并订阅队列。"""
         rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         self._connection = await aio_pika.connect_robust(rabbitmq_url)
         connection = self._connection
@@ -54,6 +59,7 @@ class AgentMqConsumer:
         LOGGER.info("Agent MQ consumers started")
 
     async def close(self) -> None:
+        """关闭 MQ 连接。"""
         self._closing = True
         if self._channel is not None:
             await self._channel.close()
@@ -65,12 +71,13 @@ class AgentMqConsumer:
         message: aio_pika.abc.AbstractIncomingMessage,
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
+        """处理解析任务消息。"""
         async with message.process(requeue=False):
             try:
                 payload = json.loads(message.body.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                LOGGER.error("MQ parse: malformed message body: %s", exc)
-                await self._publish_error(
+                LOGGER.error("MQ parse: 消息体格式错误: %s", exc)
+                await self._publish_result(
                     exchange,
                     routing_key="agent.parse.result.v1",
                     event={
@@ -100,7 +107,7 @@ class AgentMqConsumer:
                 "classifiedSourceType": result.get("classifiedSourceType"),
                 "reportDate": result.get("reportDate"),
             }
-            await self._publish_error(
+            await self._publish_result(
                 exchange,
                 routing_key="agent.parse.result.v1",
                 event=event,
@@ -117,12 +124,13 @@ class AgentMqConsumer:
         message: aio_pika.abc.AbstractIncomingMessage,
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
+        """处理生成任务消息。"""
         async with message.process(requeue=False):
             try:
                 payload = json.loads(message.body.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                LOGGER.error("MQ generate: malformed message body: %s", exc)
-                await self._publish_error(
+                LOGGER.error("MQ generate: 消息体格式错误: %s", exc)
+                await self._publish_result(
                     exchange,
                     routing_key="agent.generate.result.v1",
                     event={
@@ -154,7 +162,7 @@ class AgentMqConsumer:
                 "errors": result.get("errors", []),
                 "traceId": payload.get("traceId", ""),
             }
-            await self._publish_error(
+            await self._publish_result(
                 exchange,
                 routing_key="agent.generate.result.v1",
                 event=event,
@@ -167,12 +175,13 @@ class AgentMqConsumer:
             )
 
     @staticmethod
-    async def _publish_error(
+    async def _publish_result(
         exchange: aio_pika.abc.AbstractExchange,
         *,
         routing_key: str,
         event: dict[str, Any],
     ) -> None:
+        """发布结果消息到交换机。"""
         await exchange.publish(
             aio_pika.Message(
                 body=json.dumps(event).encode("utf-8"),

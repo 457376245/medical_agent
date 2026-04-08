@@ -45,12 +45,10 @@ class TaskPayload(BaseModel):
 
 LOGGER = logging.getLogger(__name__)
 
-# Explicit thread-pool size so that blocking OSS downloads + LLM calls
-# cannot exhaust the default executor (typically ~8 threads).
+# 显式配置线程池大小，防止阻塞的 OSS 下载和 LLM 调用耗尽默认执行器（通常约8个线程）
 WORKER_THREAD_POOL_SIZE = int(os.getenv("WORKER_THREAD_POOL_SIZE", "16"))
 
-# Cap concurrent file-processing operations to bound memory usage
-# (each operation can hold up to MAX_DOWNLOAD_BYTES in memory).
+# 限制并发文件处理操作数量以控制内存使用（每个操作最多占用 MAX_DOWNLOAD_BYTES 内存）
 MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "8"))
 
 
@@ -67,14 +65,14 @@ configure_logging()
 configure_llm_proxy_env(LLM_PROXY_MODE, [])
 
 # ---------------------------------------------------------------------------
-# Dependency wiring — existing task-processing pipeline (unchanged)
+# 依赖注入 —— 任务处理流水线
 # ---------------------------------------------------------------------------
 storage = OSSStorageService()
 document = DocumentParser()
 llm = LLMService(storage=storage, document=document)
 gateway = ProviderGateway(llm=llm)
 
-# Concurrency semaphore shared by both workers
+# 两个 worker 共享的并发信号量
 task_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
 
 parse_worker = ParseWorker(gateway, semaphore=task_semaphore)
@@ -82,7 +80,7 @@ generate_worker = GenerateWorker(gateway, semaphore=task_semaphore)
 mq_consumer = AgentMqConsumer(parse_worker.handle, generate_worker.handle)
 
 # ---------------------------------------------------------------------------
-# Dependency wiring — Agent tools (inject providers into tool modules)
+# 依赖注入 —— Agent 工具（将 provider 注入到工具模块）
 # ---------------------------------------------------------------------------
 from app.tools import document_parse as _tool_doc  # noqa: E402
 from app.tools import disease_profile_context as _tool_context  # noqa: E402
@@ -103,7 +101,7 @@ _tool_context.configure(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Install explicit thread pool on the running event loop
+    # 在运行中的事件循环上安装显式线程池
     loop = asyncio.get_running_loop()
     executor = ThreadPoolExecutor(
         max_workers=WORKER_THREAD_POOL_SIZE,
@@ -116,7 +114,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MAX_CONCURRENT_TASKS,
     )
 
-    # --- Agent memory & graph setup ---
+    # --- Agent 内存与图初始化 ---
     from app.memory.checkpointer import create_checkpointer
     from app.memory.store import SqliteMemoryStore
     from app.agent.graph import build_graph
@@ -127,26 +125,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     agent_graph = build_graph(checkpointer=checkpointer)
 
-    # Expose on app.state so that api/ routers can access them
+    # 暴露到 app.state 以便 api/ 路由可以访问
     app.state.agent_graph = agent_graph
     app.state.memory_store = memory_store
     app.state.checkpointer = checkpointer
 
     LOGGER.info("Agent graph and memory stores initialised")
 
-    # --- LangSmith observability ---
+    # --- LangSmith 可观测性 ---
     if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
         LOGGER.info(
             "LangSmith tracing ENABLED: project=%s", LANGCHAIN_PROJECT
         )
     elif LANGCHAIN_TRACING_V2:
         LOGGER.warning(
-            "LANGCHAIN_TRACING_V2=true but LANGCHAIN_API_KEY is empty — tracing will not work"
+            "LANGCHAIN_TRACING_V2=true 但 LANGCHAIN_API_KEY 为空 —— 追踪将无法工作"
         )
     else:
         LOGGER.info("LangSmith tracing disabled")
 
-    # --- MQ consumer startup (existing) ---
+    # --- MQ 消费者启动 ---
     LOGGER.info(
         "Agent starting with MQ_CONSUMER_ENABLED=%s",
         os.getenv("MQ_CONSUMER_ENABLED", "true"),
@@ -166,10 +164,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     except asyncio.CancelledError:
-        # Gracefully handle cancellation (e.g., Ctrl+C on Windows)
+        # 优雅处理取消（例如 Windows 上按 Ctrl+C）
         LOGGER.info("Application shutdown triggered (CancelledError)")
 
-    # --- Shutdown ---
+    # --- 关闭 ---
     try:
         await mq_consumer.close()
     except Exception:
@@ -196,7 +194,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Register API routers (Agent chat + sessions)
+# 注册 API 路由（Agent 聊天 + 会话）
 # ---------------------------------------------------------------------------
 from app.api.chat import router as chat_router  # noqa: E402
 from app.api.sessions import router as sessions_router  # noqa: E402
@@ -206,7 +204,7 @@ app.include_router(sessions_router)
 
 
 # ---------------------------------------------------------------------------
-# Existing endpoints (task processing — unchanged)
+# 现有端点（任务处理 —— 未修改）
 # ---------------------------------------------------------------------------
 
 
@@ -240,32 +238,32 @@ async def generate_task(task: TaskPayload) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Shutdown endpoint for graceful termination (useful on Windows)
+# 优雅关闭端点（Windows 上有用）
 # ---------------------------------------------------------------------------
 @app.post("/internal/shutdown")
 async def shutdown_server() -> dict[str, str]:
-    """Trigger graceful shutdown. Useful when Ctrl+C doesn't work on Windows."""
+    """触发优雅关闭。在 Windows 上 Ctrl+C 可能无效时使用。"""
     LOGGER.info("Shutdown requested via API endpoint")
-    # Schedule shutdown after returning response
+    # 返回响应后安排关闭
     loop = asyncio.get_running_loop()
     loop.call_later(1, lambda: os.kill(os.getpid(), signal.SIGTERM))
     return {"status": "shutting_down"}
 
 
 def setup_signal_handlers() -> None:
-    """Setup signal handlers for graceful shutdown on Windows."""
+    """配置 Windows 优雅关闭信号处理器。"""
     if sys.platform == "win32":
-        # On Windows, SIGINT and SIGTERM handling is different
-        # We need to ensure proper cleanup
+        # Windows 上 SIGINT 和 SIGTERM 处理方式不同
+        # 需要确保正确清理
         signal.signal(signal.SIGINT, _handle_shutdown_signal)
         signal.signal(signal.SIGTERM, _handle_shutdown_signal)
         LOGGER.info("Windows signal handlers configured")
 
 
 def _handle_shutdown_signal(signum: int, frame: Any) -> None:
-    """Handle shutdown signals gracefully."""
+    """优雅处理关闭信号。"""
     LOGGER.info("Received signal %s, initiating shutdown", signum)
-    # On Windows, we may need to force exit if normal shutdown doesn't work
+    # Windows 上可能需要强制退出，如果正常关闭不起作用
     sys.exit(0)
 
 
