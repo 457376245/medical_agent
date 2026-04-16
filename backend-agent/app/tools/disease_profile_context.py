@@ -1,4 +1,4 @@
-"""Tool: fetch disease profile context from backend-java."""
+"""工具：从 backend-java 获取疾病档案上下文。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _client: DiseaseProfileContextClient | None = None
 
 
 def configure(client: DiseaseProfileContextClient) -> None:
-    """Inject the Java context API client at startup."""
+    """在启动时注入 Java 上下文 API 客户端。"""
     global _client  # noqa: PLW0603
     _client = client
 
@@ -26,26 +26,26 @@ def fetch_disease_profile_context(
     record_id: str | None = None,
     patient_id: str | None = None,
 ) -> str:
-    """Fetch compact disease-profile context for the current conversation.
+    """获取当前对话的紧凑疾病档案上下文。
 
-    Use this tool whenever you need current disease profile data from
-    backend records, including selected report summary and trend snippets.
+    当你需要来自后端记录的当前疾病档案数据时使用此工具，
+    包括选中的报告摘要和趋势片段。
 
     Args:
-        disease_profile_id: Required disease profile identifier.
-        record_id: Optional focused report identifier under this profile.
-        patient_id: Optional patient identifier for access scoping.
+        disease_profile_id: 必需的疾病档案标识符。
+        record_id: 可选的该档案下聚焦报告标识符。
+        patient_id: 可选的患者标识符，用于访问范围限定。
 
     Returns:
-        JSON text with context_status, profile summary, selected record
-        summary, compact key fields, trend summary, and warnings.
+        JSON 文本，包含 context_status、档案摘要、选中记录摘要、
+        紧凑关键字段、趋势摘要和警告。
     """
     profile_id = (disease_profile_id or "").strip()
     if not profile_id:
         return json.dumps(
             {
                 "context_status": "unavailable",
-                "warnings": ["disease_profile_id is required"],
+                "warnings": ["disease_profile_id 是必需的"],
             },
             ensure_ascii=False,
         )
@@ -53,7 +53,7 @@ def fetch_disease_profile_context(
         return json.dumps(
             {
                 "context_status": "unavailable",
-                "warnings": ["context client is not configured"],
+                "warnings": ["上下文客户端未配置"],
             },
             ensure_ascii=False,
         )
@@ -92,4 +92,3 @@ def fetch_disease_profile_context(
         )
 
     return json.dumps(bundle, ensure_ascii=False)
-

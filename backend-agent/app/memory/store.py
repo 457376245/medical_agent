@@ -1,8 +1,8 @@
-"""Long-term memory: cross-session knowledge store.
+"""长期记忆：跨会话知识存储。
 
-Defines the ``MemoryStore`` protocol and provides a SQLite implementation.
-Stores patient context, conversation summaries, extracted medical facts,
-and agent session/turn records that persist across sessions.
+定义 MemoryStore 协议并提供 SQLite 实现。
+存储患者上下文、对话摘要、提取的医疗事实，以及跨会话持久化的
+Agent 会话/轮次记录。
 """
 
 from __future__ import annotations
@@ -29,17 +29,16 @@ from app.memory.models import (
 LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Protocol (interface)
+# 协议（接口）
 # ---------------------------------------------------------------------------
 
 
 @runtime_checkable
 class MemoryStore(Protocol):
-    """Abstract interface for long-term memory storage.
+    """长期记忆存储的抽象接口。
 
-    Implementations may use SQLite, PostgreSQL, Redis, or any other
-    backend.  The protocol is intentionally narrow so that swapping
-    backends requires minimal effort.
+    实现可以使用 SQLite、PostgreSQL、Redis 或任何其他后端。
+    协议有意保持精简，以便切换后端只需最小改动。
     """
 
     async def save_summary(self, summary: ConversationSummary) -> None: ...
@@ -80,11 +79,11 @@ class MemoryStore(Protocol):
 
     async def update_agent_session_title(self, thread_id: str, title: str) -> None: ...
 
-    async def close(self) -> None: ...    
+    async def close(self) -> None: ...
 
 
 # ---------------------------------------------------------------------------
-# SQLite implementation
+# SQLite 实现
 # ---------------------------------------------------------------------------
 
 _SCHEMA_SQL = """\
@@ -165,16 +164,16 @@ CREATE INDEX IF NOT EXISTS idx_agent_turn_thread_created
 
 
 class SqliteMemoryStore:
-    """SQLite-backed implementation of :class:`MemoryStore`."""
+    """MemoryStore 的 SQLite 后端实现。"""
 
     def __init__(self, db_path: str | None = None) -> None:
         self._db_path = db_path or MEMORY_DB_PATH
         self._db: aiosqlite.Connection | None = None
 
-    # -- lifecycle -----------------------------------------------------------
+    # -- 生命周期 -----------------------------------------------------------
 
     async def initialize(self) -> None:
-        """Open the database and create tables if needed."""
+        """打开数据库并在需要时创建表。"""
         db_dir = os.path.dirname(self._db_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
@@ -195,11 +194,11 @@ class SqliteMemoryStore:
     def _conn(self) -> aiosqlite.Connection:
         if self._db is None:
             raise RuntimeError(
-                "SqliteMemoryStore is not initialised; call initialize() first"
+                "SqliteMemoryStore 未初始化；请先调用 initialize()"
             )
         return self._db
 
-    # -- summaries -----------------------------------------------------------
+    # -- 摘要 ---------------------------------------------------------------
 
     async def save_summary(self, summary: ConversationSummary) -> None:
         await self._conn.execute(
@@ -230,7 +229,7 @@ class SqliteMemoryStore:
             created_at=datetime.fromisoformat(row[3]),
         )
 
-    # -- patient context -----------------------------------------------------
+    # -- 患者上下文 ---------------------------------------------------------
 
     async def save_patient_context(self, ctx: PatientContext) -> None:
         await self._conn.execute(
@@ -270,7 +269,7 @@ class SqliteMemoryStore:
             updated_at=datetime.fromisoformat(row[6]),
         )
 
-    # -- medical facts -------------------------------------------------------
+    # -- 医疗事实 -----------------------------------------------------------
 
     async def save_fact(self, fact: MedicalFact) -> None:
         fact_id = fact.fact_id or uuid.uuid4().hex
@@ -337,7 +336,7 @@ class SqliteMemoryStore:
             for r in rows
         ]
 
-    # -- agent sessions -----------------------------------------------------
+    # -- Agent 会话 ---------------------------------------------------------
 
     async def upsert_agent_session(self, session: AgentSessionRecord) -> None:
         existing = await self.get_agent_session(session.thread_id)

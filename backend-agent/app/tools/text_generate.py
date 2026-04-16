@@ -1,7 +1,7 @@
-"""Tool: medical text generation.
+"""工具：医疗文本生成。
 
-Wraps ``providers/llm`` as an Agent-callable tool for generating medical
-reports, summaries, and structured outputs.
+将 providers/llm 封装为 Agent 可调用工具，用于生成医疗报告、摘要
+和结构化输出。
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from app.providers.gateway import ProviderGateway
 
 LOGGER = logging.getLogger(__name__)
 
-# Module-level singleton — replaced by DI from main.py at startup.
+# 模块级单例 —— 由 main.py 在启动时通过依赖注入替换。
 _gateway: ProviderGateway | None = None
 
 
 def configure(gateway: ProviderGateway) -> None:
-    """Inject the gateway instance (called once at application startup)."""
+    """注入 gateway 实例（应用启动时调用一次）。"""
     global _gateway  # noqa: PLW0603
     _gateway = gateway
 
@@ -31,22 +31,21 @@ def generate_medical_text(
     record_id: str = "",
     context: str = "{}",
 ) -> str:
-    """Generate a medical text draft (summary, medication plan, or report analysis).
+    """生成医疗文本草稿（摘要、用药方案或报告分析）。
 
-    Use this tool when the user asks to create, draft, or generate a
-    medical document such as a clinical summary, medication plan, or
-    report analysis.
+    当用户要求创建、起草或生成医疗文档（如临床摘要、用药方案、
+    报告分析）时使用此工具。
 
     Args:
-        output_type: One of "SUMMARY", "MED_PLAN", or "REPORT_ANALYSIS".
-        record_id: The medical record identifier.
-        context: JSON string of additional analysis context.
+        output_type: "SUMMARY"、"MED_PLAN" 或 "REPORT_ANALYSIS" 之一。
+        record_id: 医疗记录标识符。
+        context: 额外分析上下文的 JSON 字符串。
 
     Returns:
-        Generated medical text content.
+        生成的医疗文本内容。
     """
     if _gateway is None:
-        return "Error: text generation service is not configured."
+        return "Error: 文本生成服务未配置。"
 
     try:
         analysis_context = json.loads(context) if context else {}
@@ -63,7 +62,7 @@ def generate_medical_text(
         result = _gateway.execute_with_resilience("generate", payload)
         if result.success:
             return str(result.payload.get("content", ""))
-        return f"Error: generation failed — {result.error_code}"
+        return f"Error: 生成失败 — {result.error_code}"
     except Exception as exc:
         LOGGER.warning("generate_medical_text tool failed: %s", exc, exc_info=True)
-        return f"Error: generation failed — {exc}"
+        return f"Error: 生成失败 — {exc}"

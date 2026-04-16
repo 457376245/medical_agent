@@ -1,8 +1,7 @@
-"""Scenario-specific prompt templates.
+"""场景特定的提示模板。
 
-Organized by business scenario (consultation, report interpretation,
-medication review, etc.).  Templates support variable interpolation
-via ``str.format()`` or f-string.
+按业务场景组织（咨询、报告解读、用药审查等）。
+模板支持通过 str.format() 或 f-string 进行变量插值。
 """
 
 from __future__ import annotations

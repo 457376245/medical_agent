@@ -1,4 +1,4 @@
-"""Context signature and prompt helpers for disease-profile chat."""
+"""疾病档案聊天的上下文签名和提示辅助函数。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 
 def context_signature_from_metadata(metadata: Mapping[str, Any] | None) -> str | None:
-    """Build a stable context signature from disease profile + record."""
+    """从疾病档案和记录构建稳定的上下文签名。"""
     if metadata is None:
         return None
     disease_profile_id = str(metadata.get("disease_profile_id") or "").strip()
@@ -22,7 +22,7 @@ def should_refresh_context(
     metadata: Mapping[str, Any] | None,
     active_context_signature: str | None,
 ) -> bool:
-    """Return True when context should be reloaded via the context tool."""
+    """返回是否需要通过上下文工具重新加载上下文。"""
     next_signature = context_signature_from_metadata(metadata)
     if not next_signature:
         return False
@@ -30,7 +30,7 @@ def should_refresh_context(
 
 
 def parse_context_bundle(content: str | None) -> dict[str, Any] | None:
-    """Parse tool output JSON into a dictionary."""
+    """将工具输出 JSON 解析为字典。"""
     if not content:
         return None
     try:
@@ -47,7 +47,7 @@ def build_context_system_message(
     active_context_bundle: Mapping[str, Any] | None,
     active_context_status: str | None,
 ) -> str | None:
-    """Convert context bundle into a compact system message."""
+    """将上下文数据包转换为紧凑的系统消息。"""
     status = str(active_context_status or "").strip().lower()
     if status == "unavailable":
         return (
@@ -151,4 +151,3 @@ def build_context_system_message(
             "若信息不足请明确说明限制："
         )
     return prefix + "\n" + "\n".join(lines)
-

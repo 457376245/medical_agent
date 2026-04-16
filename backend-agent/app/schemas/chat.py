@@ -1,7 +1,6 @@
-"""Chat-related data models.
+"""聊天相关数据模型。
 
-Pydantic models for the SSE chat interface: requests, events, and
-session metadata.
+SSE 聊天接口的 Pydantic 模型：请求、事件和会话元数据。
 """
 
 from __future__ import annotations
@@ -13,28 +12,28 @@ from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
-    """Incoming user message for the chat endpoint."""
+    """聊天端点的传入用户消息。"""
 
     thread_id: str | None = Field(
         default=None,
-        description="Existing session ID to resume.  Omit to start a new session.",
+        description="要恢复的现有会话 ID。省略则开始新会话。",
     )
-    message: str = Field(..., min_length=1, description="User message content.")
+    message: str = Field(..., min_length=1, description="用户消息内容。")
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional metadata (patient_id, scenario, etc.).",
+        description="可选元数据（patient_id、scenario 等）。",
     )
 
 
 class ChatEvent(BaseModel):
-    """A single SSE event sent back to the client.
+    """发送给客户端的单个 SSE 事件。
 
-    Event types:
-    - ``token``: incremental text chunk
-    - ``tool_call``: tool invocation notification
-    - ``tool_result``: tool execution result
-    - ``done``: final event with full response
-    - ``error``: error notification
+    事件类型：
+    - ``token``：增量文本块
+    - ``tool_call``：工具调用通知
+    - ``tool_result``：工具执行结果
+    - ``done``：包含完整响应的最终事件
+    - ``error``：错误通知
     """
 
     event: str
@@ -42,7 +41,7 @@ class ChatEvent(BaseModel):
 
 
 class SessionInfo(BaseModel):
-    """Summary of a conversation session."""
+    """对话会话的摘要。"""
 
     thread_id: str
     created_at: datetime

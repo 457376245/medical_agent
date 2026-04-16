@@ -1,8 +1,7 @@
-"""Short-term memory: LangGraph checkpoint persistence.
+"""短期记忆：LangGraph 检查点持久化。
 
-Wraps ``AsyncSqliteSaver`` from ``langgraph-checkpoint-sqlite`` to manage
-the SQLite connection lifecycle.  Each conversation is isolated by
-``thread_id``.
+封装 langgraph-checkpoint-sqlite 的 AsyncSqliteSaver 来管理 SQLite
+连接生命周期。每个对话通过 thread_id 隔离。
 """
 
 from __future__ import annotations
@@ -22,14 +21,13 @@ async def create_checkpointer() -> tuple[
     AsyncSqliteSaver,
     AsyncContextManager[AsyncSqliteSaver],
 ]:
-    """Create and initialise an ``AsyncSqliteSaver``.
+    """创建并初始化 AsyncSqliteSaver。
 
-    Returns a ``(saver, context_manager)`` tuple.  The caller must call
-    ``await context_manager.__aexit__(None, None, None)`` on application
-    shutdown to close the underlying ``aiosqlite`` connection.
+    返回 (saver, context_manager) 元组。调用者必须在应用关闭时调用
+    await context_manager.__aexit__(None, None, None) 来关闭底层的
+    aiosqlite 连接。
 
-    The parent directory for the database file is created automatically
-    if it does not exist.
+    数据库文件的父目录如果不存在会自动创建。
     """
     db_dir = os.path.dirname(CHECKPOINT_DB_PATH)
     if db_dir:

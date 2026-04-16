@@ -1,7 +1,7 @@
-"""Agent state definition.
+"""Agent 状态定义。
 
-Defines the ``AgentState`` TypedDict consumed by the LangGraph StateGraph.
-All nodes in the graph read from and write to this shared state.
+定义 LangGraph StateGraph 使用的 AgentState TypedDict。
+图中的所有节点读取和写入这个共享状态。
 """
 
 from typing import Annotated, Any
@@ -13,13 +13,12 @@ from langchain_core.messages import BaseMessage
 
 
 class AgentState(TypedDict):
-    """Shared state flowing through the Agent graph.
+    """Agent 图中流动的共享状态。
 
     Attributes:
-        messages: Conversation message history (auto-accumulated via
-                  ``add_messages`` reducer).
-        thread_id: Current session identifier.
-        metadata: Arbitrary per-request metadata (patient_id, scenario, …).
+        messages: 对话消息历史（通过 add_messages reducer 自动累积）。
+        thread_id: 当前会话标识符。
+        metadata: 任意请求元数据（patient_id、scenario 等）。
     """
 
     messages: Annotated[list[BaseMessage], add_messages]

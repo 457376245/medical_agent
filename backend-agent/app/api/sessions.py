@@ -1,7 +1,7 @@
-"""Session management endpoints.
+"""会话管理端点。
 
-CRUD operations for conversation sessions: create, resume, list, delete.
-Each session maps to a LangGraph ``thread_id``.
+对话会话的 CRUD 操作：创建、恢复、列表、删除。
+每个会话对应一个 LangGraph thread_id。
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ async def list_sessions(
     request: Request,
     disease_profile_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
-    """List indexed sessions, optionally filtered by disease profile."""
+    """列出已索引的会话，可按疾病档案筛选。"""
     memory_store = getattr(request.app.state, "memory_store", None)
     if memory_store is None:
         return {"sessions": [], "count": 0}
@@ -115,7 +115,7 @@ async def list_sessions(
 
 @router.post("")
 async def create_session(request: Request) -> dict[str, Any]:
-    """Create a new conversation session and return its ``thread_id``."""
+    """创建新的对话会话并返回其 thread_id。"""
     thread_id = uuid.uuid4().hex
     LOGGER.info("Session created: %s", thread_id)
     return {"thread_id": thread_id}
@@ -123,10 +123,9 @@ async def create_session(request: Request) -> dict[str, Any]:
 
 @router.get("/{thread_id}")
 async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
-    """Retrieve session metadata and message history.
+    """获取会话元数据和消息历史。
 
-    Reads the checkpoint for *thread_id* from the checkpoint store to
-    reconstruct the conversation so far.
+    从检查点存储读取 thread_id 的检查点来重建迄今为止的对话。
     """
     memory_store = getattr(request.app.state, "memory_store", None)
     if memory_store is not None:
@@ -174,7 +173,7 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
 
 @router.patch("/{thread_id}")
 async def update_session(thread_id: str, body: SessionUpdateRequest, request: Request) -> dict[str, Any]:
-    """Update session metadata (e.g. title)."""
+    """更新会话元数据（如标题）。"""
     memory_store = getattr(request.app.state, "memory_store", None)
     if memory_store is None:
         return {"thread_id": thread_id, "updated": False, "error": "memory store unavailable"}
@@ -186,10 +185,10 @@ async def update_session(thread_id: str, body: SessionUpdateRequest, request: Re
 
 @router.delete("/{thread_id}")
 async def delete_session(thread_id: str, request: Request) -> dict[str, Any]:
-    """Delete a conversation session.
+    """删除对话会话。
 
-    Note: full checkpoint deletion depends on the checkpoint store
-    implementation.  For SQLite this is a best-effort operation.
+    注意：完整的检查点删除取决于检查点存储的实现。对于 SQLite，
+    这是一个尽力而为的操作。
     """
     LOGGER.info("Session delete requested: %s", thread_id)
     memory_store = getattr(request.app.state, "memory_store", None)
@@ -198,7 +197,6 @@ async def delete_session(thread_id: str, request: Request) -> dict[str, Any]:
             await memory_store.delete_agent_session(thread_id)
         except Exception as exc:
             LOGGER.warning("Failed to purge indexed session %s: %s", thread_id, exc)
-    # LangGraph's checkpoint stores do not yet expose a standard delete API.
-    # For now we acknowledge the request; actual purging can be done via a
-    # background job or direct DB operation.
+    # LangGraph 的检查点存储尚未暴露标准删除 API。
+    # 目前我们确认请求；实际清除可通过后台任务或直接数据库操作完成。
     return {"thread_id": thread_id, "deleted": True}
