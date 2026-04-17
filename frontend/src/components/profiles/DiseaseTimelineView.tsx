@@ -3,12 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
+import { CombinationAnalysisPanel } from "../parse/CombinationAnalysisPanel";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
-import type {
-  ComparisonType,
-  ResultState,
-  StructuredFieldView,
-} from "../parse/structuredFieldInterpretation";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
 
@@ -28,9 +24,20 @@ type TimelineRecord = {
   sourceType: string;
 };
 
+type CombinationAnalysisItem = {
+  ruleId: string;
+  name: string;
+  severity: string;
+  summary: string;
+  detail: string;
+  suggestion: string;
+  involvedIndicators: string[];
+};
+
 type TimelineRecordDetail = {
   parseStatus: string;
   payload: unknown;
+  combinationAnalysis: CombinationAnalysisItem[];
 };
 
 type GroupedCategory = {
@@ -49,12 +56,19 @@ type RecordAnalysis = {
   cached: boolean;
 };
 
+type TrendField = {
+  name: string;
+  value: string;
+  unit?: string;
+  referenceRange?: string;
+};
+
 type TrendSnapshot = {
   recordId: string;
   recordDate: string;
   title: string;
   sourceType: string;
-  fields: StructuredFieldView[];
+  fields: TrendField[];
 };
 
 type TrendData = {
@@ -92,11 +106,13 @@ export function DiseaseTimelineView({
   diseaseName,
   records,
   parsingCount = 0,
+  patientId,
 }: {
   profileId?: string;
   diseaseName?: string;
   records: TimelineRecord[];
   parsingCount?: number;
+  patientId?: string;
 }) {
   const [mutableRecords, setMutableRecords] = useState<TimelineRecord[]>(records);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -184,7 +200,7 @@ export function DiseaseTimelineView({
     setTrendCache({});
     setTrendLoading(false);
     setTrendError("");
-  }, [profileId]);
+  }, [profileId, patientId]);
 
   useEffect(() => {
     if (selectedDate && !groupedByDate.some((item) => item.date === selectedDate)) {
@@ -325,9 +341,13 @@ export function DiseaseTimelineView({
       const detail = payload?.data;
       const parseStatus = String(detail?.parseStatus ?? "NOT_PARSED").toUpperCase();
       const structuredPayload = detail?.structuredResult?.payload ?? {};
+      const combinationAnalysis: CombinationAnalysisItem[] = Array.isArray(detail?.combinationAnalysis)
+        ? detail.combinationAnalysis
+        : [];
       setSelectedDetail({
         parseStatus,
         payload: structuredPayload,
+        combinationAnalysis,
       });
       if (parseStatus === "SUCCESS" && hasStructuredFields(structuredPayload)) {
         void loadRecordAnalysis(target.record.id);
@@ -369,16 +389,6 @@ export function DiseaseTimelineView({
           value: String(field.value ?? ""),
           unit: field.unit ? String(field.unit) : undefined,
           referenceRange: field.referenceRange ? String(field.referenceRange) : undefined,
-          numericValue: typeof field.numericValue === "number" ? field.numericValue : undefined,
-          comparisonType:
-            typeof field.comparisonType === "string" ? (field.comparisonType as ComparisonType) : undefined,
-          resultState: typeof field.resultState === "string" ? (field.resultState as ResultState) : undefined,
-          referenceLowerBound: typeof field.referenceLowerBound === "number" ? field.referenceLowerBound : undefined,
-          referenceUpperBound: typeof field.referenceUpperBound === "number" ? field.referenceUpperBound : undefined,
-          referenceLowerInclusive:
-            typeof field.referenceLowerInclusive === "boolean" ? field.referenceLowerInclusive : undefined,
-          referenceUpperInclusive:
-            typeof field.referenceUpperInclusive === "boolean" ? field.referenceUpperInclusive : undefined,
         })),
       }));
       setTrendCache((prev) => ({
@@ -651,6 +661,7 @@ export function DiseaseTimelineView({
                   <p className="muted">暂无分析建议。</p>
                 )}
               </div>
+              <CombinationAnalysisPanel items={selectedDetail.combinationAnalysis} />
               <h4 className="summary-heading">结构化解析结果</h4>
               <StructuredResultTable payload={selectedDetail.payload} />
             </>

@@ -1,0 +1,257 @@
+[
+  {
+    "id": "LIVER_ALCOHOLIC",
+    "name": "酒精性肝损伤模式",
+    "category": "肝功能",
+    "severity": "warning",
+    "description": "AST/ALT比值>2且GGT升高，提示酒精性肝损伤倾向",
+    "requiredIndicators": ["AST", "ALT", "GGT"],
+    "conditions": [
+      {
+        "type": "ratio",
+        "numerator": "AST",
+        "denominator": "ALT",
+        "operator": ">",
+        "threshold": 2.0
+      },
+      {
+        "type": "state",
+        "indicator": "GGT",
+        "resultState": "high"
+      }
+    ],
+    "interpretation": {
+      "summary": "您的肝功能指标呈现酒精性肝损伤模式",
+      "detail": "AST/ALT比值为{ratio}（>2），同时GGT偏高，这种组合常见于酒精性或药物性肝损伤。",
+      "suggestion": "建议减少饮酒并咨询消化内科或肝病科医生。"
+    }
+  },
+  {
+    "id": "LIVER_CHOLESTASIS",
+    "name": "胆汁淤积模式",
+    "category": "肝功能",
+    "severity": "warning",
+    "description": "ALP和GGT同时升高而ALT正常，提示胆汁淤积",
+    "requiredIndicators": ["ALP", "GGT", "ALT"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "ALP",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "GGT",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "ALT",
+        "resultState": "normal"
+      }
+    ],
+    "interpretation": {
+      "summary": "您的肝功能指标呈现胆汁淤积模式",
+      "detail": "ALP和GGT同时升高而ALT正常，这种组合提示可能存在胆汁淤积或胆道问题。",
+      "suggestion": "建议进一步做腹部B超检查，并咨询消化内科医生。"
+    }
+  },
+  {
+    "id": "LIVER_HEPATOCELL",
+    "name": "肝细胞损伤模式",
+    "category": "肝功能",
+    "severity": "warning",
+    "description": "ALT升高且直接胆红素升高，提示肝细胞损伤",
+    "requiredIndicators": ["ALT", "DBIL"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "ALT",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "DBIL",
+        "resultState": "high"
+      }
+    ],
+    "interpretation": {
+      "summary": "您的肝功能指标提示肝细胞损伤",
+      "detail": "ALT和直接胆红素同时升高，提示肝细胞可能存在损伤，胆红素代谢受影响。",
+      "suggestion": "建议尽快咨询肝病科或消化内科医生，进一步排查病因。"
+    }
+  },
+  {
+    "id": "RENAL_DECLINE",
+    "name": "肾功能减退信号",
+    "category": "肾功能",
+    "severity": "warning",
+    "description": "肌酐和尿素氮同时升高，提示肾功能减退",
+    "requiredIndicators": ["CREA", "BUN"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "CREA",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "BUN",
+        "resultState": "high"
+      }
+    ],
+    "interpretation": {
+      "summary": "您的肾功能指标提示肾功能可能减退",
+      "detail": "肌酐和尿素氮同时升高，提示肾脏滤过功能可能下降。",
+      "suggestion": "建议咨询肾内科医生，必要时检查肾小球滤过率（eGFR）。"
+    }
+  },
+  {
+    "id": "RENAL_PRERENAL",
+    "name": "肾前性异常",
+    "category": "肾功能",
+    "severity": "info",
+    "description": "尿素氮升高但肌酐正常，提示肾前性因素",
+    "requiredIndicators": ["BUN", "CREA"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "BUN",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "CREA",
+        "resultState": "normal"
+      }
+    ],
+    "interpretation": {
+      "summary": "尿素氮偏高但肌酐正常，可能为肾前性因素",
+      "detail": "尿素氮升高而肌酐正常，常见于脱水、高蛋白饮食或消化道出血等肾前性因素。",
+      "suggestion": "建议注意充足饮水，如持续异常请咨询医生排查原因。"
+    }
+  },
+  {
+    "id": "DM_PREDIABETES",
+    "name": "糖尿病前期风险",
+    "category": "糖代谢",
+    "severity": "info",
+    "description": "空腹血糖或糖化血红蛋白处于临界范围",
+    "requiredIndicators": [],
+    "conditions": [
+      {
+        "type": "value",
+        "indicator": "GLU",
+        "operator": ">=",
+        "threshold": 6.1
+      },
+      {
+        "type": "value",
+        "indicator": "GLU",
+        "operator": "<",
+        "threshold": 7.0
+      }
+    ],
+    "interpretation": {
+      "summary": "空腹血糖处于临界偏高范围，有糖尿病前期风险",
+      "detail": "空腹血糖在6.1-7.0 mmol/L之间，属于空腹血糖受损（IFG），是糖尿病前期表现。",
+      "suggestion": "建议控制饮食、增加运动，定期监测血糖，必要时做OGTT检查。"
+    }
+  },
+  {
+    "id": "DM_UNCONTROLLED",
+    "name": "血糖控制不佳",
+    "category": "糖代谢",
+    "severity": "warning",
+    "description": "糖化血红蛋白>7.0%，提示血糖控制不理想",
+    "requiredIndicators": ["HBA1C"],
+    "conditions": [
+      {
+        "type": "value",
+        "indicator": "HBA1C",
+        "operator": ">",
+        "threshold": 7.0
+      }
+    ],
+    "interpretation": {
+      "summary": "糖化血红蛋白偏高，近期血糖控制不理想",
+      "detail": "HbA1c>7.0%，反映近2-3个月平均血糖水平偏高，血糖控制未达标。",
+      "suggestion": "建议咨询内分泌科医生调整治疗方案，加强血糖监测和饮食管理。"
+    }
+  },
+  {
+    "id": "THYROID_HYPO",
+    "name": "甲减模式",
+    "category": "甲状腺",
+    "severity": "warning",
+    "description": "TSH升高且FT4降低，提示甲状腺功能减退",
+    "requiredIndicators": ["TSH", "FT4"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "TSH",
+        "resultState": "high"
+      },
+      {
+        "type": "state",
+        "indicator": "FT4",
+        "resultState": "low"
+      }
+    ],
+    "interpretation": {
+      "summary": "甲状腺功能指标提示甲减可能",
+      "detail": "TSH升高同时FT4降低，是甲状腺功能减退（甲减）的典型表现。",
+      "suggestion": "建议咨询内分泌科医生，可能需要甲状腺激素替代治疗。"
+    }
+  },
+  {
+    "id": "THYROID_HYPER",
+    "name": "甲亢模式",
+    "category": "甲状腺",
+    "severity": "warning",
+    "description": "TSH降低且FT4升高，提示甲状腺功能亢进",
+    "requiredIndicators": ["TSH", "FT4"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "TSH",
+        "resultState": "low"
+      },
+      {
+        "type": "state",
+        "indicator": "FT4",
+        "resultState": "high"
+      }
+    ],
+    "interpretation": {
+      "summary": "甲状腺功能指标提示甲亢可能",
+      "detail": "TSH降低同时FT4升高，是甲状腺功能亢进（甲亢）的典型表现。",
+      "suggestion": "建议咨询内分泌科医生，进一步检查甲状腺抗体和甲状腺超声。"
+    }
+  },
+  {
+    "id": "THYROID_SUBCLINICAL",
+    "name": "亚临床甲状腺异常",
+    "category": "甲状腺",
+    "severity": "info",
+    "description": "TSH异常但FT3和FT4正常，提示亚临床甲状腺异常",
+    "requiredIndicators": ["TSH", "FT4"],
+    "conditions": [
+      {
+        "type": "state",
+        "indicator": "TSH",
+        "anyOf": ["high", "low"]
+      },
+      {
+        "type": "state",
+        "indicator": "FT4",
+        "resultState": "normal"
+      }
+    ],
+    "interpretation": {
+      "summary": "TSH异常但甲状腺激素正常，提示亚临床甲状腺异常",
+      "detail": "TSH异常而FT4正常，属于亚临床甲状腺功能异常，暂时可能无明显症状。",
+      "suggestion": "建议定期复查甲状腺功能，关注症状变化，必要时咨询内分泌科医生。"
+    }
+  }
+]

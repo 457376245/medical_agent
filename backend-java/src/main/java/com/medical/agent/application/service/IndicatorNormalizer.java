@@ -95,9 +95,9 @@ final class IndicatorNormalizer {
   private NormalizedIndicator toResult(String code) {
     IndicatorCatalog.IndicatorMeta meta = catalog.getMeta(code);
     if (meta == null) {
-      return new NormalizedIndicator(code, null, null);
+      return new NormalizedIndicator(code, null);
     }
-    return new NormalizedIndicator(code, meta.category(), meta.displayName());
+    return new NormalizedIndicator(code, meta.category());
   }
 
   private static String preprocess(String rawName) {
@@ -107,5 +107,5 @@ final class IndicatorNormalizer {
         .trim();
   }
 
-  record NormalizedIndicator(String code, String category, String displayName) {}
+  record NormalizedIndicator(String code, String category) {}
 }

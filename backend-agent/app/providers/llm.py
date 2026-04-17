@@ -36,6 +36,7 @@ class ParseField(BaseModel):
     value: str
     unit: str | None = None
     reference_range: str | None = Field(default=None, alias="referenceRange")
+    standard_code: str | None = Field(default=None, alias="standardCode")
     confidence: float = Field(ge=0, le=1)
     evidence: ParseEvidence | None = None
 
@@ -191,6 +192,10 @@ class LLMService:
                 "Generate Chinese analysis and advice in at most 300 Chinese characters. "
                 "Focus on abnormalities, possible risk direction, and practical follow-up suggestions. "
                 "Treat `resultState=threshold` as an attention-needed threshold abnormality, never as normal. "
+                "If `combinationAnalysis` is present and non-empty, prioritize referencing the identified "
+                "combination patterns (e.g. liver damage patterns, thyroid dysfunction) in your analysis. "
+                "Use the rule summaries and suggestions as authoritative clinical signals — "
+                "your role is to translate them into natural, patient-friendly language. "
                 "Do not provide definitive diagnosis or medication decisions. "
                 "Must include a short disclaimer that this is for reference only."
             )
@@ -309,6 +314,7 @@ class LLMService:
                     "Return only a valid JSON object with a top-level `fields` array. "
                     "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
                     "as shown in the source for `value` and `referenceRange`. "
+                    "If you recognize a standard lab indicator, include its `standardCode` (e.g. ALT, AST, GLU, HBA1C). "
                     "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range. "
                     "Do not use markdown code fences."
                 ),
@@ -582,6 +588,10 @@ def _normalize_field(field: dict[str, Any], object_key: str) -> dict[str, Any]:
     reference_range = field.get("referenceRange")
     if reference_range is not None and str(reference_range).strip():
         normalized["referenceRange"] = str(reference_range).strip()
+
+    standard_code = field.get("standardCode")
+    if standard_code is not None and str(standard_code).strip():
+        normalized["standardCode"] = str(standard_code).strip()
 
     evidence_raw = field.get("evidence")
     if isinstance(evidence_raw, dict):

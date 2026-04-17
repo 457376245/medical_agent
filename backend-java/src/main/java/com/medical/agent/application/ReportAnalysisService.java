@@ -161,7 +161,8 @@ public class ReportAnalysisService {
         context.sourceType(),
         context.diseaseName(),
         context.parseStatus(),
-        compactStructured);
+        compactStructured,
+        context.combinationAnalysis());
   }
 
   private boolean isParseResultReadyForAnalysis(RecordAnalysisContext context) {

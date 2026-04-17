@@ -1,5 +1,7 @@
 package com.medical.agent.domain.vo;
 
+import java.util.List;
+
 public record RecordAnalysisContext(
     String recordId,
     String title,
@@ -7,4 +9,5 @@ public record RecordAnalysisContext(
     String sourceType,
     String diseaseName,
     String parseStatus,
-    StructuredResultData structuredResult) {}
+    StructuredResultData structuredResult,
+    List<RecordDetail.CombinationAnalysisItem> combinationAnalysis) {}

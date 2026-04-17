@@ -97,6 +97,7 @@ public class RecordController {
         record.summary(),
         record.parseStatus(),
         structuredView,
+        record.combinationAnalysis(),
         "PARSED_RESULT");
 
     return ResponseEntity.ok(new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), data));

@@ -10,7 +10,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+
 
 final class IndicatorCatalog {
 
@@ -94,10 +94,6 @@ final class IndicatorCatalog {
 
   boolean isValidCode(String code) {
     return metaMap.containsKey(code);
-  }
-
-  Set<String> allCodes() {
-    return metaMap.keySet();
   }
 
   private static String textOrEmpty(JsonNode node, String key) {

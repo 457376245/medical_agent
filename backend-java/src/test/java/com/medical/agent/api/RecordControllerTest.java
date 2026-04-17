@@ -50,7 +50,7 @@ class RecordControllerTest {
     UUID recordId = UUID.randomUUID();
     StructuredResultData structured = new StructuredResultData("v1", 1, new ObjectMapper().createObjectNode());
     when(recordService.fetchRecord(recordId)).thenReturn(
-        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured));
+        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured, java.util.List.of()));
 
     ResponseEntity<ApiResponse<?>> response = controller.getRecord(recordId.toString());
 

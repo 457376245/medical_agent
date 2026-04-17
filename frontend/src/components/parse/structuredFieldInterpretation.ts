@@ -90,7 +90,7 @@ const LOW_RANGE_KEYWORDS = [
 const NUMBER_TOKEN = "[+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
 const SCIENTIFIC_NOTATION_PATTERN = /([+-]?\d+(?:\.\d+)?)\s*[x×*]\s*10\s*\^?\s*([+-]?\d+)/gi;
 const NUMBER_PATTERN = new RegExp(NUMBER_TOKEN, "i");
-const RANGE_PATTERN = new RegExp(`(${NUMBER_TOKEN})\\s*(?:-|~|到|至)\\s*(${NUMBER_TOKEN})`, "i");
+const RANGE_PATTERN = new RegExp(`(${NUMBER_TOKEN})\\s*(?:-+|\u2013|\u2014|~|到|至)\\s*(${NUMBER_TOKEN})`, "i");
 const SEGMENT_SPLIT_PATTERN = /[;；\n，,]+/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

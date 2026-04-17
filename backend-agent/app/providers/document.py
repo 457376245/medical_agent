@@ -37,6 +37,7 @@ class DocumentParser:
                     "value": "test_value",
                     "unit": "optional",
                     "referenceRange": "optional",
+                    "standardCode": "optional, e.g. ALT, AST, GLU",
                     "confidence": 0.85,
                     "evidence": {
                         "sourceFile": object_key,

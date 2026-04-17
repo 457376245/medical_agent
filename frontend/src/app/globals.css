@@ -30,9 +30,6 @@
   --info: #1d4ed8;
   --info-soft: #eff6ff;
   --info-border: #bfdbfe;
-  --warning: #b45309;
-  --warning-soft: #fff7ed;
-  --warning-border: #fdba74;
 
   /* --- surfaces --- */
   --input-border: #c8d8df;
@@ -1309,12 +1306,6 @@ a {
   border-color: var(--info-border);
 }
 
-.trend-state-threshold {
-  color: var(--warning);
-  background: var(--warning-soft);
-  border-color: var(--warning-border);
-}
-
 .trend-state-unknown {
   color: var(--muted);
   background: var(--bg-neutral);
@@ -1381,6 +1372,118 @@ a {
 .paragraph-relaxed {
   margin: 0;
   line-height: 1.5;
+}
+
+/* --- 组合分析面板 --- */
+.combination-analysis-panel {
+  margin-bottom: 12px;
+}
+
+.combination-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.combination-card {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  border-left: 4px solid var(--line);
+  background: var(--bg-neutral);
+}
+
+.combination-card-warning {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.combination-card-info {
+  border-left-color: var(--info);
+  background: var(--info-soft);
+}
+
+.combination-card-alert {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  border-width: 1px;
+  border-color: var(--danger-border);
+}
+
+.combination-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.combination-card-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.combination-severity-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.combination-severity-warning {
+  color: var(--danger);
+  background: rgba(185, 92, 80, 0.12);
+}
+
+.combination-severity-info {
+  color: var(--info);
+  background: rgba(29, 78, 216, 0.10);
+}
+
+.combination-severity-alert {
+  color: #fff;
+  background: var(--danger);
+}
+
+.combination-card-summary {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.combination-card-detail {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.combination-card-suggestion {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.combination-card-suggestion strong {
+  font-weight: 600;
+}
+
+.combination-card-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.combination-indicator-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted);
 }
 
 .muted {
@@ -1828,15 +1931,6 @@ a {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--ok-border);
-}
-
-.result-value-threshold {
-  color: var(--warning);
-  font-weight: 700;
-  background: var(--warning-soft);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--warning-border);
 }
 
 .meta-row {

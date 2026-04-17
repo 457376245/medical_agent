@@ -66,6 +66,8 @@ public class RecordService {
   private final ObjectMapper objectMapper;
   private final TenantContextProvider tenantContextProvider;
   private final StructuredFieldInterpreter structuredFieldInterpreter;
+  private final IndicatorNormalizer indicatorNormalizer;
+  private final CombinationRuleEngine combinationRuleEngine;
 
   public RecordService(
       RecordMapper recordMapper,
@@ -90,7 +92,10 @@ public class RecordService {
     this.reportCategoryMapper = reportCategoryMapper;
     this.objectMapper = objectMapper;
     this.tenantContextProvider = tenantContextProvider;
-    this.structuredFieldInterpreter = new StructuredFieldInterpreter(objectMapper);
+    IndicatorCatalog catalog = new IndicatorCatalog(objectMapper);
+    this.indicatorNormalizer = new IndicatorNormalizer(catalog);
+    this.structuredFieldInterpreter = new StructuredFieldInterpreter(objectMapper, indicatorNormalizer);
+    this.combinationRuleEngine = new CombinationRuleEngine(objectMapper);
   }
 
   @Operation(summary = "按ID确保记录存在", description = "在最小参数场景下确保记录存在，不存在时按默认值创建")
@@ -219,7 +224,8 @@ public class RecordService {
     String summary = querySummary(recordId);
     String parseStatus = queryLatestParseStatus(recordId);
     StructuredResultData structuredResult = queryLatestStructuredResult(recordId);
-    return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult);
+    List<RecordDetail.CombinationAnalysisItem> combinationAnalysis = runCombinationAnalysis(structuredResult.payload());
+    return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult, combinationAnalysis);
   }
 
   @Operation(summary = "获取单条记录趋势数据", description = "围绕当前记录构建同病种同来源的时间窗口趋势快照")
@@ -424,7 +430,8 @@ public class RecordService {
         String.valueOf(record.getSourceType()),
         diseaseName,
         parseStatus,
-        structured));
+        structured,
+        runCombinationAnalysis(structured.payload())));
   }
 
   @Transactional
@@ -497,6 +504,14 @@ public class RecordService {
         .set(RecordEntity::getRecordDate, extractedDate)
         .set(RecordEntity::getTitle, nextTitle)
         .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
+  }
+
+  private List<RecordDetail.CombinationAnalysisItem> runCombinationAnalysis(JsonNode enrichedPayload) {
+    List<TriggeredRule> triggered = combinationRuleEngine.analyze(enrichedPayload);
+    return triggered.stream()
+        .map(r -> new RecordDetail.CombinationAnalysisItem(
+            r.ruleId(), r.name(), r.severity(), r.summary(), r.detail(), r.suggestion(), r.involvedIndicators()))
+        .toList();
   }
 
   private String querySummary(UUID recordId) {

@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { usePatient } from "../../../components/auth/PatientProvider";
 import { DiseaseTimelineView } from "../../../components/profiles/DiseaseTimelineView";
 import { authFetch } from "../../../lib/api";
 
 export default function ProfilePage() {
   const params = useParams();
   const profileId = typeof params.profileId === "string" ? params.profileId : "";
+  const { currentPatient } = usePatient();
   const [diseaseName, setDiseaseName] = useState("未分类疾病");
   const [records, setRecords] = useState<Array<{ id: string; title: string; recordDate: string; sourceType: string }>>([]);
   const [parsingCount, setParsingCount] = useState(0);
@@ -46,7 +48,7 @@ export default function ProfilePage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [profileId]);
+  }, [profileId, currentPatient?.id]);
 
   if (loading) {
     return (
@@ -56,5 +58,5 @@ export default function ProfilePage() {
     );
   }
 
-  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} parsingCount={parsingCount} />;
+  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} parsingCount={parsingCount} patientId={currentPatient?.id} />;
 }

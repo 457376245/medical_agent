@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Test;
 
 class StructuredFieldInterpreterTest {
   private final ObjectMapper objectMapper = new ObjectMapper();
-  private final StructuredFieldInterpreter interpreter = new StructuredFieldInterpreter(objectMapper);
+  private final IndicatorCatalog catalog = new IndicatorCatalog(objectMapper);
+  private final IndicatorNormalizer normalizer = new IndicatorNormalizer(catalog);
+  private final StructuredFieldInterpreter interpreter = new StructuredFieldInterpreter(objectMapper, normalizer);
 
   @Test
   void enrichPayloadMarksThresholdFieldsAsThreshold() throws Exception {
@@ -99,6 +101,38 @@ class StructuredFieldInterpreterTest {
     assertEquals("high", enriched.path("fields").get(2).path("resultState").asText());
     assertEquals("lower_bound", enriched.path("fields").get(3).path("comparisonType").asText());
     assertEquals("normal", enriched.path("fields").get(3).path("resultState").asText());
+  }
+
+  @Test
+  void enrichPayloadHandlesDoubleHyphenRange() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "前白蛋白",
+              "value": "269",
+              "referenceRange": "180--350mg/L"
+            },
+            {
+              "name": "丙氨酸氨基转移酶",
+              "value": "17",
+              "referenceRange": "7--40IU/L"
+            }
+          ]
+        }
+        """);
+
+    JsonNode enriched = interpreter.enrichPayload(payload);
+
+    assertEquals("range", enriched.path("fields").get(0).path("comparisonType").asText());
+    assertEquals("normal", enriched.path("fields").get(0).path("resultState").asText());
+    assertEquals(180.0d, enriched.path("fields").get(0).path("referenceLowerBound").asDouble(), 0.000001d);
+    assertEquals(350.0d, enriched.path("fields").get(0).path("referenceUpperBound").asDouble(), 0.000001d);
+
+    assertEquals("range", enriched.path("fields").get(1).path("comparisonType").asText());
+    assertEquals("normal", enriched.path("fields").get(1).path("resultState").asText());
+    assertEquals(7.0d, enriched.path("fields").get(1).path("referenceLowerBound").asDouble(), 0.000001d);
+    assertEquals(40.0d, enriched.path("fields").get(1).path("referenceUpperBound").asDouble(), 0.000001d);
   }
 
   @Test

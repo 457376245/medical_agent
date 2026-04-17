@@ -21,7 +21,7 @@ final class StructuredFieldInterpreter {
       Pattern.CASE_INSENSITIVE);
   private static final Pattern NUMBER_PATTERN = Pattern.compile(NUMBER_TOKEN);
   private static final Pattern RANGE_PATTERN = Pattern.compile(
-      "(" + NUMBER_TOKEN + ")\\s*(?:-|~|到|至)\\s*(" + NUMBER_TOKEN + ")",
+      "(" + NUMBER_TOKEN + ")\\s*(?:-+|\u2013|\u2014|~|到|至)\\s*(" + NUMBER_TOKEN + ")",
       Pattern.CASE_INSENSITIVE);
   private static final Pattern SEGMENT_SPLIT_PATTERN = Pattern.compile("[;；\\n，,]+");
 
@@ -55,9 +55,11 @@ final class StructuredFieldInterpreter {
       "低");
 
   private final ObjectMapper objectMapper;
+  private final IndicatorNormalizer indicatorNormalizer;
 
-  StructuredFieldInterpreter(ObjectMapper objectMapper) {
+  StructuredFieldInterpreter(ObjectMapper objectMapper, IndicatorNormalizer indicatorNormalizer) {
     this.objectMapper = objectMapper;
+    this.indicatorNormalizer = indicatorNormalizer;
   }
 
   JsonNode enrichPayload(JsonNode payload) {
@@ -151,6 +153,35 @@ final class StructuredFieldInterpreter {
       fieldNode.put("referenceUpperInclusive", interpretation.referenceUpperInclusive());
     } else {
       fieldNode.remove("referenceUpperInclusive");
+    }
+
+    normalizeIndicatorInPlace(fieldNode);
+  }
+
+  private void normalizeIndicatorInPlace(ObjectNode fieldNode) {
+    if (indicatorNormalizer == null) {
+      return;
+    }
+
+    String existingCode = readText(fieldNode, "standardCode");
+    if (!existingCode.isEmpty() && indicatorNormalizer.isValidCode(existingCode)) {
+      IndicatorNormalizer.NormalizedIndicator meta = indicatorNormalizer.normalize(existingCode);
+      if (meta != null && meta.category() != null) {
+        fieldNode.put("category", meta.category());
+      }
+      return;
+    }
+
+    String name = readText(fieldNode, "name");
+    if (name.isEmpty()) {
+      return;
+    }
+    IndicatorNormalizer.NormalizedIndicator result = indicatorNormalizer.normalize(name);
+    if (result != null) {
+      fieldNode.put("standardCode", result.code());
+      if (result.category() != null) {
+        fieldNode.put("category", result.category());
+      }
     }
   }
 
