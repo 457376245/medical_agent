@@ -1,7 +1,7 @@
-"""SSE streaming chat endpoint.
+"""SSE 流式聊天端点。
 
-Receives user messages, invokes the Agent graph, and streams token-level
-responses back as Server-Sent Events (text/event-stream).
+接收用户消息，调用 Agent 图，并将 token 级别的响应以 Server-Sent Events
+（text/event-stream）流式返回。
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 
 def _sse_event(event: str, data: dict[str, Any]) -> str:
-    """Format a single SSE event line."""
+    """格式化单个 SSE 事件行。"""
     payload = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"
 
@@ -115,10 +115,9 @@ def _session_from_metadata(
 
 @router.post("")
 async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
-    """Stream an Agent response as Server-Sent Events.
+    """将 Agent 响应以 Server-Sent Events 流式返回。
 
-    If ``thread_id`` is provided the session is resumed; otherwise a new
-    session is created.
+    如果提供了 thread_id，则恢复会话；否则创建新会话。
     """
     graph = request.app.state.agent_graph
     memory_store = getattr(request.app.state, "memory_store", None)
@@ -126,7 +125,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     config = {"configurable": {"thread_id": thread_id}}
     turn_metadata: dict[str, Any] = dict(body.metadata)
 
-    # Forward patient scope from HTTP header into metadata for downstream tools
+    # 将患者范围从 HTTP 头转发到元数据供下游工具使用
     patient_id_header = request.headers.get("X-Patient-Id", "").strip()
     if patient_id_header and not turn_metadata.get("patient_id"):
         turn_metadata["patient_id"] = patient_id_header
@@ -156,7 +155,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             LOGGER.warning("Failed to initialise session index for %s: %s", thread_id, exc)
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        # Signal session info
+        # 发送会话信息信号
         yield _sse_event("session", {"thread_id": thread_id})
 
         full_content: list[str] = []
@@ -169,7 +168,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             ):
                 kind = event.get("event", "")
 
-                # LLM token stream
+                # LLM token 流
                 if kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if isinstance(chunk, AIMessageChunk) and chunk.content:
@@ -177,7 +176,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         full_content.append(token)
                         yield _sse_event("token", {"content": token})
 
-                # Tool invocation start
+                # 工具调用开始
                 elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = event.get("data", {}).get("input", {})
@@ -193,7 +192,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         {"tool": tool_name, "input": tool_input},
                     )
 
-                # Tool invocation end
+                # 工具调用结束
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "unknown")
                     tool_output = event.get("data", {}).get("output", "")
@@ -213,7 +212,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         },
                     )
 
-            # Final done event
+            # 最终完成事件
             yield _sse_event(
                 "done",
                 {

@@ -1,8 +1,8 @@
-"""Graph node implementations.
+"""图节点实现。
 
-Each public function in this module is a node in the LangGraph state-graph:
-- ``call_llm``: sends the current messages to the LLM
-- ``execute_tools``: dispatches tool calls returned by the LLM
+本模块中的每个公共函数都是 LangGraph 状态图中的一个节点：
+- ``call_llm``: 将当前消息发送给 LLM
+- ``execute_tools``: 执行 LLM 返回的工具调用
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from langgraph.prebuilt import ToolNode
 
 try:
     from langchain_openai import ChatOpenAI
-except Exception:  # pragma: no cover - allows local import without optional deps
+except Exception:  # pragma: no cover - 允许在没有可选依赖的情况下本地导入
     ChatOpenAI = None  # type: ignore[assignment]
 
 from app.agent.context import (
@@ -41,8 +41,9 @@ from app.utils import normalize_openai_base_url
 LOGGER = logging.getLogger(__name__)
 CONTEXT_TOOL_NAME = "fetch_disease_profile_context"
 
+
 def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
-    """Build an AI tool-call message that forces context fetch."""
+    """构建强制上下文获取的 AI 工具调用消息。"""
     disease_profile_id = str(metadata.get("disease_profile_id") or "").strip()
     record_id = str(metadata.get("record_id") or "").strip()
     patient_id = str(metadata.get("patient_id") or "").strip()
@@ -64,7 +65,7 @@ def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
 
 
 def _extract_latest_context_bundle(messages: list[Any]) -> dict[str, Any] | None:
-    """Find the latest context-tool result and parse its JSON content."""
+    """查找最新的上下文工具结果并解析其 JSON 内容。"""
     for message in reversed(messages):
         if not isinstance(message, ToolMessage):
             continue
@@ -84,7 +85,7 @@ def _extract_latest_context_bundle(messages: list[Any]) -> dict[str, Any] | None
 
 
 def create_context_preload_node() -> Any:
-    """Create node that decides whether context tool must run."""
+    """创建决定是否运行上下文工具的节点。"""
 
     def preload_context(state: dict[str, Any]) -> dict[str, Any]:
         metadata = state.get("metadata", {})
@@ -115,7 +116,7 @@ def create_context_preload_node() -> Any:
 
 
 def should_run_preload_tools(state: dict[str, Any]) -> str:
-    """Route preload node output either to tools or directly to LLM node."""
+    """路由预加载节点输出到工具节点或直接到 LLM 节点。"""
     messages = state.get("messages", [])
     if not messages:
         return "agent"
@@ -126,7 +127,7 @@ def should_run_preload_tools(state: dict[str, Any]) -> str:
 
 
 def create_context_sync_node() -> Any:
-    """Create node that syncs context tool output into graph state."""
+    """创建将上下文工具输出同步到图状态的节点。"""
 
     def sync_context(state: dict[str, Any]) -> dict[str, Any]:
         pending_signature = str(state.get("pending_context_signature") or "").strip()
@@ -154,32 +155,32 @@ def create_context_sync_node() -> Any:
 
     return sync_context
 
+
 # ---------------------------------------------------------------------------
-# LLM node
+# LLM 节点
 # ---------------------------------------------------------------------------
 
 
 def create_llm_node(
     tools: list | None = None,
 ) -> Any:
-    """Return an ``call_llm`` function bound to a tool-aware LLM.
+    """返回绑定到工具感知 LLM 的 call_llm 函数。
 
-    The returned function is used as a graph node.  It reads
-    ``state["messages"]`` and returns an ``AIMessage`` (possibly with
-    tool-call requests).
+    返回的函数用作图节点。它读取 state["messages"] 并返回一个 AIMessage
+    （可能包含工具调用请求）。
     """
     tool_list = tools or get_tools()
     if ChatOpenAI is None:
-        raise RuntimeError("langchain-openai is not installed")
+        raise RuntimeError("langchain-openai 未安装")
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip() or OPENAI_API_KEY
     base_url = normalize_openai_base_url(
         os.getenv("OPENAI_BASE_URL", "").strip() or OPENAI_BASE_URL
     )
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not configured")
+        raise RuntimeError("OPENAI_API_KEY 未配置")
     if not base_url:
-        raise RuntimeError("OPENAI_BASE_URL is not configured")
+        raise RuntimeError("OPENAI_BASE_URL 未配置")
 
     llm = ChatOpenAI(
         model=DEFAULT_AGENT_MODEL,
@@ -195,7 +196,7 @@ def create_llm_node(
     llm_with_tools = llm.bind_tools(tool_list)
 
     def call_llm(state: dict[str, Any]) -> dict[str, Any]:
-        """Invoke the LLM with the current message history."""
+        """使用当前消息历史调用 LLM。"""
         messages = state["messages"]
         prepared_messages = list(messages)
         if not prepared_messages or not isinstance(prepared_messages[0], SystemMessage):
@@ -219,27 +220,27 @@ def create_llm_node(
 
 
 # ---------------------------------------------------------------------------
-# Tool node
+# 工具节点
 # ---------------------------------------------------------------------------
 
 
 def create_tool_node(tools: list | None = None) -> ToolNode:
-    """Create a ``ToolNode`` that dispatches tool calls."""
+    """创建用于执行工具调用的 ToolNode。"""
     tool_list = tools or get_tools()
     return ToolNode(tool_list)
 
 
 # ---------------------------------------------------------------------------
-# Router (conditional edge)
+# 路由器（条件边）
 # ---------------------------------------------------------------------------
 
 
 def should_continue(state: dict) -> str:
-    """Decide whether to route to tools or end the conversation.
+    """决定是路由到工具还是结束对话。
 
     Returns:
-        ``"tools"`` if the last AI message contains tool calls,
-        ``"end"`` otherwise.
+        如果最后的 AI 消息包含工具调用则返回 "tools"，
+        否则返回 "end"。
     """
     messages = state.get("messages", [])
     if not messages:

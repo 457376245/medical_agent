@@ -1,4 +1,4 @@
-"""HTTP client for Java aggregated disease profile context endpoint."""
+"""Java 聚合疾病档案上下文端点的 HTTP 客户端。"""
 from __future__ import annotations
 
 import json
@@ -12,16 +12,22 @@ ContextStatus = Literal["ready", "partial", "unavailable"]
 
 
 @dataclass(slots=True)
-class _HttpFailure(Exception): status_code: int; code: str | None; message: str
+class _HttpFailure(Exception):
+    status_code: int
+    code: str | None
+    message: str
 
 
-def _txt(value: Any) -> str: return str(value).strip() if value is not None else ""
+def _txt(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
 
 
-def _opt(value: Any) -> str | None: return _txt(value) or None
+def _opt(value: Any) -> str | None:
+    return _txt(value) or None
 
 
-def _dict(value: Any) -> dict[str, Any]: return value if isinstance(value, dict) else {}
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _dict_list(value: Any) -> list[dict[str, Any]]:
@@ -48,8 +54,9 @@ def _http_get_json(url: str, *, headers: dict[str, str], timeout_seconds: float)
         raise _HttpFailure(
             int(error.code),
             _opt(_dict(err).get("code")),
-            _opt(_dict(err).get("message")) or "context API request failed",
+            _opt(_dict(err).get("message")) or "上下文 API 请求失败",
         ) from error
+
 
 def _map_slice(
     items: list[dict[str, Any]],
@@ -138,8 +145,9 @@ def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict
         "error": {"code": code, "message": message},
     }
 
+
 class DiseaseProfileContextClient:
-    """Load compact disease profile context from Java internal API."""
+    """从 Java 内部 API 加载紧凑疾病档案上下文。"""
 
     def __init__(
         self,
@@ -187,5 +195,5 @@ class DiseaseProfileContextClient:
             return _normalize_bundle(payload, profile_id=profile_id)
         except _HttpFailure as error:
             return _unavailable(profile_id, f"上下文加载失败：{error.message}", error.code or str(error.status_code))
-        except Exception as error:  # pragma: no cover - defensive
+        except Exception as error:  # pragma: no cover - 防御性代码
             return _unavailable(profile_id, f"上下文加载失败：{error}", "CONTEXT_CLIENT_ERROR")

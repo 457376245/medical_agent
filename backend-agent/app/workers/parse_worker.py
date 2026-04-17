@@ -11,6 +11,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ParseWorker:
+    """解析任务处理器，负责调用 LLM 解析医疗报告。"""
+
     def __init__(
         self,
         gateway: ProviderGateway | None = None,
@@ -21,6 +23,7 @@ class ParseWorker:
         self._semaphore = semaphore
 
     async def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """处理解析任务。"""
         LOGGER.info(
             "Parse task received: jobId=%s asset_ref_count=%s",
             payload.get("jobId"),
@@ -48,6 +51,7 @@ class ParseWorker:
         return await self._execute(payload)
 
     async def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """执行解析任务。"""
         result = await asyncio.to_thread(
             self.gateway.execute_with_resilience,
             "parse",
@@ -106,7 +110,7 @@ class ParseWorker:
             },
         }
 
-        # Add report date if extracted
+        # 添加报告日期（如果提取到）
         report_date = result.payload.get("reportDate")
         if report_date:
             final["reportDate"] = report_date
@@ -143,7 +147,7 @@ class ParseWorker:
         fields: list[dict[str, Any]],
         existing_categories: list[str],
     ) -> str | None:
-        """Call LLM to classify the report, returning a category name (max 5 chars)."""
+        """调用 LLM 对报告进行分类，返回分类名称（最多5个字符）。"""
         if not fields:
             return None
         try:
@@ -153,5 +157,5 @@ class ParseWorker:
                 existing_categories,
             )
         except Exception:
-            LOGGER.warning("Report auto-classification failed", exc_info=True)
+            LOGGER.warning("报告自动分类失败", exc_info=True)
             return None

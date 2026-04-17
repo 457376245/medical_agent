@@ -1,7 +1,7 @@
-"""Memory data models.
+"""记忆数据模型。
 
-Pydantic models for memory entities: conversation summaries, patient
-context snapshots, extracted medical facts, and agent session records.
+记忆实体的 Pydantic 模型：对话摘要、患者上下文快照、提取的医疗事实，
+以及 Agent 会话记录。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 
 class ConversationSummary(BaseModel):
-    """Compressed summary of a conversation session."""
+    """对话会话的压缩摘要。"""
 
     thread_id: str
     summary: str
@@ -22,7 +22,7 @@ class ConversationSummary(BaseModel):
 
 
 class PatientContext(BaseModel):
-    """Structured patient context persisted across sessions."""
+    """跨会话持久化的结构化患者上下文。"""
 
     patient_id: str
     thread_id: str
@@ -34,20 +34,20 @@ class PatientContext(BaseModel):
 
 
 class MedicalFact(BaseModel):
-    """A single medical fact extracted during conversation."""
+    """对话期间提取的单个医疗事实。"""
 
     fact_id: str | None = None
     thread_id: str
     patient_id: str | None = None
-    category: str  # e.g. "diagnosis", "medication", "lab_result", "allergy"
+    category: str  # 例如 "diagnosis"、"medication"、"lab_result"、"allergy"
     content: str
-    source: str | None = None  # which message / tool produced this fact
+    source: str | None = None  # 哪条消息/工具产生了此事实
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentTraceEvent(BaseModel):
-    """A single persisted agent trace event for one assistant turn."""
+    """一次助手轮次的单个持久化 Agent 追踪事件。"""
 
     event: Literal["tool_call", "tool_result", "error"]
     tool: str | None = None
@@ -56,7 +56,7 @@ class AgentTraceEvent(BaseModel):
 
 
 class AgentSessionRecord(BaseModel):
-    """Session index row used by the agent workbench sidebar."""
+    """Agent 工作台侧边栏使用的会话索引行。"""
 
     thread_id: str
     disease_profile_id: str | None = None
@@ -77,7 +77,7 @@ class AgentSessionRecord(BaseModel):
 
 
 class AgentSessionTurn(BaseModel):
-    """A persisted user/assistant turn with trace metadata."""
+    """带有追踪元数据的持久化用户/助手轮次。"""
 
     turn_id: str | None = None
     thread_id: str

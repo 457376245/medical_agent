@@ -1,7 +1,7 @@
-"""LangGraph state-graph construction.
+"""LangGraph 状态图构建。
 
-Builds and compiles the Agent execution graph.  The compiled graph is the
-single entry-point that ``api/chat.py`` invokes for every user turn.
+构建并编译 Agent 执行图。编译后的图是 api/chat.py 调用的唯一入口点，
+处理每次用户交互。
 """
 
 from __future__ import annotations
@@ -30,19 +30,17 @@ def build_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     tools: list | None = None,
 ) -> Any:
-    """Build and compile the medical-agent state graph.
+    """构建并编译 medical-agent 状态图。
 
     Args:
-        checkpointer: Optional checkpoint saver for session persistence.
-                      When provided, each invocation with a ``thread_id``
-                      config will automatically resume from the last
-                      checkpoint.
-        tools: Optional explicit tool list.  Defaults to
-               ``registry.get_tools()``.
+        checkpointer: 可选的检查点保存器，用于会话持久化。
+                      如果提供，每次带有 thread_id 配置的调用将自动从
+                      上次检查点恢复。
+        tools: 可选的显式工具列表。默认使用 registry.get_tools()。
 
     Returns:
-        A compiled ``CompiledStateGraph`` ready for ``.invoke()`` /
-        ``.astream()`` / ``.astream_events()``.
+        编译后的 CompiledStateGraph，可用于 .invoke() / .astream() /
+        .astream_events()。
     """
     call_llm = create_llm_node(tools=tools)
     context_preload_node = create_context_preload_node()
@@ -51,13 +49,13 @@ def build_graph(
 
     graph = StateGraph(AgentState)
 
-    # Nodes
+    # 节点
     graph.add_node("context_preload", context_preload_node)
     graph.add_node("context_sync", context_sync_node)
     graph.add_node("agent", call_llm)
     graph.add_node("tools", tool_node)
 
-    # Edges
+    # 边
     graph.set_entry_point("context_preload")
     graph.add_conditional_edges(
         "context_preload",

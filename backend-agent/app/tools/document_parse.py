@@ -1,7 +1,7 @@
-"""Tool: document parsing.
+"""工具：文档解析。
 
-Wraps the provider gateway as an Agent-callable tool and formats the
-structured parse result into plain text for the conversation layer.
+将 provider gateway 封装为 Agent 可调用工具，并将结构化解析结果
+格式化为对话层的纯文本。
 """
 
 from __future__ import annotations
@@ -18,27 +18,27 @@ _gateway: ProviderGateway | None = None
 
 
 def configure(gateway: ProviderGateway) -> None:
-    """Inject the gateway instance (called once at application startup)."""
+    """注入 gateway 实例（应用启动时调用一次）。"""
     global _gateway  # noqa: PLW0603
     _gateway = gateway
 
 
 @tool
 def parse_document(object_key: str, file_type: str = "PDF") -> str:
-    """Download a medical document from OSS and extract its text content.
+    """从 OSS 下载医疗文档并提取其文本内容。
 
-    Use this tool when the user asks to read, analyse, or interpret a
-    medical document (lab report, imaging report, prescription, etc.).
+    当用户要求读取、分析或解读医疗文档（化验报告、影像报告、处方等）
+    时使用此工具。
 
     Args:
-        object_key: The OSS object key (path) of the file to parse.
-        file_type: File type hint — "PDF" or "IMAGE".  Defaults to "PDF".
+        object_key: 要解析文件的 OSS 对象键（路径）。
+        file_type: 文件类型提示 —— "PDF" 或 "IMAGE"。默认为 "PDF"。
 
     Returns:
-        Extracted text content from the document.
+        从文档提取的文本内容。
     """
     if _gateway is None:
-        return "Error: document parsing service is not configured."
+        return "Error: 文档解析服务未配置。"
 
     try:
         result = _gateway.execute_with_resilience(
@@ -53,7 +53,7 @@ def parse_document(object_key: str, file_type: str = "PDF") -> str:
             },
         )
         if not result.success:
-            return f"Error: failed to parse document — {result.error_code}"
+            return f"Error: 文档解析失败 — {result.error_code}"
 
         structured = (
             result.payload.get("structuredResult", {})
@@ -62,7 +62,7 @@ def parse_document(object_key: str, file_type: str = "PDF") -> str:
         )
         fields = structured.get("fields", [])
         if not isinstance(fields, list) or not fields:
-            return "Warning: no text could be extracted from the document."
+            return "Warning: 无法从文档中提取文本。"
 
         lines: list[str] = []
         for field in fields:
@@ -79,9 +79,9 @@ def parse_document(object_key: str, file_type: str = "PDF") -> str:
             lines.append(f"{name}: {value}{suffix}")
 
         if not lines:
-            return "Warning: no text could be extracted from the document."
+            return "Warning: 无法从文档中提取文本。"
         return "\n".join(lines)
 
     except Exception as exc:
         LOGGER.warning("parse_document tool failed: %s", exc, exc_info=True)
-        return f"Error: failed to parse document — {exc}"
+        return f"Error: 文档解析失败 — {exc}"

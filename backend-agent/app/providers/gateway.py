@@ -25,10 +25,9 @@ class ProviderResponse:
 
 
 class ProviderGateway:
-    """Resilience orchestrator -- retry, backoff, error classification.
+    """弹性编排器 —— 重试、退避、错误分类。
 
-    Delegates actual work to ``LLMService`` (which in turn uses
-    ``OSSStorageService`` and ``DocumentParser``).
+    将实际工作委托给 ``LLMService``（内部使用 ``OSSStorageService`` 和 ``DocumentParser``）。
     """
 
     def __init__(self, llm: LLMService | None = None) -> None:
@@ -45,7 +44,7 @@ class ProviderGateway:
         )
 
     # ------------------------------------------------------------------
-    # Public API
+    # 公共 API
     # ------------------------------------------------------------------
 
     @property
@@ -58,7 +57,7 @@ class ProviderGateway:
         max_attempts = self._provider_max_attempts
         for attempt in range(1, max_attempts + 1):
             try:
-                # --- test simulation hooks ---
+                # --- 测试模拟钩子 ---
                 simulation = str(payload.get("simulate", ""))
                 if simulation == "timeout":
                     raise TimeoutError("Provider timeout")
@@ -89,7 +88,7 @@ class ProviderGateway:
                 )
                 return ProviderResponse(success=True, payload=result, attempts=attempt)
 
-            # -- OSS-specific failures (suggestion B) --
+            # -- OSS 相关错误 --
             except OSSError as exc:
                 LOGGER.warning(
                     "OSS error: operation=%s attempt=%s code=%s message=%s",
@@ -99,14 +98,14 @@ class ProviderGateway:
                     str(exc),
                 )
                 if exc.code.startswith("BIZ_"):
-                    # business-level: config / empty / too-large -- no retry
+                    # 业务级错误：配置/空内容/文件过大 —— 不重试
                     return ProviderResponse(
                         success=False,
                         payload={"operation": operation, "input": payload},
                         error_code=exc.code,
                         attempts=attempt,
                     )
-                # EXT_OSS_UNAVAILABLE -- retryable
+                # EXT_OSS_UNAVAILABLE —— 可重试
                 if attempt >= max_attempts:
                     return ProviderResponse(
                         success=False,
@@ -116,7 +115,7 @@ class ProviderGateway:
                     )
                 self._sleep_before_retry(attempt)
 
-            # -- LLM-specific failures (suggestion B) --
+            # -- LLM 相关错误 --
             except LLMError as exc:
                 LOGGER.warning(
                     "LLM error: operation=%s attempt=%s code=%s message=%s",
@@ -141,7 +140,7 @@ class ProviderGateway:
                     )
                 self._sleep_before_retry(attempt)
 
-            # -- Business validation (ValueError with BIZ_ codes) --
+            # -- 业务校验错误（带 BIZ_ 前缀的 ValueError）--
             except ValueError as exc:
                 LOGGER.warning(
                     "Provider business error: operation=%s attempt=%s code=%s message=%s",
@@ -157,7 +156,7 @@ class ProviderGateway:
                     attempts=attempt,
                 )
 
-            # -- Timeout --
+            # -- 超时错误 --
             except TimeoutError as exc:
                 LOGGER.warning(
                     "Provider timeout: operation=%s attempt=%s message=%s",
@@ -174,7 +173,7 @@ class ProviderGateway:
                     )
                 self._sleep_before_retry(attempt)
 
-            # -- Network / connectivity --
+            # -- 网络/连接错误 --
             except ConnectionError as exc:
                 LOGGER.warning(
                     "Provider connectivity error: operation=%s attempt=%s error=%s",
@@ -195,7 +194,7 @@ class ProviderGateway:
                     )
                 self._sleep_before_retry(attempt)
 
-            # -- Defensive catch-all --
+            # -- 防御性兜底 --
             except Exception as exc:  # pragma: no cover
                 error_code = self._classify_unknown_error(exc)
                 LOGGER.exception(
@@ -221,7 +220,7 @@ class ProviderGateway:
         )
 
     # ------------------------------------------------------------------
-    # Error classification helpers
+    # 错误分类辅助方法
     # ------------------------------------------------------------------
 
     def _classify_unknown_error(self, exc: Exception) -> str:

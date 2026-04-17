@@ -40,3 +40,12 @@ Thumbs.db
 .opencode/node_modules/
 /medical_agent.iml
 /backend-java/web/WEB-INF/web.xml
+
+# IntelliJ FastRequest 插件
+.fastRequest/
+
+# Claude Code 本地元数据
+**/.claude/
+
+# 运行时数据目录
+**/app/data/

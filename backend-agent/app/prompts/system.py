@@ -1,7 +1,7 @@
-"""System-level prompt constants.
+"""系统级提示常量。
 
-Defines the Agent's role, behavioral boundaries, and output format
-requirements.  All constants use SCREAMING_SNAKE_CASE.
+定义 Agent 的角色、行为边界和输出格式要求。
+所有常量使用 SCREAMING_SNAKE_CASE 命名。
 """
 
 from __future__ import annotations
