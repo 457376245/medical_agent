@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
+import type {
+  ComparisonType,
+  ResultState,
+  StructuredFieldView,
+} from "../parse/structuredFieldInterpretation";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
 
@@ -44,19 +49,12 @@ type RecordAnalysis = {
   cached: boolean;
 };
 
-type TrendField = {
-  name: string;
-  value: string;
-  unit?: string;
-  referenceRange?: string;
-};
-
 type TrendSnapshot = {
   recordId: string;
   recordDate: string;
   title: string;
   sourceType: string;
-  fields: TrendField[];
+  fields: StructuredFieldView[];
 };
 
 type TrendData = {
@@ -371,6 +369,16 @@ export function DiseaseTimelineView({
           value: String(field.value ?? ""),
           unit: field.unit ? String(field.unit) : undefined,
           referenceRange: field.referenceRange ? String(field.referenceRange) : undefined,
+          numericValue: typeof field.numericValue === "number" ? field.numericValue : undefined,
+          comparisonType:
+            typeof field.comparisonType === "string" ? (field.comparisonType as ComparisonType) : undefined,
+          resultState: typeof field.resultState === "string" ? (field.resultState as ResultState) : undefined,
+          referenceLowerBound: typeof field.referenceLowerBound === "number" ? field.referenceLowerBound : undefined,
+          referenceUpperBound: typeof field.referenceUpperBound === "number" ? field.referenceUpperBound : undefined,
+          referenceLowerInclusive:
+            typeof field.referenceLowerInclusive === "boolean" ? field.referenceLowerInclusive : undefined,
+          referenceUpperInclusive:
+            typeof field.referenceUpperInclusive === "boolean" ? field.referenceUpperInclusive : undefined,
         })),
       }));
       setTrendCache((prev) => ({

@@ -23,11 +23,11 @@ OPENAI_AGENT_MODEL: str = (
 )
 OPENAI_PARSE_MODEL: str = os.getenv("OPENAI_PARSE_MODEL", "gpt-5.4").strip()
 OPENAI_GENERATE_MODEL: str = os.getenv(
-    "OPENAI_GENERATE_MODEL", "gpt-5.4-mini"
+    "OPENAI_GENERATE_MODEL", "gpt-5.4"
 ).strip()
 OPENAI_VISION_MODEL: str = os.getenv("OPENAI_VISION_MODEL", "gpt-5.4").strip()
 OPENAI_FALLBACK_MODEL: str = os.getenv(
-    "OPENAI_FALLBACK_MODEL", "gpt-5.4-mini"
+    "OPENAI_FALLBACK_MODEL", "gpt-5.4"
 ).strip()
 OPENAI_TEMPERATURE: float = read_float_env("OPENAI_TEMPERATURE", 0.0, 0.0)
 OPENAI_REQUEST_TIMEOUT_SECONDS: float = read_float_env(

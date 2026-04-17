@@ -30,6 +30,9 @@
   --info: #1d4ed8;
   --info-soft: #eff6ff;
   --info-border: #bfdbfe;
+  --warning: #b45309;
+  --warning-soft: #fff7ed;
+  --warning-border: #fdba74;
 
   /* --- surfaces --- */
   --input-border: #c8d8df;
@@ -1306,6 +1309,12 @@ a {
   border-color: var(--info-border);
 }
 
+.trend-state-threshold {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+
 .trend-state-unknown {
   color: var(--muted);
   background: var(--bg-neutral);
@@ -1819,6 +1828,15 @@ a {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--ok-border);
+}
+
+.result-value-threshold {
+  color: var(--warning);
+  font-weight: 700;
+  background: var(--warning-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warning-border);
 }
 
 .meta-row {

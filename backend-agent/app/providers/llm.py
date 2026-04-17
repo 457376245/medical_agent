@@ -78,11 +78,11 @@ class LLMService:
         self._openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self._openai_parse_model = os.getenv("OPENAI_PARSE_MODEL", "gpt-5.4").strip()
         self._openai_generate_model = os.getenv(
-            "OPENAI_GENERATE_MODEL", "gpt-5.4-mini"
+            "OPENAI_GENERATE_MODEL", "gpt-5.4"
         ).strip()
         self._openai_vision_model = os.getenv("OPENAI_VISION_MODEL", "gpt-5.4").strip()
         self._openai_fallback_model = os.getenv(
-            "OPENAI_FALLBACK_MODEL", "gpt-5.4-mini"
+            "OPENAI_FALLBACK_MODEL", "gpt-5.4"
         ).strip()
         self._openai_temperature = read_float_env("OPENAI_TEMPERATURE", 0.0, 0.0)
         self._openai_request_timeout_seconds = read_float_env(
@@ -190,6 +190,7 @@ class LLMService:
                 "You will receive structured lab/report fields. "
                 "Generate Chinese analysis and advice in at most 300 Chinese characters. "
                 "Focus on abnormalities, possible risk direction, and practical follow-up suggestions. "
+                "Treat `resultState=threshold` as an attention-needed threshold abnormality, never as normal. "
                 "Do not provide definitive diagnosis or medication decisions. "
                 "Must include a short disclaimer that this is for reference only."
             )
@@ -306,6 +307,9 @@ class LLMService:
                 "content": (
                     "You extract key medical test fields from medical reports. "
                     "Return only a valid JSON object with a top-level `fields` array. "
+                    "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
+                    "as shown in the source for `value` and `referenceRange`. "
+                    "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range. "
                     "Do not use markdown code fences."
                 ),
             },

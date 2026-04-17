@@ -3,19 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 
-type TrendField = {
-  name: string;
-  value: string;
-  unit?: string;
-  referenceRange?: string;
-};
+import {
+  normalizeStructuredField,
+  type ResultState,
+  type StructuredFieldView,
+} from "../parse/structuredFieldInterpretation";
 
 type TrendSnapshot = {
   recordId: string;
   recordDate: string;
   title: string;
   sourceType: string;
-  fields: TrendField[];
+  fields: StructuredFieldView[];
 };
 
 type TrendData = {
@@ -26,12 +25,15 @@ type TrendData = {
   snapshots: TrendSnapshot[];
 };
 
+type TrendSnapshotView = Omit<TrendSnapshot, "fields"> & {
+  fields: StructuredFieldView[];
+};
+
 type TrendItem = {
   key: string;
   label: string;
 };
 
-type ResultState = "high" | "low" | "normal" | "unknown";
 type TrendViewMode = "status" | "raw";
 
 type TrendPoint = {
@@ -50,11 +52,13 @@ type TrendComparisonPanelProps = {
 };
 
 const STATUS_SCORE_LIMIT = 3;
+const THRESHOLD_STATUS_SCORE = 2;
 
 const RESULT_STATE_META: Record<ResultState, { label: string; color: string }> = {
   high: { label: "偏高", color: "#dc2626" },
   low: { label: "偏低", color: "#2563eb" },
   normal: { label: "正常", color: "#16a34a" },
+  threshold: { label: "阈值异常", color: "#d97706" },
   unknown: { label: "无法判定", color: "#8b9aa6" },
 };
 
@@ -63,121 +67,25 @@ const SERIES_PALETTE = [
   "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#48b8d0",
 ];
 
-function toNumeric(value: string): number | null {
-  const match = value.match(/[+-]?\d+(?:\.\d+)?/);
-  if (!match) {
-    return null;
-  }
-  const numeric = Number(match[0]);
-  return Number.isFinite(numeric) ? numeric : null;
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-function extractRangeNumbers(value: string): number[] {
-  const matches = value.match(/\d+(?:\.\d+)?/g);
-  if (!matches) {
-    return [];
-  }
-  return matches.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+function fieldKey(field: StructuredFieldView): string {
+  return `${field.name}__${field.unit ?? ""}`;
 }
 
-function parseRangeBounds(referenceRange: string): {
-  min?: number;
-  max?: number;
-  minInclusive?: boolean;
-  maxInclusive?: boolean;
-} | null {
-  const normalized = referenceRange.replace(/\s+/g, "").replace(/～/g, "~");
-  const numbers = extractRangeNumbers(normalized);
-  if (numbers.length === 0) {
-    return null;
-  }
-  if (normalized.startsWith("<=") || normalized.startsWith("≤")) {
-    return { max: numbers[0], maxInclusive: true };
-  }
-  if (normalized.startsWith("<")) {
-    return { max: numbers[0], maxInclusive: false };
-  }
-  if (normalized.startsWith(">=") || normalized.startsWith("≥")) {
-    return { min: numbers[0], minInclusive: true };
-  }
-  if (normalized.startsWith(">")) {
-    return { min: numbers[0], minInclusive: false };
-  }
-  if (numbers.length >= 2 && /[-~到至]/.test(normalized)) {
-    const [first, second] = numbers;
-    const min = Math.min(first, second);
-    const max = Math.max(first, second);
-    return { min, max, minInclusive: true, maxInclusive: true };
-  }
-  return null;
+function fieldLabel(field: StructuredFieldView): string {
+  return field.unit ? `${field.name} (${field.unit})` : field.name;
 }
 
-function resolveResultState(value: string, referenceRange?: string): ResultState {
-  if (!referenceRange) {
-    return "unknown";
-  }
-  const numericValue = toNumeric(value);
-  if (numericValue === null) {
-    return "unknown";
-  }
-  const bounds = parseRangeBounds(referenceRange);
-  if (!bounds) {
-    return "unknown";
-  }
-  if (bounds.max !== undefined) {
-    if (bounds.maxInclusive === false ? numericValue >= bounds.max : numericValue > bounds.max) {
-      return "high";
-    }
-  }
-  if (bounds.min !== undefined) {
-    if (bounds.minInclusive === false ? numericValue <= bounds.min : numericValue < bounds.min) {
-      return "low";
-    }
-  }
-  return "normal";
-}
-
-function toNormalizedStatusScore(value: string, referenceRange?: string): number | null {
-  if (!referenceRange) {
-    return null;
-  }
-  const numericValue = toNumeric(value);
-  if (numericValue === null) {
-    return null;
-  }
-  const bounds = parseRangeBounds(referenceRange);
-  if (!bounds) {
-    return null;
-  }
-  if (bounds.min !== undefined && bounds.max !== undefined) {
-    if (bounds.max === bounds.min) {
-      if (numericValue === bounds.max) {
-        return 0;
-      }
-      return numericValue > bounds.max ? 1 : -1;
-    }
-    const center = (bounds.min + bounds.max) / 2;
-    const halfRange = Math.abs(bounds.max - bounds.min) / 2;
-    if (halfRange === 0) {
-      return 0;
-    }
-    return (numericValue - center) / halfRange;
-  }
-  if (bounds.max !== undefined) {
-    if (numericValue <= bounds.max) {
-      return 0;
-    }
-    const scale = Math.max(Math.abs(bounds.max), 1);
-    return 1 + (numericValue - bounds.max) / scale;
-  }
-  if (bounds.min !== undefined) {
-    if (numericValue >= bounds.min) {
-      return 0;
-    }
-    const scale = Math.max(Math.abs(bounds.min), 1);
-    return -1 - (bounds.min - numericValue) / scale;
-  }
-  return null;
+function isAbnormalState(state?: ResultState): boolean {
+  return state === "high" || state === "low" || state === "threshold";
 }
 
 function clampStatusScore(value: number | null): number | null {
@@ -187,21 +95,190 @@ function clampStatusScore(value: number | null): number | null {
   return Math.max(-STATUS_SCORE_LIMIT, Math.min(STATUS_SCORE_LIMIT, value));
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function toNormalizedStatusScore(field: StructuredFieldView): number | null {
+  if (field.resultState === "threshold") {
+    return THRESHOLD_STATUS_SCORE;
+  }
+
+  const numericValue = field.numericValue;
+  if (numericValue === undefined) {
+    return null;
+  }
+
+  if (field.comparisonType === "range") {
+    if (field.referenceLowerBound === undefined || field.referenceUpperBound === undefined) {
+      return null;
+    }
+    if (field.referenceUpperBound === field.referenceLowerBound) {
+      if (numericValue === field.referenceUpperBound) {
+        return 0;
+      }
+      return numericValue > field.referenceUpperBound ? 1 : -1;
+    }
+    const center = (field.referenceLowerBound + field.referenceUpperBound) / 2;
+    const halfRange = Math.abs(field.referenceUpperBound - field.referenceLowerBound) / 2;
+    if (halfRange === 0) {
+      return 0;
+    }
+    return (numericValue - center) / halfRange;
+  }
+
+  if (field.comparisonType === "upper_bound" && field.referenceUpperBound !== undefined) {
+    if (numericValue <= field.referenceUpperBound) {
+      return 0;
+    }
+    const scale = Math.max(Math.abs(field.referenceUpperBound), 1);
+    return 1 + (numericValue - field.referenceUpperBound) / scale;
+  }
+
+  if (field.comparisonType === "lower_bound" && field.referenceLowerBound !== undefined) {
+    if (numericValue >= field.referenceLowerBound) {
+      return 0;
+    }
+    const scale = Math.max(Math.abs(field.referenceLowerBound), 1);
+    return -1 - (field.referenceLowerBound - numericValue) / scale;
+  }
+
+  return null;
 }
 
-function fieldKey(field: TrendField): string {
-  return `${field.name}__${field.unit ?? ""}`;
-}
+function buildReferenceRangeSeries(snapshots: TrendSnapshotView[], selectedKey: string) {
+  const lowerBounds: Array<number | null> = [];
+  const upperBounds: Array<number | null> = [];
+  const thresholdLowerBounds: Array<number | null> = [];
+  const thresholdUpperBounds: Array<number | null> = [];
 
-function fieldLabel(field: TrendField): string {
-  return field.unit ? `${field.name} (${field.unit})` : field.name;
+  for (const snapshot of snapshots) {
+    const field = snapshot.fields.find((item) => fieldKey(item) === selectedKey);
+    if (!field) {
+      lowerBounds.push(null);
+      upperBounds.push(null);
+      thresholdLowerBounds.push(null);
+      thresholdUpperBounds.push(null);
+      continue;
+    }
+
+    if (field.comparisonType === "range" || field.comparisonType === "lower_bound") {
+      lowerBounds.push(field.referenceLowerBound ?? null);
+    } else {
+      lowerBounds.push(null);
+    }
+    if (field.comparisonType === "range" || field.comparisonType === "upper_bound") {
+      upperBounds.push(field.referenceUpperBound ?? null);
+    } else {
+      upperBounds.push(null);
+    }
+    if (field.comparisonType === "threshold") {
+      thresholdLowerBounds.push(field.referenceLowerBound ?? null);
+      thresholdUpperBounds.push(field.referenceUpperBound ?? null);
+    } else {
+      thresholdLowerBounds.push(null);
+      thresholdUpperBounds.push(null);
+    }
+  }
+
+  const guideLines: Array<Record<string, unknown>> = [];
+  if (lowerBounds.some((value) => value !== null)) {
+    guideLines.push({
+      name: "参考下限",
+      type: "line",
+      smooth: false,
+      connectNulls: false,
+      showSymbol: false,
+      lineStyle: {
+        width: 1.5,
+        type: "dashed",
+        color: "#64748b",
+      },
+      itemStyle: {
+        color: "#64748b",
+      },
+      tooltip: {
+        show: false,
+      },
+      emphasis: {
+        disabled: true,
+      },
+      z: 1,
+      data: lowerBounds,
+    });
+  }
+  if (upperBounds.some((value) => value !== null)) {
+    guideLines.push({
+      name: "参考上限",
+      type: "line",
+      smooth: false,
+      connectNulls: false,
+      showSymbol: false,
+      lineStyle: {
+        width: 1.5,
+        type: "dashed",
+        color: "#94a3b8",
+      },
+      itemStyle: {
+        color: "#94a3b8",
+      },
+      tooltip: {
+        show: false,
+      },
+      emphasis: {
+        disabled: true,
+      },
+      z: 1,
+      data: upperBounds,
+    });
+  }
+  if (thresholdLowerBounds.some((value) => value !== null)) {
+    guideLines.push({
+      name: "阈值下限",
+      type: "line",
+      smooth: false,
+      connectNulls: false,
+      showSymbol: false,
+      lineStyle: {
+        width: 1.5,
+        type: "dashed",
+        color: "#d97706",
+      },
+      itemStyle: {
+        color: "#d97706",
+      },
+      tooltip: {
+        show: false,
+      },
+      emphasis: {
+        disabled: true,
+      },
+      z: 1,
+      data: thresholdLowerBounds,
+    });
+  }
+  if (thresholdUpperBounds.some((value) => value !== null)) {
+    guideLines.push({
+      name: "阈值上限",
+      type: "line",
+      smooth: false,
+      connectNulls: false,
+      showSymbol: false,
+      lineStyle: {
+        width: 1.5,
+        type: "dashed",
+        color: "#b45309",
+      },
+      itemStyle: {
+        color: "#b45309",
+      },
+      tooltip: {
+        show: false,
+      },
+      emphasis: {
+        disabled: true,
+      },
+      z: 1,
+      data: thresholdUpperBounds,
+    });
+  }
+  return guideLines;
 }
 
 export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPanelProps) {
@@ -209,13 +286,22 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<TrendViewMode>("status");
 
-  const snapshots = data?.snapshots ?? [];
+  const normalizedSnapshots = useMemo<TrendSnapshotView[]>(() => {
+    const snapshots = data?.snapshots ?? [];
+    return snapshots.map((snapshot) => ({
+      ...snapshot,
+      fields: snapshot.fields.flatMap((field) => {
+        const normalized = normalizeStructuredField(field);
+        return normalized ? [normalized] : [];
+      }),
+    }));
+  }, [data?.snapshots]);
+
   const abnormalItems = useMemo<TrendItem[]>(() => {
     const itemMap = new Map<string, TrendItem>();
-    for (const snapshot of snapshots) {
-      for (const field of snapshot.fields ?? []) {
-        const state = resolveResultState(field.value, field.referenceRange);
-        if (state !== "high" && state !== "low") {
+    for (const snapshot of normalizedSnapshots) {
+      for (const field of snapshot.fields) {
+        if (!isAbnormalState(field.resultState)) {
           continue;
         }
         const key = fieldKey(field);
@@ -228,14 +314,26 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
       }
     }
     return Array.from(itemMap.values());
-  }, [snapshots]);
+  }, [normalizedSnapshots]);
+
+  const hasUnknownOnly = useMemo(() => {
+    if (abnormalItems.length > 0) {
+      return false;
+    }
+    return normalizedSnapshots.some((snapshot) =>
+      snapshot.fields.some((field) => field.resultState === "unknown"),
+    );
+  }, [abnormalItems.length, normalizedSnapshots]);
 
   useEffect(() => {
     if (abnormalItems.length === 0) {
       setSelectedKeys([]);
       return;
     }
-    setSelectedKeys([abnormalItems[0].key]);
+    setSelectedKeys((prev) => {
+      const preserved = prev.filter((key) => abnormalItems.some((item) => item.key === key));
+      return preserved.length > 0 ? preserved : [abnormalItems[0].key];
+    });
   }, [abnormalItems]);
 
   const activeSingleIndex = useMemo(() => {
@@ -253,7 +351,7 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
     setSelectedKeys([abnormalItems[nextIndex].key]);
   };
 
-  const canDrawChart = abnormalItems.length > 0 && selectedKeys.length > 0 && snapshots.length > 0;
+  const canDrawChart = abnormalItems.length > 0 && selectedKeys.length > 0 && normalizedSnapshots.length > 0;
 
   useEffect(() => {
     if (!chartRef.current || !canDrawChart) {
@@ -264,10 +362,11 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
     for (const item of abnormalItems) {
       itemMap.set(item.key, item.label);
     }
-    const xAxisDates = snapshots.map((snapshot) => snapshot.recordDate);
+
+    const xAxisDates = normalizedSnapshots.map((snapshot) => snapshot.recordDate);
     const isMultiRaw = viewMode === "raw" && selectedKeys.length > 1;
     const metricSeries = selectedKeys.map((key, index) => {
-      const dataPoints = snapshots.map<TrendPoint>((snapshot) => {
+      const dataPoints = normalizedSnapshots.map<TrendPoint>((snapshot) => {
         const field = snapshot.fields.find((item) => fieldKey(item) === key);
         if (!field) {
           return {
@@ -277,14 +376,14 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
             normalizedScore: null,
           };
         }
-        const normalizedScore = clampStatusScore(toNormalizedStatusScore(field.value, field.referenceRange));
-        const rawNumeric = toNumeric(field.value);
+
+        const normalizedScore = clampStatusScore(toNormalizedStatusScore(field));
         return {
-          value: viewMode === "status" ? normalizedScore : rawNumeric,
+          value: viewMode === "status" ? normalizedScore : field.numericValue ?? null,
           rawValue: field.value,
           unit: field.unit,
           referenceRange: field.referenceRange,
-          state: resolveResultState(field.value, field.referenceRange),
+          state: field.resultState ?? "unknown",
           normalizedScore,
         };
       });
@@ -311,8 +410,15 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
                 show: true,
                 formatter: (params: { data?: TrendPoint }) => {
                   const state = params?.data?.state;
-                  if (state === "high") return "↑";
-                  if (state === "low") return "↓";
+                  if (state === "high") {
+                    return "↑";
+                  }
+                  if (state === "low") {
+                    return "↓";
+                  }
+                  if (state === "threshold") {
+                    return "阈";
+                  }
                   return "";
                 },
                 color: "inherit",
@@ -326,76 +432,10 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
         data: dataPoints,
       };
     });
+
     const referenceRangeSeries =
       viewMode === "raw" && selectedKeys.length === 1
-        ? (() => {
-            const selectedKey = selectedKeys[0];
-            const lowerBounds: Array<number | null> = [];
-            const upperBounds: Array<number | null> = [];
-            for (const snapshot of snapshots) {
-              const field = snapshot.fields.find((item) => fieldKey(item) === selectedKey);
-              if (!field?.referenceRange) {
-                lowerBounds.push(null);
-                upperBounds.push(null);
-                continue;
-              }
-              const bounds = parseRangeBounds(field.referenceRange);
-              lowerBounds.push(bounds?.min ?? null);
-              upperBounds.push(bounds?.max ?? null);
-            }
-            const guideLines: Array<Record<string, unknown>> = [];
-            if (lowerBounds.some((value) => value !== null)) {
-              guideLines.push({
-                name: "参考下限",
-                type: "line",
-                smooth: false,
-                connectNulls: false,
-                showSymbol: false,
-                lineStyle: {
-                  width: 1.5,
-                  type: "dashed",
-                  color: "#64748b",
-                },
-                itemStyle: {
-                  color: "#64748b",
-                },
-                tooltip: {
-                  show: false,
-                },
-                emphasis: {
-                  disabled: true,
-                },
-                z: 1,
-                data: lowerBounds,
-              });
-            }
-            if (upperBounds.some((value) => value !== null)) {
-              guideLines.push({
-                name: "参考上限",
-                type: "line",
-                smooth: false,
-                connectNulls: false,
-                showSymbol: false,
-                lineStyle: {
-                  width: 1.5,
-                  type: "dashed",
-                  color: "#94a3b8",
-                },
-                itemStyle: {
-                  color: "#94a3b8",
-                },
-                tooltip: {
-                  show: false,
-                },
-                emphasis: {
-                  disabled: true,
-                },
-                z: 1,
-                data: upperBounds,
-              });
-            }
-            return guideLines;
-          })()
+        ? buildReferenceRangeSeries(normalizedSnapshots, selectedKeys[0])
         : [];
     const series = [...metricSeries, ...referenceRangeSeries];
 
@@ -448,6 +488,9 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
               interval: 1,
               axisLabel: {
                 formatter: (tickValue: number) => {
+                  if (tickValue === THRESHOLD_STATUS_SCORE) {
+                    return "阈值异常";
+                  }
                   if (tickValue === 1) {
                     return "偏高阈值";
                   }
@@ -473,7 +516,7 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
       window.removeEventListener("resize", onResize);
       chart.dispose();
     };
-  }, [abnormalItems, canDrawChart, selectedKeys, snapshots, viewMode]);
+  }, [abnormalItems, canDrawChart, normalizedSnapshots, selectedKeys, viewMode]);
 
   if (loading) {
     return <p className="status-text">正在加载趋势对比...</p>;
@@ -481,11 +524,14 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
   if (error) {
     return <p className="status-text error">{error}</p>;
   }
-  if (snapshots.length === 0) {
+  if (normalizedSnapshots.length === 0) {
     return <p className="muted">当前暂无可对比的历史报告。</p>;
   }
   if (abnormalItems.length === 0) {
-    return <p className="status-text success">你的指标正常，请继续保持。</p>;
+    if (hasUnknownOnly) {
+      return <p className="muted">当前未发现可明确判定的异常指标，部分项目因参考范围表达不完整暂无法判定。</p>;
+    }
+    return <p className="status-text success">当前趋势未发现异常指标。</p>;
   }
 
   return (
@@ -535,6 +581,7 @@ export function TrendComparisonPanel({ loading, error, data }: TrendComparisonPa
         <span className="trend-state-pill trend-state-normal">正常</span>
         <span className="trend-state-pill trend-state-high">偏高</span>
         <span className="trend-state-pill trend-state-low">偏低</span>
+        <span className="trend-state-pill trend-state-threshold">阈值异常</span>
         <span className="trend-state-pill trend-state-unknown">无法判定</span>
       </div>
       {canDrawChart ? (

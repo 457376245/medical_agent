@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.medical.agent.MedicalAgentApplication;
+import com.medical.agent.application.service.RecordService;
 import com.medical.agent.infrastructure.mq.ParseResultConsumer;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,9 @@ class ApiIntegrationTest {
 
   @Autowired
   private ParseResultConsumer parseResultConsumer;
+
+  @Autowired
+  private RecordService recordService;
 
   @MockBean
   private RabbitTemplate rabbitTemplate;
@@ -153,6 +157,174 @@ class ApiIntegrationTest {
     assertEquals(HttpStatus.OK, statusAfter.getStatusCode());
     assertEquals("SUCCESS", String.valueOf(dataOf(statusAfter.getBody()).get("status")));
     assertEquals(100, ((Number) dataOf(statusAfter.getBody()).get("progress")).intValue());
+  }
+
+  @Test
+  void thresholdReferenceRangeIsEnhancedForRecordTrendAndAnalysisContext() {
+    UUID recordId = UUID.randomUUID();
+
+    ResponseEntity<Map<String, Object>> assetResp = postJson("/api/ingestions/assets", Map.of(
+        "objectKey", "uploads/seed/threshold-range.pdf",
+        "checksum", "sha256:threshold-range",
+        "recordId", recordId.toString(),
+        "size", 256));
+    String assetId = String.valueOf(dataOf(assetResp.getBody()).get("assetId"));
+
+    HttpHeaders jobHeaders = jsonHeaders();
+    jobHeaders.set("Idempotency-Key", "threshold-" + UUID.randomUUID());
+    ResponseEntity<Map<String, Object>> createJobResp = restTemplate.exchange(
+        "/api/ingestions/parse-jobs",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[{" +
+            "\"name\":\"HBV-DNA\"," +
+            "\"value\":\">1.00×10^8 IU/ml\"," +
+            "\"referenceRange\":\"最低检测量 50IU/mL\"," +
+            "\"confidence\":0.95}]}," +
+            "\"confidence\":0.95," +
+            "\"errors\":[]" +
+            "}");
+
+    ResponseEntity<Map<String, Object>> recordResp = restTemplate.exchange(
+        "/api/records/" + recordId,
+        HttpMethod.GET,
+        null,
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    Map<String, Object> recordData = dataOf(recordResp.getBody());
+    @SuppressWarnings("unchecked")
+    Map<String, Object> structuredResult = (Map<String, Object>) recordData.get("structuredResult");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> payload = (Map<String, Object>) structuredResult.get("payload");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> fields = (List<Map<String, Object>>) payload.get("fields");
+    assertEquals("threshold", String.valueOf(fields.get(0).get("resultState")));
+    assertEquals("threshold", String.valueOf(fields.get(0).get("comparisonType")));
+    assertEquals(100000000.0d, ((Number) fields.get(0).get("numericValue")).doubleValue(), 0.000001d);
+
+    ResponseEntity<Map<String, Object>> trendResp = restTemplate.exchange(
+        "/api/records/" + recordId + "/trend?limit=6",
+        HttpMethod.GET,
+        null,
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    Map<String, Object> trendData = dataOf(trendResp.getBody());
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> snapshots = (List<Map<String, Object>>) trendData.get("snapshots");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> trendFields = (List<Map<String, Object>>) snapshots.get(0).get("fields");
+    assertEquals("threshold", String.valueOf(trendFields.get(0).get("resultState")));
+    assertEquals(50.0d, ((Number) trendFields.get(0).get("referenceLowerBound")).doubleValue(), 0.000001d);
+
+    assertEquals(
+        "threshold",
+        recordService.fetchRecordAnalysisContext(recordId)
+        .orElseThrow()
+        .structuredResult()
+        .payload()
+        .path("fields")
+        .get(0)
+        .path("resultState")
+        .asText());
+  }
+
+  @Test
+  void labeledMultiReferenceRangeIsEnhancedForRecordTrendAndAnalysisContext() {
+    UUID recordId = UUID.randomUUID();
+
+    ResponseEntity<Map<String, Object>> assetResp = postJson("/api/ingestions/assets", Map.of(
+        "objectKey", "uploads/seed/labeled-multi-range.pdf",
+        "checksum", "sha256:labeled-multi-range",
+        "recordId", recordId.toString(),
+        "size", 320));
+    String assetId = String.valueOf(dataOf(assetResp.getBody()).get("assetId"));
+
+    HttpHeaders jobHeaders = jsonHeaders();
+    jobHeaders.set("Idempotency-Key", "labeled-" + UUID.randomUUID());
+    ResponseEntity<Map<String, Object>> createJobResp = restTemplate.exchange(
+        "/api/ingestions/parse-jobs",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    String jobId = String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[" +
+            "{" +
+            "\"name\":\"非高密度脂蛋白胆固醇\"," +
+            "\"value\":\"4.17\"," +
+            "\"referenceRange\":\"适宜<4.10 mmol/L;增高4.10-4.90;很高>4.90\"," +
+            "\"confidence\":0.95}," +
+            "{" +
+            "\"name\":\"甘油三酯\"," +
+            "\"value\":\"2.15\"," +
+            "\"referenceRange\":\"适宜<1.70 mmol/L;增高1.70-2.30;很高>2.30\"," +
+            "\"confidence\":0.95}," +
+            "{" +
+            "\"name\":\"低密度脂蛋白胆固醇\"," +
+            "\"value\":\"3.69\"," +
+            "\"referenceRange\":\"适宜<3.40 mmol/L;增高3.40-4.10;很高>4.10\"," +
+            "\"confidence\":0.95}," +
+            "{" +
+            "\"name\":\"高密度脂蛋白胆固醇\"," +
+            "\"value\":\"2.18\"," +
+            "\"referenceRange\":\">1.04 mmol/L\"," +
+            "\"confidence\":0.95}" +
+            "]}," +
+            "\"confidence\":0.95," +
+            "\"errors\":[]" +
+            "}");
+
+    ResponseEntity<Map<String, Object>> recordResp = restTemplate.exchange(
+        "/api/records/" + recordId,
+        HttpMethod.GET,
+        null,
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    Map<String, Object> recordData = dataOf(recordResp.getBody());
+    @SuppressWarnings("unchecked")
+    Map<String, Object> structuredResult = (Map<String, Object>) recordData.get("structuredResult");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> payload = (Map<String, Object>) structuredResult.get("payload");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> fields = (List<Map<String, Object>>) payload.get("fields");
+    assertEquals("high", String.valueOf(fields.get(0).get("resultState")));
+    assertEquals("high", String.valueOf(fields.get(1).get("resultState")));
+    assertEquals("high", String.valueOf(fields.get(2).get("resultState")));
+    assertEquals("normal", String.valueOf(fields.get(3).get("resultState")));
+    assertEquals("upper_bound", String.valueOf(fields.get(0).get("comparisonType")));
+    assertEquals(4.10d, ((Number) fields.get(0).get("referenceUpperBound")).doubleValue(), 0.000001d);
+
+    ResponseEntity<Map<String, Object>> trendResp = restTemplate.exchange(
+        "/api/records/" + recordId + "/trend?limit=6",
+        HttpMethod.GET,
+        null,
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    Map<String, Object> trendData = dataOf(trendResp.getBody());
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> snapshots = (List<Map<String, Object>>) trendData.get("snapshots");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> trendFields = (List<Map<String, Object>>) snapshots.get(0).get("fields");
+    assertEquals("high", String.valueOf(trendFields.get(0).get("resultState")));
+    assertEquals("normal", String.valueOf(trendFields.get(3).get("resultState")));
+
+    assertEquals(
+        "high",
+        recordService.fetchRecordAnalysisContext(recordId)
+        .orElseThrow()
+        .structuredResult()
+        .payload()
+        .path("fields")
+        .get(0)
+        .path("resultState")
+        .asText());
   }
 
   @Test

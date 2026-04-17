@@ -65,6 +65,7 @@ public class RecordService {
   private final ReportCategoryMapper reportCategoryMapper;
   private final ObjectMapper objectMapper;
   private final TenantContextProvider tenantContextProvider;
+  private final StructuredFieldInterpreter structuredFieldInterpreter;
 
   public RecordService(
       RecordMapper recordMapper,
@@ -89,6 +90,7 @@ public class RecordService {
     this.reportCategoryMapper = reportCategoryMapper;
     this.objectMapper = objectMapper;
     this.tenantContextProvider = tenantContextProvider;
+    this.structuredFieldInterpreter = new StructuredFieldInterpreter(objectMapper);
   }
 
   @Operation(summary = "按ID确保记录存在", description = "在最小参数场景下确保记录存在，不存在时按默认值创建")
@@ -626,43 +628,25 @@ public class RecordService {
       if (!fieldNode.isObject()) {
         continue;
       }
-      String name = readStringField(fieldNode, "name");
-      String value = readStringField(fieldNode, "value");
-      if (name.isEmpty() || value.isEmpty()) {
-        continue;
+      TrendField trendField = structuredFieldInterpreter.toTrendField(fieldNode);
+      if (trendField != null) {
+        fields.add(trendField);
       }
-      String unit = readStringField(fieldNode, "unit");
-      String referenceRange = readStringField(fieldNode, "referenceRange");
-      if (unit.isEmpty()) {
-        unit = null;
-      }
-      if (referenceRange.isEmpty()) {
-        referenceRange = null;
-      }
-      fields.add(new TrendField(name, value, unit, referenceRange));
     }
     return fields;
-  }
-
-  private String readStringField(JsonNode node, String key) {
-    JsonNode value = node.path(key);
-    if (value.isMissingNode() || value.isNull()) {
-      return "";
-    }
-    return value.asText("").trim();
   }
 
   private JsonNode parsePayload(String payloadJson) {
     try {
       JsonNode parsed = objectMapper.readTree(payloadJson == null ? "{}" : payloadJson);
       if (parsed.isObject()) {
-        return parsed;
+        return structuredFieldInterpreter.enrichPayload(parsed);
       }
       ObjectNode fallback = objectMapper.createObjectNode();
       fallback.put("raw", payloadJson);
-      return fallback;
+      return structuredFieldInterpreter.enrichPayload(fallback);
     } catch (Exception ignored) {
-      return objectMapper.createObjectNode();
+      return structuredFieldInterpreter.enrichPayload(objectMapper.createObjectNode());
     }
   }
 
@@ -670,11 +654,15 @@ public class RecordService {
     try {
       JsonNode parsed = objectMapper.readTree(payloadJson == null ? "{}" : payloadJson);
       if (parsed.isObject()) {
-        return parsed;
+        return structuredFieldInterpreter.enrichPayload(parsed);
       }
-      return objectMapper.createObjectNode().putArray("fields");
+      ObjectNode fallback = objectMapper.createObjectNode();
+      fallback.putArray("fields");
+      return structuredFieldInterpreter.enrichPayload(fallback);
     } catch (Exception ignored) {
-      return objectMapper.createObjectNode().putArray("fields");
+      ObjectNode fallback = objectMapper.createObjectNode();
+      fallback.putArray("fields");
+      return structuredFieldInterpreter.enrichPayload(fallback);
     }
   }
 }

@@ -97,11 +97,95 @@ def test_generate_returns_content_and_model_meta(monkeypatch: pytest.MonkeyPatch
         return 200, {"choices": [{"message": {"content": "生成完成"}}]}
 
     monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
-    result = service.generate({"type": "SUMMARY", "recordId": "r-1"}, "gpt-5.4-mini", 1)
+    result = service.generate({"type": "SUMMARY", "recordId": "r-1"}, "gpt-5.4", 1)
 
     assert result["content"] == "生成完成"
     assert result["modelMeta"]["provider"] == "openai-compatible"
-    assert result["modelMeta"]["model"] == "gpt-5.4-mini"
+    assert result["modelMeta"]["model"] == "gpt-5.4"
+
+
+def test_parse_prompt_requires_preserving_threshold_text_and_scientific_notation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    service = LLMService(
+        storage=_StubStorage(),
+        document=_StubDocument([{"type": "text", "text": "prompt"}]),
+    )
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send_chat_completion_request(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return (
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"fields":[{"name":"HBV-DNA","value":">1.00×10^8 IU/ml","referenceRange":"最低检测量 50IU/mL","confidence":0.95}]}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
+
+    service.parse(
+        {"assetRefs": [{"objectKey": "report.pdf", "fileType": "PDF"}]},
+        "gpt-5.4",
+        1,
+    )
+
+    system_prompt = str(captured_payloads[0]["messages"][0]["content"])
+    assert "Preserve comparison operators, scientific notation" in system_prompt
+    assert "Never rewrite phrases like `最低检测量 50IU/mL`" in system_prompt
+
+
+def test_report_analysis_prompt_marks_threshold_result_as_attention_needed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    service = LLMService(storage=_StubStorage(), document=_StubDocument([]))
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send_chat_completion_request(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return 200, {"choices": [{"message": {"content": "生成完成"}}]}
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
+
+    service.generate(
+        {
+            "type": "REPORT_ANALYSIS",
+            "recordId": "r-1",
+            "analysisContext": {
+                "structuredResult": {
+                    "payload": {
+                        "fields": [
+                            {
+                                "name": "HBV-DNA",
+                                "value": ">1.00×10^8 IU/ml",
+                                "resultState": "threshold",
+                            }
+                        ]
+                    }
+                }
+            },
+        },
+        "gpt-5.4",
+        1,
+    )
+
+    user_prompt = str(captured_payloads[0]["messages"][1]["content"])
+    assert "Treat `resultState=threshold` as an attention-needed threshold abnormality" in user_prompt
+    assert '"resultState": "threshold"' in user_prompt
 
 
 def test_parse_invalid_json_raises_biz_invalid_output(
