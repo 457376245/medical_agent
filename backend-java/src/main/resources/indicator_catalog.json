@@ -1,0 +1,1087 @@
+{
+  "ALT": {
+    "displayName": "丙氨酸氨基转移酶",
+    "shortName": "谷丙转氨酶",
+    "category": "肝功能",
+    "commonUnit": "U/L",
+    "aliases": ["谷丙转氨酶", "丙氨酸氨基转移酶", "谷丙", "丙氨酸转氨酶", "ALT", "SGPT", "GPT", "谷丙转氨酶(ALT)", "ALT(谷丙转氨酶)"]
+  },
+  "AST": {
+    "displayName": "天冬氨酸氨基转移酶",
+    "shortName": "谷草转氨酶",
+    "category": "肝功能",
+    "commonUnit": "U/L",
+    "aliases": ["谷草转氨酶", "天冬氨酸氨基转移酶", "谷草", "天冬氨酸转氨酶", "AST", "SGOT", "GOT", "谷草转氨酶(AST)", "AST(谷草转氨酶)"]
+  },
+  "GGT": {
+    "displayName": "γ-谷氨酰转肽酶",
+    "shortName": "谷氨酰转肽酶",
+    "category": "肝功能",
+    "commonUnit": "U/L",
+    "aliases": ["谷氨酰转肽酶", "γ-谷氨酰转肽酶", "γ谷氨酰转肽酶", "谷氨酰转移酶", "GGT", "γ-GT", "r-谷氨酰转肽酶", "γ-谷氨酰转肽酶(GGT)"]
+  },
+  "ALP": {
+    "displayName": "碱性磷酸酶",
+    "shortName": "碱性磷酸酶",
+    "category": "肝功能",
+    "commonUnit": "U/L",
+    "aliases": ["碱性磷酸酶", "ALP", "AKP", "碱性磷酸酶(ALP)"]
+  },
+  "TBIL": {
+    "displayName": "总胆红素",
+    "shortName": "总胆红素",
+    "category": "肝功能",
+    "commonUnit": "μmol/L",
+    "aliases": ["总胆红素", "TBIL", "T-BIL", "TBIL(总胆红素)", "总胆红素(TBIL)"]
+  },
+  "DBIL": {
+    "displayName": "直接胆红素",
+    "shortName": "直接胆红素",
+    "category": "肝功能",
+    "commonUnit": "μmol/L",
+    "aliases": ["直接胆红素", "结合胆红素", "DBIL", "D-BIL", "直接胆红素(DBIL)"]
+  },
+  "IBIL": {
+    "displayName": "间接胆红素",
+    "shortName": "间接胆红素",
+    "category": "肝功能",
+    "commonUnit": "μmol/L",
+    "aliases": ["间接胆红素", "非结合胆红素", "IBIL", "I-BIL", "间接胆红素(IBIL)"]
+  },
+  "ALB": {
+    "displayName": "白蛋白",
+    "shortName": "白蛋白",
+    "category": "肝功能",
+    "commonUnit": "g/L",
+    "aliases": ["白蛋白", "血清白蛋白", "ALB", "Albumin", "白蛋白(ALB)"]
+  },
+  "GLOB": {
+    "displayName": "球蛋白",
+    "shortName": "球蛋白",
+    "category": "肝功能",
+    "commonUnit": "g/L",
+    "aliases": ["球蛋白", "GLOB", "GLB", "球蛋白(GLOB)"]
+  },
+  "TP": {
+    "displayName": "总蛋白",
+    "shortName": "总蛋白",
+    "category": "肝功能",
+    "commonUnit": "g/L",
+    "aliases": ["总蛋白", "TP", "血清总蛋白", "总蛋白(TP)"]
+  },
+  "AG_RATIO": {
+    "displayName": "白球比",
+    "shortName": "白球比",
+    "category": "肝功能",
+    "commonUnit": "",
+    "aliases": ["白球比", "白蛋白/球蛋白", "A/G", "A/G比值", "白球比(A/G)"]
+  },
+  "PA": {
+    "displayName": "前白蛋白",
+    "shortName": "前白蛋白",
+    "category": "肝功能",
+    "commonUnit": "mg/L",
+    "aliases": ["前白蛋白", "PA", "TTR", "转甲状腺素蛋白", "前白蛋白(PA)"]
+  },
+  "CREA": {
+    "displayName": "肌酐",
+    "shortName": "肌酐",
+    "category": "肾功能",
+    "commonUnit": "μmol/L",
+    "aliases": ["肌酐", "血肌酐", "CREA", "Cr", "CRE", "Creatinine", "肌酐(CREA)", "肌酐(Cr)"]
+  },
+  "BUN": {
+    "displayName": "尿素氮",
+    "shortName": "尿素氮",
+    "category": "肾功能",
+    "commonUnit": "mmol/L",
+    "aliases": ["尿素氮", "尿素", "BUN", "UREA", "血尿素氮", "尿素氮(BUN)", "尿素(UREA)"]
+  },
+  "UA": {
+    "displayName": "尿酸",
+    "shortName": "尿酸",
+    "category": "肾功能",
+    "commonUnit": "μmol/L",
+    "aliases": ["尿酸", "血尿酸", "UA", "Uric Acid", "尿酸(UA)"]
+  },
+  "CYSC": {
+    "displayName": "胱抑素C",
+    "shortName": "胱抑素C",
+    "category": "肾功能",
+    "commonUnit": "mg/L",
+    "aliases": ["胱抑素C", "半胱氨酸蛋白酶抑制剂C", "CysC", "Cystatin C", "胱抑素C(CysC)"]
+  },
+  "EGFR": {
+    "displayName": "估算肾小球滤过率",
+    "shortName": "肾小球滤过率",
+    "category": "肾功能",
+    "commonUnit": "mL/min/1.73m²",
+    "aliases": ["肾小球滤过率", "估算肾小球滤过率", "eGFR", "GFR", "eGFR(估算肾小球滤过率)"]
+  },
+  "B2MG": {
+    "displayName": "β2-微球蛋白",
+    "shortName": "β2微球蛋白",
+    "category": "肾功能",
+    "commonUnit": "mg/L",
+    "aliases": ["β2-微球蛋白", "β2微球蛋白", "B2MG", "β2-MG", "Beta-2微球蛋白"]
+  },
+  "TC": {
+    "displayName": "总胆固醇",
+    "shortName": "总胆固醇",
+    "category": "血脂",
+    "commonUnit": "mmol/L",
+    "aliases": ["总胆固醇", "TC", "T-CHO", "CHOL", "Cholesterol", "总胆固醇(TC)"]
+  },
+  "TG": {
+    "displayName": "甘油三酯",
+    "shortName": "甘油三酯",
+    "category": "血脂",
+    "commonUnit": "mmol/L",
+    "aliases": ["甘油三酯", "三酰甘油", "TG", "TRIG", "Triglycerides", "甘油三酯(TG)"]
+  },
+  "HDL": {
+    "displayName": "高密度脂蛋白胆固醇",
+    "shortName": "高密度脂蛋白",
+    "category": "血脂",
+    "commonUnit": "mmol/L",
+    "aliases": ["高密度脂蛋白胆固醇", "高密度脂蛋白", "HDL-C", "HDL", "HDL-胆固醇", "高密度脂蛋白胆固醇(HDL-C)"]
+  },
+  "LDL": {
+    "displayName": "低密度脂蛋白胆固醇",
+    "shortName": "低密度脂蛋白",
+    "category": "血脂",
+    "commonUnit": "mmol/L",
+    "aliases": ["低密度脂蛋白胆固醇", "低密度脂蛋白", "LDL-C", "LDL", "LDL-胆固醇", "低密度脂蛋白胆固醇(LDL-C)"]
+  },
+  "VLDL": {
+    "displayName": "极低密度脂蛋白胆固醇",
+    "shortName": "极低密度脂蛋白",
+    "category": "血脂",
+    "commonUnit": "mmol/L",
+    "aliases": ["极低密度脂蛋白胆固醇", "极低密度脂蛋白", "VLDL-C", "VLDL"]
+  },
+  "APOA1": {
+    "displayName": "载脂蛋白A1",
+    "shortName": "载脂蛋白A1",
+    "category": "血脂",
+    "commonUnit": "g/L",
+    "aliases": ["载脂蛋白A1", "ApoA1", "Apo-A1", "ApoA-I", "载脂蛋白A1(ApoA1)"]
+  },
+  "APOB": {
+    "displayName": "载脂蛋白B",
+    "shortName": "载脂蛋白B",
+    "category": "血脂",
+    "commonUnit": "g/L",
+    "aliases": ["载脂蛋白B", "ApoB", "Apo-B", "载脂蛋白B(ApoB)"]
+  },
+  "LPA": {
+    "displayName": "脂蛋白(a)",
+    "shortName": "脂蛋白a",
+    "category": "血脂",
+    "commonUnit": "nmol/L",
+    "aliases": ["脂蛋白a", "脂蛋白(a)", "Lp(a)", "Lpa", "LP(a)"]
+  },
+  "GLU": {
+    "displayName": "空腹血糖",
+    "shortName": "空腹血糖",
+    "category": "糖代谢",
+    "commonUnit": "mmol/L",
+    "aliases": ["空腹血糖", "血糖", "葡萄糖", "空腹葡萄糖", "GLU", "FPG", "FBG", "Glucose", "血糖(GLU)", "空腹血糖(GLU)"]
+  },
+  "HBA1C": {
+    "displayName": "糖化血红蛋白",
+    "shortName": "糖化血红蛋白",
+    "category": "糖代谢",
+    "commonUnit": "%",
+    "aliases": ["糖化血红蛋白", "糖化", "HbA1c", "HbA1C", "GHb", "A1C", "糖化血红蛋白(HbA1c)"]
+  },
+  "OGTT_0H": {
+    "displayName": "糖耐量试验-空腹",
+    "shortName": "OGTT空腹",
+    "category": "糖代谢",
+    "commonUnit": "mmol/L",
+    "aliases": ["糖耐量空腹", "OGTT空腹", "OGTT 0h", "口服葡萄糖耐量试验-空腹"]
+  },
+  "OGTT_2H": {
+    "displayName": "糖耐量试验-2小时",
+    "shortName": "OGTT 2小时",
+    "category": "糖代谢",
+    "commonUnit": "mmol/L",
+    "aliases": ["糖耐量2小时", "OGTT 2h", "OGTT餐后2小时", "口服葡萄糖耐量试验-2小时", "餐后2小时血糖"]
+  },
+  "INS": {
+    "displayName": "胰岛素",
+    "shortName": "胰岛素",
+    "category": "糖代谢",
+    "commonUnit": "μIU/mL",
+    "aliases": ["胰岛素", "空腹胰岛素", "INS", "Insulin", "FINS", "胰岛素(INS)"]
+  },
+  "C_PEPTIDE": {
+    "displayName": "C-肽",
+    "shortName": "C肽",
+    "category": "糖代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["C肽", "C-肽", "C-Peptide", "C-肽(C-Peptide)"]
+  },
+  "GA": {
+    "displayName": "糖化白蛋白",
+    "shortName": "糖化白蛋白",
+    "category": "糖代谢",
+    "commonUnit": "%",
+    "aliases": ["糖化白蛋白", "GA", "Glycated Albumin", "糖化白蛋白(GA)"]
+  },
+  "HOMA_IR": {
+    "displayName": "胰岛素抵抗指数",
+    "shortName": "HOMA-IR",
+    "category": "糖代谢",
+    "commonUnit": "",
+    "aliases": ["胰岛素抵抗指数", "HOMA-IR", "HOMA IR"]
+  },
+  "TSH": {
+    "displayName": "促甲状腺激素",
+    "shortName": "促甲状腺激素",
+    "category": "甲状腺",
+    "commonUnit": "mIU/L",
+    "aliases": ["促甲状腺激素", "促甲状腺素", "TSH", "甲状腺刺激激素", "促甲状腺激素(TSH)"]
+  },
+  "FT3": {
+    "displayName": "游离三碘甲状腺原氨酸",
+    "shortName": "游离T3",
+    "category": "甲状腺",
+    "commonUnit": "pmol/L",
+    "aliases": ["游离三碘甲状腺原氨酸", "游离T3", "FT3", "Free T3", "游离T3(FT3)"]
+  },
+  "FT4": {
+    "displayName": "游离甲状腺素",
+    "shortName": "游离T4",
+    "category": "甲状腺",
+    "commonUnit": "pmol/L",
+    "aliases": ["游离甲状腺素", "游离T4", "FT4", "Free T4", "游离T4(FT4)"]
+  },
+  "TT3": {
+    "displayName": "总三碘甲状腺原氨酸",
+    "shortName": "总T3",
+    "category": "甲状腺",
+    "commonUnit": "nmol/L",
+    "aliases": ["总三碘甲状腺原氨酸", "总T3", "TT3", "T3", "三碘甲状腺原氨酸"]
+  },
+  "TT4": {
+    "displayName": "总甲状腺素",
+    "shortName": "总T4",
+    "category": "甲状腺",
+    "commonUnit": "nmol/L",
+    "aliases": ["总甲状腺素", "总T4", "TT4", "T4", "甲状腺素"]
+  },
+  "TGAB": {
+    "displayName": "甲状腺球蛋白抗体",
+    "shortName": "TGAb",
+    "category": "甲状腺",
+    "commonUnit": "IU/mL",
+    "aliases": ["甲状腺球蛋白抗体", "TGAb", "TG-Ab", "抗甲状腺球蛋白抗体", "ATG", "甲状腺球蛋白抗体(TGAb)"]
+  },
+  "TPOAB": {
+    "displayName": "甲状腺过氧化物酶抗体",
+    "shortName": "TPOAb",
+    "category": "甲状腺",
+    "commonUnit": "IU/mL",
+    "aliases": ["甲状腺过氧化物酶抗体", "TPOAb", "TPO-Ab", "抗甲状腺过氧化物酶抗体", "甲状腺过氧化物酶抗体(TPOAb)"]
+  },
+  "TG_THYROID": {
+    "displayName": "甲状腺球蛋白",
+    "shortName": "甲状腺球蛋白",
+    "category": "甲状腺",
+    "commonUnit": "ng/mL",
+    "aliases": ["甲状腺球蛋白", "Tg", "Thyroglobulin"]
+  },
+  "K": {
+    "displayName": "钾",
+    "shortName": "钾",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["钾", "血钾", "K+", "K", "Potassium", "钾(K)"]
+  },
+  "NA": {
+    "displayName": "钠",
+    "shortName": "钠",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["钠", "血钠", "Na+", "Na", "Sodium", "钠(Na)"]
+  },
+  "CL": {
+    "displayName": "氯",
+    "shortName": "氯",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["氯", "血氯", "Cl-", "Cl", "Chloride", "氯(Cl)"]
+  },
+  "CA": {
+    "displayName": "钙",
+    "shortName": "钙",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["钙", "血钙", "总钙", "Ca", "Ca2+", "Calcium", "钙(Ca)"]
+  },
+  "MG": {
+    "displayName": "镁",
+    "shortName": "镁",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["镁", "血镁", "Mg", "Mg2+", "Magnesium", "镁(Mg)"]
+  },
+  "P": {
+    "displayName": "磷",
+    "shortName": "磷",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["磷", "血磷", "无机磷", "P", "Phosphorus", "磷(P)"]
+  },
+  "CO2CP": {
+    "displayName": "二氧化碳结合力",
+    "shortName": "二氧化碳结合力",
+    "category": "电解质",
+    "commonUnit": "mmol/L",
+    "aliases": ["二氧化碳结合力", "CO2CP", "CO2-CP", "TCO2"]
+  },
+  "WBC": {
+    "displayName": "白细胞计数",
+    "shortName": "白细胞",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["白细胞计数", "白细胞", "WBC", "White Blood Cell", "白细胞(WBC)"]
+  },
+  "RBC": {
+    "displayName": "红细胞计数",
+    "shortName": "红细胞",
+    "category": "血常规",
+    "commonUnit": "×10¹²/L",
+    "aliases": ["红细胞计数", "红细胞", "RBC", "Red Blood Cell", "红细胞(RBC)"]
+  },
+  "HGB": {
+    "displayName": "血红蛋白",
+    "shortName": "血红蛋白",
+    "category": "血常规",
+    "commonUnit": "g/L",
+    "aliases": ["血红蛋白", "HGB", "Hb", "HB", "Hemoglobin", "血红蛋白(HGB)", "血红蛋白(Hb)"]
+  },
+  "HCT": {
+    "displayName": "红细胞压积",
+    "shortName": "红细胞压积",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["红细胞压积", "红细胞比容", "HCT", "Hematocrit", "红细胞压积(HCT)"]
+  },
+  "PLT": {
+    "displayName": "血小板计数",
+    "shortName": "血小板",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["血小板计数", "血小板", "PLT", "Platelet", "血小板(PLT)"]
+  },
+  "MCV": {
+    "displayName": "平均红细胞体积",
+    "shortName": "平均红细胞体积",
+    "category": "血常规",
+    "commonUnit": "fL",
+    "aliases": ["平均红细胞体积", "MCV", "Mean Corpuscular Volume", "MCV(平均红细胞体积)"]
+  },
+  "MCH": {
+    "displayName": "平均红细胞血红蛋白量",
+    "shortName": "平均血红蛋白量",
+    "category": "血常规",
+    "commonUnit": "pg",
+    "aliases": ["平均红细胞血红蛋白量", "MCH", "Mean Corpuscular Hemoglobin"]
+  },
+  "MCHC": {
+    "displayName": "平均红细胞血红蛋白浓度",
+    "shortName": "平均血红蛋白浓度",
+    "category": "血常规",
+    "commonUnit": "g/L",
+    "aliases": ["平均红细胞血红蛋白浓度", "MCHC", "Mean Corpuscular Hemoglobin Concentration"]
+  },
+  "RDW_CV": {
+    "displayName": "红细胞分布宽度",
+    "shortName": "红细胞分布宽度",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["红细胞分布宽度", "RDW-CV", "RDW", "Red Cell Distribution Width"]
+  },
+  "MPV": {
+    "displayName": "平均血小板体积",
+    "shortName": "平均血小板体积",
+    "category": "血常规",
+    "commonUnit": "fL",
+    "aliases": ["平均血小板体积", "MPV", "Mean Platelet Volume"]
+  },
+  "PDW": {
+    "displayName": "血小板分布宽度",
+    "shortName": "血小板分布宽度",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["血小板分布宽度", "PDW", "Platelet Distribution Width"]
+  },
+  "PCT": {
+    "displayName": "血小板压积",
+    "shortName": "血小板压积",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["血小板压积", "PCT", "Plateletcrit"]
+  },
+  "NEUT_PCT": {
+    "displayName": "中性粒细胞百分比",
+    "shortName": "中性粒细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["中性粒细胞百分比", "中性粒细胞%", "NEUT%", "NEU%", "N%", "中性粒细胞比率"]
+  },
+  "NEUT_ABS": {
+    "displayName": "中性粒细胞绝对值",
+    "shortName": "中性粒细胞#",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["中性粒细胞绝对值", "中性粒细胞计数", "NEUT#", "NEU#", "中性粒细胞绝对值(NEUT#)"]
+  },
+  "LYMPH_PCT": {
+    "displayName": "淋巴细胞百分比",
+    "shortName": "淋巴细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["淋巴细胞百分比", "淋巴细胞%", "LYMPH%", "LYM%", "L%", "淋巴细胞比率"]
+  },
+  "LYMPH_ABS": {
+    "displayName": "淋巴细胞绝对值",
+    "shortName": "淋巴细胞#",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["淋巴细胞绝对值", "淋巴细胞计数", "LYMPH#", "LYM#"]
+  },
+  "MONO_PCT": {
+    "displayName": "单核细胞百分比",
+    "shortName": "单核细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["单核细胞百分比", "单核细胞%", "MONO%", "M%", "单核细胞比率"]
+  },
+  "MONO_ABS": {
+    "displayName": "单核细胞绝对值",
+    "shortName": "单核细胞#",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["单核细胞绝对值", "单核细胞计数", "MONO#"]
+  },
+  "EOS_PCT": {
+    "displayName": "嗜酸性粒细胞百分比",
+    "shortName": "嗜酸性粒细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["嗜酸性粒细胞百分比", "嗜酸性粒细胞%", "EOS%", "E%", "嗜酸粒细胞%"]
+  },
+  "EOS_ABS": {
+    "displayName": "嗜酸性粒细胞绝对值",
+    "shortName": "嗜酸性粒细胞#",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["嗜酸性粒细胞绝对值", "嗜酸性粒细胞计数", "EOS#"]
+  },
+  "BASO_PCT": {
+    "displayName": "嗜碱性粒细胞百分比",
+    "shortName": "嗜碱性粒细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["嗜碱性粒细胞百分比", "嗜碱性粒细胞%", "BASO%", "B%", "嗜碱粒细胞%"]
+  },
+  "BASO_ABS": {
+    "displayName": "嗜碱性粒细胞绝对值",
+    "shortName": "嗜碱性粒细胞#",
+    "category": "血常规",
+    "commonUnit": "×10⁹/L",
+    "aliases": ["嗜碱性粒细胞绝对值", "嗜碱性粒细胞计数", "BASO#"]
+  },
+  "ESR": {
+    "displayName": "红细胞沉降率",
+    "shortName": "血沉",
+    "category": "血常规",
+    "commonUnit": "mm/h",
+    "aliases": ["红细胞沉降率", "血沉", "ESR", "血沉(ESR)"]
+  },
+  "RETIC_PCT": {
+    "displayName": "网织红细胞百分比",
+    "shortName": "网织红细胞%",
+    "category": "血常规",
+    "commonUnit": "%",
+    "aliases": ["网织红细胞百分比", "网织红细胞%", "RET%", "Reticulocyte%"]
+  },
+  "AFP": {
+    "displayName": "甲胎蛋白",
+    "shortName": "甲胎蛋白",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["甲胎蛋白", "AFP", "Alpha-fetoprotein", "甲胎蛋白(AFP)"]
+  },
+  "CEA": {
+    "displayName": "癌胚抗原",
+    "shortName": "癌胚抗原",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["癌胚抗原", "CEA", "Carcinoembryonic Antigen", "癌胚抗原(CEA)"]
+  },
+  "CA125": {
+    "displayName": "糖类抗原125",
+    "shortName": "CA125",
+    "category": "肿瘤标志物",
+    "commonUnit": "U/mL",
+    "aliases": ["糖类抗原125", "CA125", "CA-125", "糖类抗原125(CA125)"]
+  },
+  "CA199": {
+    "displayName": "糖类抗原199",
+    "shortName": "CA199",
+    "category": "肿瘤标志物",
+    "commonUnit": "U/mL",
+    "aliases": ["糖类抗原199", "CA199", "CA19-9", "CA-199", "糖类抗原199(CA199)"]
+  },
+  "CA153": {
+    "displayName": "糖类抗原153",
+    "shortName": "CA153",
+    "category": "肿瘤标志物",
+    "commonUnit": "U/mL",
+    "aliases": ["糖类抗原153", "CA153", "CA15-3", "CA-153", "糖类抗原153(CA153)"]
+  },
+  "CA724": {
+    "displayName": "糖类抗原724",
+    "shortName": "CA724",
+    "category": "肿瘤标志物",
+    "commonUnit": "U/mL",
+    "aliases": ["糖类抗原724", "CA724", "CA72-4", "CA-724", "糖类抗原724(CA724)"]
+  },
+  "PSA": {
+    "displayName": "前列腺特异性抗原",
+    "shortName": "前列腺特异抗原",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["前列腺特异性抗原", "总PSA", "PSA", "T-PSA", "前列腺特异性抗原(PSA)"]
+  },
+  "FPSA": {
+    "displayName": "游离前列腺特异性抗原",
+    "shortName": "游离PSA",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["游离前列腺特异性抗原", "游离PSA", "FPSA", "F-PSA", "Free PSA"]
+  },
+  "NSE": {
+    "displayName": "神经元特异性烯醇化酶",
+    "shortName": "NSE",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["神经元特异性烯醇化酶", "NSE", "Neuron-Specific Enolase"]
+  },
+  "CYFRA211": {
+    "displayName": "细胞角蛋白19片段",
+    "shortName": "CYFRA21-1",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["细胞角蛋白19片段", "CYFRA21-1", "CYFRA211", "Cyfra 21-1"]
+  },
+  "SCC": {
+    "displayName": "鳞状细胞癌抗原",
+    "shortName": "SCC",
+    "category": "肿瘤标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["鳞状细胞癌抗原", "SCC", "SCCA", "SCC-Ag"]
+  },
+  "FERRITIN": {
+    "displayName": "铁蛋白",
+    "shortName": "铁蛋白",
+    "category": "贫血/铁代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["铁蛋白", "血清铁蛋白", "SF", "Ferritin", "铁蛋白(SF)"]
+  },
+  "IRON": {
+    "displayName": "血清铁",
+    "shortName": "血清铁",
+    "category": "贫血/铁代谢",
+    "commonUnit": "μmol/L",
+    "aliases": ["血清铁", "铁", "Fe", "Serum Iron", "血清铁(Fe)"]
+  },
+  "TIBC": {
+    "displayName": "总铁结合力",
+    "shortName": "总铁结合力",
+    "category": "贫血/铁代谢",
+    "commonUnit": "μmol/L",
+    "aliases": ["总铁结合力", "TIBC", "Total Iron Binding Capacity"]
+  },
+  "TSAT": {
+    "displayName": "转铁蛋白饱和度",
+    "shortName": "转铁蛋白饱和度",
+    "category": "贫血/铁代谢",
+    "commonUnit": "%",
+    "aliases": ["转铁蛋白饱和度", "TSAT", "TS%", "铁饱和度"]
+  },
+  "VIT_B12": {
+    "displayName": "维生素B12",
+    "shortName": "维生素B12",
+    "category": "贫血/铁代谢",
+    "commonUnit": "pg/mL",
+    "aliases": ["维生素B12", "VitB12", "B12", "Cobalamin", "维生素B12(VitB12)"]
+  },
+  "FOLATE": {
+    "displayName": "叶酸",
+    "shortName": "叶酸",
+    "category": "贫血/铁代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["叶酸", "血清叶酸", "Folate", "Folic Acid", "叶酸(Folate)"]
+  },
+  "PT": {
+    "displayName": "凝血酶原时间",
+    "shortName": "凝血酶原时间",
+    "category": "凝血功能",
+    "commonUnit": "s",
+    "aliases": ["凝血酶原时间", "PT", "Prothrombin Time", "凝血酶原时间(PT)"]
+  },
+  "INR": {
+    "displayName": "国际标准化比值",
+    "shortName": "INR",
+    "category": "凝血功能",
+    "commonUnit": "",
+    "aliases": ["国际标准化比值", "INR", "International Normalized Ratio", "INR(国际标准化比值)"]
+  },
+  "APTT": {
+    "displayName": "活化部分凝血活酶时间",
+    "shortName": "APTT",
+    "category": "凝血功能",
+    "commonUnit": "s",
+    "aliases": ["活化部分凝血活酶时间", "APTT", "aPTT", "活化部分凝血活酶时间(APTT)"]
+  },
+  "FIB": {
+    "displayName": "纤维蛋白原",
+    "shortName": "纤维蛋白原",
+    "category": "凝血功能",
+    "commonUnit": "g/L",
+    "aliases": ["纤维蛋白原", "FIB", "Fbg", "Fibrinogen", "纤维蛋白原(FIB)"]
+  },
+  "TT": {
+    "displayName": "凝血酶时间",
+    "shortName": "凝血酶时间",
+    "category": "凝血功能",
+    "commonUnit": "s",
+    "aliases": ["凝血酶时间", "TT", "Thrombin Time", "凝血酶时间(TT)"]
+  },
+  "D_DIMER": {
+    "displayName": "D-二聚体",
+    "shortName": "D-二聚体",
+    "category": "凝血功能",
+    "commonUnit": "mg/L",
+    "aliases": ["D-二聚体", "D二聚体", "D-Dimer", "DD", "FDP-DD", "D-二聚体(D-Dimer)"]
+  },
+  "CRP": {
+    "displayName": "C-反应蛋白",
+    "shortName": "C反应蛋白",
+    "category": "感染/炎症",
+    "commonUnit": "mg/L",
+    "aliases": ["C-反应蛋白", "C反应蛋白", "CRP", "C-Reactive Protein", "C-反应蛋白(CRP)"]
+  },
+  "HS_CRP": {
+    "displayName": "超敏C-反应蛋白",
+    "shortName": "超敏CRP",
+    "category": "感染/炎症",
+    "commonUnit": "mg/L",
+    "aliases": ["超敏C-反应蛋白", "超敏C反应蛋白", "hs-CRP", "hsCRP", "超敏CRP", "超敏C-反应蛋白(hs-CRP)"]
+  },
+  "PROCALCITONIN": {
+    "displayName": "降钙素原",
+    "shortName": "降钙素原",
+    "category": "感染/炎症",
+    "commonUnit": "ng/mL",
+    "aliases": ["降钙素原", "PCT", "Procalcitonin", "降钙素原(PCT)"]
+  },
+  "SAA": {
+    "displayName": "血清淀粉样蛋白A",
+    "shortName": "SAA",
+    "category": "感染/炎症",
+    "commonUnit": "mg/L",
+    "aliases": ["血清淀粉样蛋白A", "SAA", "Serum Amyloid A"]
+  },
+  "IL6": {
+    "displayName": "白细胞介素-6",
+    "shortName": "IL-6",
+    "category": "感染/炎症",
+    "commonUnit": "pg/mL",
+    "aliases": ["白细胞介素-6", "白介素6", "IL-6", "IL6", "Interleukin-6"]
+  },
+  "HBSAG": {
+    "displayName": "乙肝表面抗原",
+    "shortName": "乙肝表面抗原",
+    "category": "乙肝/传染病",
+    "commonUnit": "IU/mL",
+    "aliases": ["乙肝表面抗原", "HBsAg", "乙肝表面抗原(HBsAg)", "表面抗原"]
+  },
+  "HBSAB": {
+    "displayName": "乙肝表面抗体",
+    "shortName": "乙肝表面抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "mIU/mL",
+    "aliases": ["乙肝表面抗体", "HBsAb", "Anti-HBs", "乙肝表面抗体(HBsAb)", "表面抗体"]
+  },
+  "HBEAG": {
+    "displayName": "乙肝e抗原",
+    "shortName": "乙肝e抗原",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["乙肝e抗原", "HBeAg", "e抗原", "乙肝e抗原(HBeAg)"]
+  },
+  "HBEAB": {
+    "displayName": "乙肝e抗体",
+    "shortName": "乙肝e抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["乙肝e抗体", "HBeAb", "Anti-HBe", "e抗体", "乙肝e抗体(HBeAb)"]
+  },
+  "HBCAB": {
+    "displayName": "乙肝核心抗体",
+    "shortName": "乙肝核心抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["乙肝核心抗体", "HBcAb", "Anti-HBc", "核心抗体", "乙肝核心抗体(HBcAb)"]
+  },
+  "HBV_DNA": {
+    "displayName": "乙肝病毒DNA",
+    "shortName": "HBV-DNA",
+    "category": "乙肝/传染病",
+    "commonUnit": "IU/mL",
+    "aliases": ["乙肝病毒DNA", "HBV-DNA", "HBV DNA", "乙肝病毒DNA定量", "HBV-DNA(乙肝病毒DNA)"]
+  },
+  "HCV_AB": {
+    "displayName": "丙肝抗体",
+    "shortName": "丙肝抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["丙肝抗体", "Anti-HCV", "HCV-Ab", "丙型肝炎抗体"]
+  },
+  "HIV_AB": {
+    "displayName": "HIV抗体",
+    "shortName": "HIV抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["HIV抗体", "Anti-HIV", "HIV-Ab", "人类免疫缺陷病毒抗体", "HIV抗体/抗原"]
+  },
+  "TP_AB": {
+    "displayName": "梅毒抗体",
+    "shortName": "梅毒抗体",
+    "category": "乙肝/传染病",
+    "commonUnit": "S/CO",
+    "aliases": ["梅毒抗体", "TP-Ab", "Anti-TP", "梅毒螺旋体抗体", "TPHA", "RPR"]
+  },
+  "CTNI": {
+    "displayName": "心肌肌钙蛋白I",
+    "shortName": "肌钙蛋白I",
+    "category": "心肌标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["心肌肌钙蛋白I", "肌钙蛋白I", "cTnI", "TnI", "Troponin I", "心肌肌钙蛋白I(cTnI)"]
+  },
+  "CTNT": {
+    "displayName": "心肌肌钙蛋白T",
+    "shortName": "肌钙蛋白T",
+    "category": "心肌标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["心肌肌钙蛋白T", "肌钙蛋白T", "cTnT", "TnT", "Troponin T"]
+  },
+  "CKMB": {
+    "displayName": "肌酸激酶同工酶",
+    "shortName": "CK-MB",
+    "category": "心肌标志物",
+    "commonUnit": "U/L",
+    "aliases": ["肌酸激酶同工酶", "CK-MB", "CKMB", "CK-MB(肌酸激酶同工酶)"]
+  },
+  "CK": {
+    "displayName": "肌酸激酶",
+    "shortName": "肌酸激酶",
+    "category": "心肌标志物",
+    "commonUnit": "U/L",
+    "aliases": ["肌酸激酶", "CK", "CPK", "Creatine Kinase", "肌酸激酶(CK)"]
+  },
+  "MYO": {
+    "displayName": "肌红蛋白",
+    "shortName": "肌红蛋白",
+    "category": "心肌标志物",
+    "commonUnit": "ng/mL",
+    "aliases": ["肌红蛋白", "MYO", "Myoglobin", "肌红蛋白(MYO)"]
+  },
+  "BNP": {
+    "displayName": "B型钠尿肽",
+    "shortName": "BNP",
+    "category": "心肌标志物",
+    "commonUnit": "pg/mL",
+    "aliases": ["B型钠尿肽", "BNP", "脑钠肽", "B型利钠肽", "BNP(B型钠尿肽)"]
+  },
+  "NT_PROBNP": {
+    "displayName": "N末端B型钠尿肽前体",
+    "shortName": "NT-proBNP",
+    "category": "心肌标志物",
+    "commonUnit": "pg/mL",
+    "aliases": ["N末端B型钠尿肽前体", "NT-proBNP", "NT-ProBNP", "氨基末端脑钠肽前体"]
+  },
+  "LDH": {
+    "displayName": "乳酸脱氢酶",
+    "shortName": "乳酸脱氢酶",
+    "category": "心肌标志物",
+    "commonUnit": "U/L",
+    "aliases": ["乳酸脱氢酶", "LDH", "LD", "Lactate Dehydrogenase", "乳酸脱氢酶(LDH)"]
+  },
+  "VIT_D": {
+    "displayName": "25-羟基维生素D",
+    "shortName": "维生素D",
+    "category": "骨代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["25-羟基维生素D", "维生素D", "25-OH-VD", "25(OH)D", "VitD", "维生素D(25-OH-VD)"]
+  },
+  "PTH": {
+    "displayName": "甲状旁腺激素",
+    "shortName": "甲状旁腺激素",
+    "category": "骨代谢",
+    "commonUnit": "pg/mL",
+    "aliases": ["甲状旁腺激素", "PTH", "iPTH", "全段甲状旁腺激素"]
+  },
+  "OC": {
+    "displayName": "骨钙素",
+    "shortName": "骨钙素",
+    "category": "骨代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["骨钙素", "OC", "Osteocalcin", "BGP"]
+  },
+  "CTX": {
+    "displayName": "β-胶原降解产物",
+    "shortName": "β-CTX",
+    "category": "骨代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["β-胶原降解产物", "β-CTX", "CTX", "β-CrossLaps"]
+  },
+  "P1NP": {
+    "displayName": "I型前胶原氨基端前肽",
+    "shortName": "P1NP",
+    "category": "骨代谢",
+    "commonUnit": "ng/mL",
+    "aliases": ["I型前胶原氨基端前肽", "P1NP", "PINP", "总P1NP"]
+  },
+  "FSH": {
+    "displayName": "促卵泡生成素",
+    "shortName": "FSH",
+    "category": "性激素",
+    "commonUnit": "mIU/mL",
+    "aliases": ["促卵泡生成素", "卵泡刺激素", "FSH", "Follicle Stimulating Hormone", "促卵泡生成素(FSH)"]
+  },
+  "LH": {
+    "displayName": "促黄体生成素",
+    "shortName": "LH",
+    "category": "性激素",
+    "commonUnit": "mIU/mL",
+    "aliases": ["促黄体生成素", "黄体生成素", "LH", "Luteinizing Hormone", "促黄体生成素(LH)"]
+  },
+  "E2": {
+    "displayName": "雌二醇",
+    "shortName": "雌二醇",
+    "category": "性激素",
+    "commonUnit": "pg/mL",
+    "aliases": ["雌二醇", "E2", "Estradiol", "雌二醇(E2)"]
+  },
+  "PROG": {
+    "displayName": "孕酮",
+    "shortName": "孕酮",
+    "category": "性激素",
+    "commonUnit": "ng/mL",
+    "aliases": ["孕酮", "P", "PROG", "Progesterone", "孕酮(PROG)"]
+  },
+  "TESTO": {
+    "displayName": "睾酮",
+    "shortName": "睾酮",
+    "category": "性激素",
+    "commonUnit": "ng/dL",
+    "aliases": ["睾酮", "T", "TESTO", "Testosterone", "睾酮(TESTO)"]
+  },
+  "PRL": {
+    "displayName": "泌乳素",
+    "shortName": "泌乳素",
+    "category": "性激素",
+    "commonUnit": "ng/mL",
+    "aliases": ["泌乳素", "催乳素", "PRL", "Prolactin", "泌乳素(PRL)"]
+  },
+  "DHEAS": {
+    "displayName": "硫酸脱氢表雄酮",
+    "shortName": "DHEA-S",
+    "category": "性激素",
+    "commonUnit": "μg/dL",
+    "aliases": ["硫酸脱氢表雄酮", "DHEA-S", "DHEAS", "脱氢表雄酮硫酸酯"]
+  },
+  "U_PRO": {
+    "displayName": "尿蛋白",
+    "shortName": "尿蛋白",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿蛋白", "蛋白质", "PRO", "Protein", "尿蛋白(PRO)"]
+  },
+  "U_GLU": {
+    "displayName": "尿糖",
+    "shortName": "尿糖",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿糖", "葡萄糖", "GLU", "尿葡萄糖", "尿糖(GLU)"]
+  },
+  "U_BLD": {
+    "displayName": "尿潜血",
+    "shortName": "尿潜血",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿潜血", "隐血", "BLD", "OB", "尿隐血", "尿潜血(BLD)"]
+  },
+  "U_WBC": {
+    "displayName": "尿白细胞",
+    "shortName": "尿白细胞",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿白细胞", "白细胞", "LEU", "WBC", "尿白细胞(LEU)"]
+  },
+  "U_PH": {
+    "displayName": "尿pH值",
+    "shortName": "尿pH",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿pH值", "pH", "酸碱度", "尿酸碱度"]
+  },
+  "U_SG": {
+    "displayName": "尿比重",
+    "shortName": "尿比重",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿比重", "比重", "SG", "Specific Gravity", "尿比重(SG)"]
+  },
+  "U_KET": {
+    "displayName": "尿酮体",
+    "shortName": "尿酮体",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿酮体", "酮体", "KET", "Ketone", "尿酮体(KET)"]
+  },
+  "U_BIL": {
+    "displayName": "尿胆红素",
+    "shortName": "尿胆红素",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿胆红素", "胆红素", "BIL", "Bilirubin", "尿胆红素(BIL)"]
+  },
+  "U_UBG": {
+    "displayName": "尿胆原",
+    "shortName": "尿胆原",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿胆原", "UBG", "URO", "Urobilinogen", "尿胆原(UBG)"]
+  },
+  "U_NIT": {
+    "displayName": "尿亚硝酸盐",
+    "shortName": "尿亚硝酸盐",
+    "category": "尿常规",
+    "commonUnit": "",
+    "aliases": ["尿亚硝酸盐", "亚硝酸盐", "NIT", "Nitrite", "尿亚硝酸盐(NIT)"]
+  },
+  "UACR": {
+    "displayName": "尿微量白蛋白/肌酐比值",
+    "shortName": "尿白蛋白肌酐比",
+    "category": "尿常规",
+    "commonUnit": "mg/g",
+    "aliases": ["尿微量白蛋白/肌酐比值", "尿白蛋白肌酐比", "UACR", "ACR", "尿微量白蛋白/肌酐比"]
+  },
+  "UALB": {
+    "displayName": "尿微量白蛋白",
+    "shortName": "尿微量白蛋白",
+    "category": "尿常规",
+    "commonUnit": "mg/L",
+    "aliases": ["尿微量白蛋白", "微量白蛋白", "mALB", "MALB", "尿微量白蛋白(mALB)"]
+  },
+  "ANA": {
+    "displayName": "抗核抗体",
+    "shortName": "抗核抗体",
+    "category": "自身免疫",
+    "commonUnit": "",
+    "aliases": ["抗核抗体", "ANA", "Anti-Nuclear Antibody", "ANA(抗核抗体)"]
+  },
+  "RF": {
+    "displayName": "类风湿因子",
+    "shortName": "类风湿因子",
+    "category": "自身免疫",
+    "commonUnit": "IU/mL",
+    "aliases": ["类风湿因子", "RF", "Rheumatoid Factor", "类风湿因子(RF)"]
+  },
+  "ASO": {
+    "displayName": "抗链球菌溶血素O",
+    "shortName": "抗O",
+    "category": "自身免疫",
+    "commonUnit": "IU/mL",
+    "aliases": ["抗链球菌溶血素O", "抗O", "ASO", "Anti-Streptolysin O", "抗链球菌溶血素O(ASO)"]
+  },
+  "ANTI_CCP": {
+    "displayName": "抗环瓜氨酸肽抗体",
+    "shortName": "抗CCP抗体",
+    "category": "自身免疫",
+    "commonUnit": "U/mL",
+    "aliases": ["抗环瓜氨酸肽抗体", "抗CCP抗体", "Anti-CCP", "CCP抗体"]
+  },
+  "IGG": {
+    "displayName": "免疫球蛋白G",
+    "shortName": "IgG",
+    "category": "自身免疫",
+    "commonUnit": "g/L",
+    "aliases": ["免疫球蛋白G", "IgG", "Immunoglobulin G"]
+  },
+  "IGA": {
+    "displayName": "免疫球蛋白A",
+    "shortName": "IgA",
+    "category": "自身免疫",
+    "commonUnit": "g/L",
+    "aliases": ["免疫球蛋白A", "IgA", "Immunoglobulin A"]
+  },
+  "IGM": {
+    "displayName": "免疫球蛋白M",
+    "shortName": "IgM",
+    "category": "自身免疫",
+    "commonUnit": "g/L",
+    "aliases": ["免疫球蛋白M", "IgM", "Immunoglobulin M"]
+  },
+  "C3": {
+    "displayName": "补体C3",
+    "shortName": "补体C3",
+    "category": "自身免疫",
+    "commonUnit": "g/L",
+    "aliases": ["补体C3", "C3", "Complement C3"]
+  },
+  "C4": {
+    "displayName": "补体C4",
+    "shortName": "补体C4",
+    "category": "自身免疫",
+    "commonUnit": "g/L",
+    "aliases": ["补体C4", "C4", "Complement C4"]
+  },
+  "IGE": {
+    "displayName": "免疫球蛋白E",
+    "shortName": "IgE",
+    "category": "自身免疫",
+    "commonUnit": "IU/mL",
+    "aliases": ["免疫球蛋白E", "IgE", "总IgE", "Immunoglobulin E"]
+  },
+  "HCG": {
+    "displayName": "人绒毛膜促性腺激素",
+    "shortName": "HCG",
+    "category": "其他",
+    "commonUnit": "mIU/mL",
+    "aliases": ["人绒毛膜促性腺激素", "HCG", "β-HCG", "hCG", "绒毛膜促性腺激素"]
+  },
+  "AMH": {
+    "displayName": "抗缪勒管激素",
+    "shortName": "AMH",
+    "category": "其他",
+    "commonUnit": "ng/mL",
+    "aliases": ["抗缪勒管激素", "AMH", "Anti-Müllerian Hormone", "抗苗勒管激素"]
+  },
+  "HOMO": {
+    "displayName": "同型半胱氨酸",
+    "shortName": "同型半胱氨酸",
+    "category": "其他",
+    "commonUnit": "μmol/L",
+    "aliases": ["同型半胱氨酸", "HCY", "Homocysteine", "同型半胱氨酸(HCY)"]
+  }
+}
