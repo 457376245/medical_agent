@@ -51,6 +51,7 @@ export type AgentRequestMetadata = {
   record_title?: string;
   record_date?: string;
   source_type?: string;
+  scenario?: string;
   entry: "agent_page";
 };
 

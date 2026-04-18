@@ -193,6 +193,7 @@ export function toRequestMetadata(args: {
     record_id: args.recordId,
     record_title: args.recordTitle,
     source_type: args.sourceType,
+    scenario: args.recordId ? "report_interpretation" : undefined,
     entry: "agent_page",
   };
 }

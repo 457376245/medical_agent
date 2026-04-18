@@ -35,6 +35,7 @@ from app.config import (
     OPENAI_SDK_RETRIES,
 )
 from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
+from app.prompts.templates import get_scenario_prompt
 from app.tools.registry import get_tools
 from app.utils import normalize_openai_base_url
 
@@ -212,6 +213,14 @@ def create_llm_node(
                 SystemMessage(content=context_message),
                 *prepared_messages[1:],
             ]
+
+        scenario = (state.get("metadata") or {}).get("scenario")
+        scenario_prompt = get_scenario_prompt(scenario)
+        if scenario_prompt:
+            idx = 0
+            while idx < len(prepared_messages) and isinstance(prepared_messages[idx], SystemMessage):
+                idx += 1
+            prepared_messages.insert(idx, SystemMessage(content=scenario_prompt))
 
         response = llm_with_tools.invoke(prepared_messages)
         return {"messages": [response]}
