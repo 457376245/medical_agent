@@ -47,7 +47,7 @@ def build_context_system_message(
     active_context_bundle: Mapping[str, Any] | None,
     active_context_status: str | None,
 ) -> str | None:
-    """将上下文数据包转换为紧凑的系统消息。"""
+    """将上下文数据包转换为紧凑的系统消息，并根据数据状态附加动态引导。"""
     status = str(active_context_status or "").strip().lower()
     if status == "unavailable":
         return (
@@ -65,12 +65,17 @@ def build_context_system_message(
     warnings = active_context_bundle.get("warnings")
 
     lines: list[str] = []
+    has_profile = False
+    has_key_fields = False
+    has_trends = False
+    has_analysis_or_summary = False
 
     if isinstance(disease_profile, Mapping):
         disease_name = str(disease_profile.get("name") or "").strip()
         record_count = disease_profile.get("record_count")
         latest_record_at = str(disease_profile.get("latest_record_at") or "").strip()
         if disease_name:
+            has_profile = True
             profile_line = f"- 疾病档案：{disease_name}"
             if isinstance(record_count, int):
                 profile_line = f"{profile_line}（记录数：{record_count}）"
@@ -94,11 +99,12 @@ def build_context_system_message(
 
     if isinstance(record_summary, Mapping):
         analysis = str(record_summary.get("analysis") or "").strip()
-        summary = str(record_summary.get("summary") or "").strip()
+        summary_text = str(record_summary.get("summary") or "").strip()
+        has_analysis_or_summary = bool(analysis or summary_text)
         if analysis:
             lines.append(f"- 报告分析：{analysis}")
-        elif summary:
-            lines.append(f"- 报告摘要：{summary}")
+        elif summary_text:
+            lines.append(f"- 报告摘要：{summary_text}")
 
         key_fields = record_summary.get("key_fields")
         if isinstance(key_fields, list) and key_fields:
@@ -117,6 +123,7 @@ def build_context_system_message(
                     segment = f"{segment}（参考范围：{reference}）"
                 rendered_fields.append(segment)
             if rendered_fields:
+                has_key_fields = True
                 lines.append(f"- 关键字段：{'；'.join(rendered_fields)}")
 
     if isinstance(trend_summary, list) and trend_summary:
@@ -125,11 +132,12 @@ def build_context_system_message(
             if not isinstance(item, Mapping):
                 continue
             label = str(item.get("record_date") or item.get("title") or "").strip()
-            summary = str(item.get("summary") or "").strip()
-            if not label or not summary:
+            trend_text = str(item.get("summary") or "").strip()
+            if not label or not trend_text:
                 continue
-            rendered_trends.append(f"{label}:{summary}")
+            rendered_trends.append(f"{label}:{trend_text}")
         if rendered_trends:
+            has_trends = True
             lines.append(f"- 趋势摘要：{'；'.join(rendered_trends)}")
 
     warning_list: list[str] = []
@@ -144,10 +152,62 @@ def build_context_system_message(
     if not lines:
         return None
 
+    # --- 前缀 ---
     prefix = "以下是当前会话已缓存的疾病档案上下文（由工具获取）："
     if status == "partial":
-        prefix = (
-            "以下是当前会话可用的部分疾病档案上下文（由工具获取）。"
-            "若信息不足请明确说明限制："
+        missing: list[str] = []
+        if not has_analysis_or_summary:
+            missing.append("报告分析")
+        if not has_key_fields:
+            missing.append("关键指标数据")
+        if not has_trends:
+            missing.append("历史趋势数据")
+        if missing:
+            prefix = (
+                "以下是当前会话可用的部分疾病档案上下文（由工具获取）。"
+                f"缺失信息：{'、'.join(missing)}。"
+                "请在回答中明确说明这些数据局限性："
+            )
+        else:
+            prefix = (
+                "以下是当前会话可用的部分疾病档案上下文（由工具获取）。"
+                "若信息不足请明确说明限制："
+            )
+
+    # --- 动态引导 ---
+    guidance: list[str] = []
+
+    if isinstance(selected_record, Mapping):
+        ps = str(selected_record.get("parse_status") or "").strip().lower()
+        if ps == "pending":
+            guidance.append(
+                "[提示] 当前报告正在解析中，结构化数据可能不完整。"
+                "请基于已有信息回答，并告知用户完整分析需等待解析完成。"
+            )
+        elif ps == "failed":
+            guidance.append(
+                "[提示] 当前报告解析失败，无法获取结构化指标数据。"
+                "请基于报告标题和基本信息提供有限分析，并建议用户重新上传或联系支持。"
+            )
+    elif has_profile:
+        guidance.append(
+            "[提示] 当前未选择具体报告，请基于疾病档案整体信息提供概况性建议。"
+            "如需分析具体报告，可提示用户选择一份报告。"
         )
-    return prefix + "\n" + "\n".join(lines)
+
+    if has_key_fields:
+        guidance.append(
+            "[提示] 上方列出了关键检验指标及参考范围，"
+            "回答时请引用具体异常数值，分析其临床意义并与参考范围对比说明。"
+        )
+
+    if has_trends:
+        guidance.append(
+            "[提示] 上方包含历史趋势数据，回答时请分析指标随时间的变化方向"
+            "（升高/降低/稳定），并结合趋势讨论当前值的临床意义。"
+        )
+
+    result = prefix + "\n" + "\n".join(lines)
+    if guidance:
+        result += "\n\n" + "\n".join(guidance)
+    return result

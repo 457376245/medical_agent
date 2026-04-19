@@ -30,6 +30,9 @@ DEFAULT_AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "4096"))
 # Agent 行为配置
 # ---------------------------------------------------------------------------
 MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
+CONVERSATION_WINDOW_MAX_TOKENS: int = read_int_env(
+    "CONVERSATION_WINDOW_MAX_TOKENS", 100_000, 1000
+)
 
 # ---------------------------------------------------------------------------
 # 内存 / 持久化配置

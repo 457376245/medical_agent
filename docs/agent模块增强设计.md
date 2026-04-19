@@ -4,11 +4,11 @@
 
 - 状态：进行中
 - 创建日期：2026-04-18
-- 最后更新日期：2026-04-17
+- 最后更新日期：2026-04-19
 
 ## 摘要
 
-对 `backend-agent` Python 服务进行垂直方向增强，提升报告解析质量和 AI 对话精准度。已落地四项能力：场景模板注入、结构化输出强制、第一梯队快速修复、全模块代码精简。
+对 `backend-agent` Python 服务进行垂直方向增强，提升报告解析质量和 AI 对话精准度。已落地七项能力：场景模板注入、结构化输出强制、第一梯队快速修复、全模块代码精简、System Prompt 深度优化、Context 感知增强提示、对话历史窗口管理。
 
 ---
 
@@ -186,6 +186,87 @@
 | `app/services/disease_profile_context.py` | 删除 tuple 防御代码 | `_http_get_json` 始终返回 `dict`，无需 tuple 解包 |
 | `app/api/chat.py` | 内联 `_derive_context_signature` | 移除单行包装函数，直接调用 `context_signature_from_metadata` |
 | `tests/test_agent/test_context_flow.py` | 修复 mock 类型 | `fake_get_json` 返回类型从 `tuple[int, dict]` 改为 `dict[str, Any]` |
+
+---
+
+## 五、System Prompt 深度优化（已完成）
+
+### 目标
+
+增强 `SYSTEM_MEDICAL_ASSISTANT` 提示词的引导精度，减少 LLM 不必要的工具调用和泛泛回答。
+
+### 设计
+
+保留原有 5 条核心原则，追加三个新段落：
+
+| 段落 | 内容 |
+|------|------|
+| 工具使用策略 | 明确 3 个工具的使用时机和前提条件，指示对话类问题不调用工具 |
+| 上下文数据使用规范 | 引用关键字段具体数值、结合趋势分析、说明数据局限性 |
+| 回答结构与推理规范 | 三段式结构（发现→解读→建议）、异常优先、关联分析、紧急程度分级 |
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/prompts/system.py` | 扩展 `SYSTEM_MEDICAL_ASSISTANT` 常量 |
+| `backend-agent/tests/test_prompts/test_system_prompt.py` | 新增 3 个验证测试 |
+
+---
+
+## 六、Context 感知增强提示（已完成）
+
+### 目标
+
+根据上下文数据的实际状态（解析进度、字段完整度、趋势可用性）动态生成 LLM 引导指令，替代原有静态数据格式化。
+
+### 新增引导规则
+
+| 规则 | 触发条件 | 引导内容 |
+|------|----------|----------|
+| 解析中 | `parse_status == "pending"` | 告知用户数据不完整，需等待解析 |
+| 解析失败 | `parse_status == "failed"` | 基于有限信息分析，建议重新上传 |
+| 无选中报告 | `selected_record` 为空且有档案 | 提供档案概况，提示选择报告 |
+| 有关键字段 | key_fields 渲染非空 | 引用具体数值，对比参考范围 |
+| 有趋势数据 | trend_summary 渲染非空 | 分析变化方向，结合趋势讨论 |
+
+### partial 状态增强
+
+检查具体缺失项（报告分析、关键指标、趋势数据），生成精确的缺失信息列表取代原来的泛化提示。
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/agent/context.py` | 重写 `build_context_system_message()`，新增动态引导逻辑 |
+| `backend-agent/tests/test_agent/test_context_guidance.py` | 新增 8 个测试 |
+
+---
+
+## 七、对话历史窗口管理（已完成）
+
+### 目标
+
+防止长对话超出 LLM 上下文窗口限制，通过 token 预算自动裁剪历史消息。
+
+### 设计
+
+在 `call_llm` 中使用 `langchain_core.messages.trim_messages`，按近似 token 计数裁剪对话历史：
+
+- `strategy="last"`：保留最近消息
+- `include_system=True`：保留 SystemMessage
+- `start_on="human"`：裁剪后首条非系统消息为 HumanMessage，避免孤立 ToolMessage
+- 默认 token 预算 100,000（环境变量 `CONVERSATION_WINDOW_MAX_TOKENS` 可调）
+
+裁剪仅作用于 `state["messages"]` 中的对话历史，`call_llm` 注入的 system prompt、context message、scenario template 不受影响。
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/config.py` | 新增 `CONVERSATION_WINDOW_MAX_TOKENS` 配置 |
+| `backend-agent/app/agent/nodes.py` | `call_llm` 中新增 `trim_messages` 裁剪逻辑 |
+| `backend-agent/tests/test_agent/test_message_trimming.py` | 新增 4 个测试 |
 
 ---
 

@@ -12,7 +12,7 @@ import os
 import uuid
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, trim_messages
 from langgraph.prebuilt import ToolNode
 
 try:
@@ -26,6 +26,7 @@ from app.agent.context import (
     parse_context_bundle,
 )
 from app.config import (
+    CONVERSATION_WINDOW_MAX_TOKENS,
     DEFAULT_AGENT_MODEL,
     DEFAULT_AGENT_MAX_TOKENS,
     DEFAULT_AGENT_TEMPERATURE,
@@ -199,7 +200,21 @@ def create_llm_node(
 
     def call_llm(state: dict[str, Any]) -> dict[str, Any]:
         """使用当前消息历史调用 LLM。"""
-        messages = state["messages"]
+        raw_messages = state["messages"]
+        messages = trim_messages(
+            raw_messages,
+            max_tokens=CONVERSATION_WINDOW_MAX_TOKENS,
+            token_counter="approximate",
+            strategy="last",
+            include_system=True,
+            start_on="human",
+        )
+        if len(messages) < len(raw_messages):
+            LOGGER.info(
+                "对话消息已裁剪：%d -> %d 条（预算 %d tokens）",
+                len(raw_messages), len(messages), CONVERSATION_WINDOW_MAX_TOKENS,
+            )
+
         prepared_messages = list(messages)
         if not prepared_messages or not isinstance(prepared_messages[0], SystemMessage):
             prepared_messages = [SystemMessage(content=SYSTEM_MEDICAL_ASSISTANT)] + prepared_messages
