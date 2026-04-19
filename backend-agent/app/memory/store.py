@@ -1,9 +1,4 @@
-"""长期记忆：跨会话知识存储。
-
-定义 MemoryStore 协议并提供 SQLite 实现。
-存储患者上下文、对话摘要、提取的医疗事实，以及跨会话持久化的
-Agent 会话/轮次记录。
-"""
+"""Agent 会话存储。"""
 
 from __future__ import annotations
 
@@ -11,7 +6,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
 
 import aiosqlite
@@ -21,9 +16,6 @@ from app.memory.models import (
     AgentSessionRecord,
     AgentSessionTurn,
     AgentTraceEvent,
-    ConversationSummary,
-    MedicalFact,
-    PatientContext,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -35,30 +27,7 @@ LOGGER = logging.getLogger(__name__)
 
 @runtime_checkable
 class MemoryStore(Protocol):
-    """长期记忆存储的抽象接口。
-
-    实现可以使用 SQLite、PostgreSQL、Redis 或任何其他后端。
-    协议有意保持精简，以便切换后端只需最小改动。
-    """
-
-    async def save_summary(self, summary: ConversationSummary) -> None: ...
-
-    async def get_summary(self, thread_id: str) -> ConversationSummary | None: ...
-
-    async def save_patient_context(self, ctx: PatientContext) -> None: ...
-
-    async def get_patient_context(self, patient_id: str) -> PatientContext | None: ...
-
-    async def save_fact(self, fact: MedicalFact) -> None: ...
-
-    async def get_facts(
-        self,
-        *,
-        thread_id: str | None = None,
-        patient_id: str | None = None,
-        category: str | None = None,
-        limit: int = 50,
-    ) -> list[MedicalFact]: ...
+    """Agent 会话存储接口。"""
 
     async def upsert_agent_session(self, session: AgentSessionRecord) -> None: ...
 
@@ -87,41 +56,6 @@ class MemoryStore(Protocol):
 # ---------------------------------------------------------------------------
 
 _SCHEMA_SQL = """\
-CREATE TABLE IF NOT EXISTS conversation_summaries (
-    thread_id   TEXT PRIMARY KEY,
-    summary     TEXT    NOT NULL,
-    key_topics  TEXT    NOT NULL DEFAULT '[]',
-    created_at  TEXT    NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS patient_contexts (
-    patient_id   TEXT PRIMARY KEY,
-    thread_id    TEXT    NOT NULL,
-    demographics TEXT    NOT NULL DEFAULT '{}',
-    diagnoses    TEXT    NOT NULL DEFAULT '[]',
-    medications  TEXT    NOT NULL DEFAULT '[]',
-    allergies    TEXT    NOT NULL DEFAULT '[]',
-    updated_at   TEXT    NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS medical_facts (
-    fact_id     TEXT PRIMARY KEY,
-    thread_id   TEXT    NOT NULL,
-    patient_id  TEXT,
-    category    TEXT    NOT NULL,
-    content     TEXT    NOT NULL,
-    source      TEXT,
-    confidence  REAL    NOT NULL DEFAULT 1.0,
-    created_at  TEXT    NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_facts_thread
-    ON medical_facts (thread_id);
-CREATE INDEX IF NOT EXISTS idx_facts_patient
-    ON medical_facts (patient_id);
-CREATE INDEX IF NOT EXISTS idx_facts_category
-    ON medical_facts (category);
-
 CREATE TABLE IF NOT EXISTS agent_sessions (
     thread_id              TEXT PRIMARY KEY,
     disease_profile_id     TEXT,
@@ -197,144 +131,6 @@ class SqliteMemoryStore:
                 "SqliteMemoryStore 未初始化；请先调用 initialize()"
             )
         return self._db
-
-    # -- 摘要 ---------------------------------------------------------------
-
-    async def save_summary(self, summary: ConversationSummary) -> None:
-        await self._conn.execute(
-            "INSERT OR REPLACE INTO conversation_summaries "
-            "(thread_id, summary, key_topics, created_at) VALUES (?, ?, ?, ?)",
-            (
-                summary.thread_id,
-                summary.summary,
-                json.dumps(summary.key_topics, ensure_ascii=False),
-                summary.created_at.isoformat(),
-            ),
-        )
-        await self._conn.commit()
-
-    async def get_summary(self, thread_id: str) -> ConversationSummary | None:
-        cursor = await self._conn.execute(
-            "SELECT thread_id, summary, key_topics, created_at "
-            "FROM conversation_summaries WHERE thread_id = ?",
-            (thread_id,),
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return ConversationSummary(
-            thread_id=row[0],
-            summary=row[1],
-            key_topics=json.loads(row[2]),
-            created_at=datetime.fromisoformat(row[3]),
-        )
-
-    # -- 患者上下文 ---------------------------------------------------------
-
-    async def save_patient_context(self, ctx: PatientContext) -> None:
-        await self._conn.execute(
-            "INSERT OR REPLACE INTO patient_contexts "
-            "(patient_id, thread_id, demographics, diagnoses, "
-            "medications, allergies, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                ctx.patient_id,
-                ctx.thread_id,
-                json.dumps(ctx.demographics, ensure_ascii=False),
-                json.dumps(ctx.diagnoses, ensure_ascii=False),
-                json.dumps(ctx.medications, ensure_ascii=False),
-                json.dumps(ctx.allergies, ensure_ascii=False),
-                ctx.updated_at.isoformat(),
-            ),
-        )
-        await self._conn.commit()
-
-    async def get_patient_context(self, patient_id: str) -> PatientContext | None:
-        cursor = await self._conn.execute(
-            "SELECT patient_id, thread_id, demographics, diagnoses, "
-            "medications, allergies, updated_at "
-            "FROM patient_contexts WHERE patient_id = ?",
-            (patient_id,),
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return PatientContext(
-            patient_id=row[0],
-            thread_id=row[1],
-            demographics=json.loads(row[2]),
-            diagnoses=json.loads(row[3]),
-            medications=json.loads(row[4]),
-            allergies=json.loads(row[5]),
-            updated_at=datetime.fromisoformat(row[6]),
-        )
-
-    # -- 医疗事实 -----------------------------------------------------------
-
-    async def save_fact(self, fact: MedicalFact) -> None:
-        fact_id = fact.fact_id or uuid.uuid4().hex
-        await self._conn.execute(
-            "INSERT OR REPLACE INTO medical_facts "
-            "(fact_id, thread_id, patient_id, category, content, "
-            "source, confidence, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                fact_id,
-                fact.thread_id,
-                fact.patient_id,
-                fact.category,
-                fact.content,
-                fact.source,
-                fact.confidence,
-                fact.created_at.isoformat(),
-            ),
-        )
-        await self._conn.commit()
-
-    async def get_facts(
-        self,
-        *,
-        thread_id: str | None = None,
-        patient_id: str | None = None,
-        category: str | None = None,
-        limit: int = 50,
-    ) -> list[MedicalFact]:
-        clauses: list[str] = []
-        params: list[Any] = []
-        if thread_id is not None:
-            clauses.append("thread_id = ?")
-            params.append(thread_id)
-        if patient_id is not None:
-            clauses.append("patient_id = ?")
-            params.append(patient_id)
-        if category is not None:
-            clauses.append("category = ?")
-            params.append(category)
-
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        query = (
-            f"SELECT fact_id, thread_id, patient_id, category, content, "
-            f"source, confidence, created_at "
-            f"FROM medical_facts {where} "
-            f"ORDER BY created_at DESC LIMIT ?"
-        )
-        params.append(limit)
-
-        cursor = await self._conn.execute(query, params)
-        rows = await cursor.fetchall()
-        return [
-            MedicalFact(
-                fact_id=r[0],
-                thread_id=r[1],
-                patient_id=r[2],
-                category=r[3],
-                content=r[4],
-                source=r[5],
-                confidence=r[6],
-                created_at=datetime.fromisoformat(r[7]),
-            )
-            for r in rows
-        ]
 
     # -- Agent 会话 ---------------------------------------------------------
 
@@ -515,7 +311,7 @@ class SqliteMemoryStore:
                             data=item.get("data", {}),
                             created_at=datetime.fromisoformat(item["created_at"])
                             if item.get("created_at")
-                            else datetime.utcnow(),
+                            else datetime.now(timezone.utc),
                         )
                         for item in raw_trace
                     ],
@@ -540,7 +336,7 @@ class SqliteMemoryStore:
     async def update_agent_session_title(self, thread_id: str, title: str) -> None:
         await self._conn.execute(
             "UPDATE agent_sessions SET title = ?, updated_at = ? WHERE thread_id = ?",
-            (title, datetime.utcnow().isoformat(), thread_id),
+            (title, datetime.now(timezone.utc).isoformat(), thread_id),
         )
         await self._conn.commit()
 

@@ -73,26 +73,20 @@ def test_context_sync_updates_cached_bundle_from_tool_result() -> None:
 
 
 def test_context_client_success_and_partial(monkeypatch: Any) -> None:
-    responses: list[tuple[int, dict[str, Any]]] = [
-        (
-            200,
-            {
-                "profile": {"id": "profile-1", "name": "高血压", "recordCount": 2},
-                "contextStatus": "READY",
-                "warnings": [],
-            },
-        ),
-        (
-            200,
-            {
-                "profile": {"id": "profile-1", "name": "高血压", "recordCount": 2},
-                "contextStatus": "PARTIAL",
-                "warnings": ["报告解析尚未完成"],
-            },
-        ),
+    responses: list[dict[str, Any]] = [
+        {
+            "profile": {"id": "profile-1", "name": "高血压", "recordCount": 2},
+            "contextStatus": "READY",
+            "warnings": [],
+        },
+        {
+            "profile": {"id": "profile-1", "name": "高血压", "recordCount": 2},
+            "contextStatus": "PARTIAL",
+            "warnings": ["报告解析尚未完成"],
+        },
     ]
 
-    def fake_get_json(*_args: Any, **_kwargs: Any) -> tuple[int, dict[str, Any]]:
+    def fake_get_json(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return responses.pop(0)
 
     monkeypatch.setattr(context_client_module, "_http_get_json", fake_get_json)

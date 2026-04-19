@@ -57,15 +57,6 @@ class ProviderGateway:
         max_attempts = self._provider_max_attempts
         for attempt in range(1, max_attempts + 1):
             try:
-                # --- 测试模拟钩子 ---
-                simulation = str(payload.get("simulate", ""))
-                if simulation == "timeout":
-                    raise TimeoutError("Provider timeout")
-                if simulation == "external_error":
-                    raise ConnectionError("External provider unavailable")
-                if simulation == "biz_error":
-                    raise ValueError("BIZ_INVALID_INPUT")
-
                 model_name = self._llm.model_for_attempt(operation, attempt)
                 LOGGER.info(
                     "Provider call started: operation=%s attempt=%s model=%s",

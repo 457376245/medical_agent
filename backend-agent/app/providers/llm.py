@@ -18,6 +18,53 @@ from app.utils import normalize_openai_base_url, read_float_env, read_int_env, t
 
 LOGGER = logging.getLogger(__name__)
 
+_PARSE_OUTPUT_SCHEMA: dict[str, Any] = {
+    "name": "medical_parse_output",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "fields": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "value": {"type": "string"},
+                        "unit": {"type": ["string", "null"]},
+                        "referenceRange": {"type": ["string", "null"]},
+                        "standardCode": {"type": ["string", "null"]},
+                        "confidence": {"type": "number"},
+                        "evidence": {
+                            "anyOf": [
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "sourceFile": {"type": "string"},
+                                        "page": {"type": ["integer", "null"]},
+                                        "snippet": {"type": ["string", "null"]},
+                                    },
+                                    "required": ["sourceFile", "page", "snippet"],
+                                    "additionalProperties": False,
+                                },
+                                {"type": "null"},
+                            ]
+                        },
+                    },
+                    "required": [
+                        "name", "value", "unit", "referenceRange",
+                        "standardCode", "confidence", "evidence",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
+            "reportDate": {"type": ["string", "null"]},
+        },
+        "required": ["fields", "reportDate"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ParseEvidence(BaseModel):
     """解析字段来源证据模型。"""
@@ -47,11 +94,6 @@ class ParseAgentOutput(BaseModel):
 
     fields: list[ParseField] = Field(default_factory=list)
     report_date: str | None = Field(default=None, alias="reportDate")
-
-
-class GenerateAgentOutput(BaseModel):
-    """生成输出模型。"""
-    content: str = Field(description="生成的草稿内容")
 
 
 class LLMError(Exception):
@@ -94,6 +136,9 @@ class LLMService:
         self._openai_proxy = os.getenv("OPENAI_PROXY", "").strip()
         self._openai_retry_with_env_proxy = to_bool(
             os.getenv("OPENAI_RETRY_WITH_ENV_PROXY", "true")
+        )
+        self._use_structured_output = to_bool(
+            os.getenv("OPENAI_STRUCTURED_OUTPUT", "true")
         )
 
     def model_for_attempt(self, operation: str, attempt: int) -> str:
@@ -306,25 +351,34 @@ class LLMService:
         model_name: str,
         attempt: int,
     ) -> str:
+        structured = self._use_structured_output
+        system_content = (
+            "You extract key medical test fields from medical reports. "
+            "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
+            "as shown in the source for `value` and `referenceRange`. "
+            "If you recognize a standard lab indicator, include its `standardCode` (e.g. ALT, AST, GLU, HBA1C). "
+            "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range."
+        )
+        if not structured:
+            system_content += (
+                " Return only a valid JSON object with a top-level `fields` array."
+                " Do not use markdown code fences."
+            )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You extract key medical test fields from medical reports. "
-                    "Return only a valid JSON object with a top-level `fields` array. "
-                    "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
-                    "as shown in the source for `value` and `referenceRange`. "
-                    "If you recognize a standard lab indicator, include its `standardCode` (e.g. ALT, AST, GLU, HBA1C). "
-                    "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range. "
-                    "Do not use markdown code fences."
-                ),
-            },
-            {
-                "role": "user",
-                "content": user_content,
-            },
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
         ]
-        return self._invoke_text(messages=messages, model_name=model_name, attempt=attempt)
+        response_format = (
+            {"type": "json_schema", "json_schema": _PARSE_OUTPUT_SCHEMA}
+            if structured
+            else None
+        )
+        return self._invoke_text(
+            messages=messages,
+            model_name=model_name,
+            attempt=attempt,
+            response_format=response_format,
+        )
 
     def _invoke_text(
         self,
@@ -332,13 +386,17 @@ class LLMService:
         messages: list[dict[str, Any]],
         model_name: str,
         attempt: int,
+        response_format: dict[str, Any] | None = None,
     ) -> str:
+        payload: dict[str, Any] = {
+            "model": model_name,
+            "temperature": self._openai_temperature,
+            "messages": messages,
+        }
+        if response_format is not None:
+            payload["response_format"] = response_format
         status_code, body = self._send_chat_completion_request(
-            payload={
-                "model": model_name,
-                "temperature": self._openai_temperature,
-                "messages": messages,
-            },
+            payload=payload,
             attempt=attempt,
         )
         if status_code >= 400:

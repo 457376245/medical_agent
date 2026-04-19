@@ -12,7 +12,7 @@ import os
 import uuid
 from typing import Any
 
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
 
 try:
@@ -29,6 +29,7 @@ from app.config import (
     DEFAULT_AGENT_MODEL,
     DEFAULT_AGENT_MAX_TOKENS,
     DEFAULT_AGENT_TEMPERATURE,
+    MAX_TOOL_ROUNDS,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
     OPENAI_REQUEST_TIMEOUT_SECONDS,
@@ -245,17 +246,23 @@ def create_tool_node(tools: list | None = None) -> ToolNode:
 
 
 def should_continue(state: dict) -> str:
-    """决定是路由到工具还是结束对话。
-
-    Returns:
-        如果最后的 AI 消息包含工具调用则返回 "tools"，
-        否则返回 "end"。
-    """
+    """决定是路由到工具还是结束对话。"""
     messages = state.get("messages", [])
     if not messages:
         return "end"
 
     last_message = messages[-1]
-    if isinstance(last_message, AIMessage) and last_message.tool_calls:
-        return "tools"
-    return "end"
+    if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+        return "end"
+
+    tool_rounds = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            tool_rounds += 1
+    if tool_rounds > MAX_TOOL_ROUNDS:
+        LOGGER.warning("工具调用轮数已达上限 (%d)，强制结束", MAX_TOOL_ROUNDS)
+        return "end"
+
+    return "tools"

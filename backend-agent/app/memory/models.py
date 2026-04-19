@@ -1,49 +1,11 @@
-"""记忆数据模型。
-
-记忆实体的 Pydantic 模型：对话摘要、患者上下文快照、提取的医疗事实，
-以及 Agent 会话记录。
-"""
+"""记忆数据模型。"""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
-
-class ConversationSummary(BaseModel):
-    """对话会话的压缩摘要。"""
-
-    thread_id: str
-    summary: str
-    key_topics: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class PatientContext(BaseModel):
-    """跨会话持久化的结构化患者上下文。"""
-
-    patient_id: str
-    thread_id: str
-    demographics: dict[str, Any] = Field(default_factory=dict)
-    diagnoses: list[str] = Field(default_factory=list)
-    medications: list[str] = Field(default_factory=list)
-    allergies: list[str] = Field(default_factory=list)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class MedicalFact(BaseModel):
-    """对话期间提取的单个医疗事实。"""
-
-    fact_id: str | None = None
-    thread_id: str
-    patient_id: str | None = None
-    category: str  # 例如 "diagnosis"、"medication"、"lab_result"、"allergy"
-    content: str
-    source: str | None = None  # 哪条消息/工具产生了此事实
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentTraceEvent(BaseModel):
@@ -52,7 +14,7 @@ class AgentTraceEvent(BaseModel):
     event: Literal["tool_call", "tool_result", "error"]
     tool: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentSessionRecord(BaseModel):
@@ -71,8 +33,8 @@ class AgentSessionRecord(BaseModel):
     last_user_message: str | None = None
     last_assistant_message: str | None = None
     last_message_preview: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     turn_count: int = 0
 
 
@@ -87,4 +49,4 @@ class AgentSessionTurn(BaseModel):
     trace_events: list[AgentTraceEvent] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

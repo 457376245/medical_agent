@@ -11,7 +11,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -23,6 +23,18 @@ from app.memory.models import AgentSessionRecord, AgentSessionTurn, AgentTraceEv
 from app.schemas.chat import ChatRequest
 
 LOGGER = logging.getLogger(__name__)
+
+_SSE_KEEPALIVE_INTERVAL = 15.0
+
+_STREAM_END = object()
+
+
+async def _next_event(aiter: Any) -> Any:
+    """安全获取异步迭代器的下一个元素，避免 StopAsyncIteration 在异步生成器中触发 RuntimeError。"""
+    try:
+        return await aiter.__anext__()
+    except StopAsyncIteration:
+        return _STREAM_END
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -44,13 +56,6 @@ def _derive_title(existing_title: str | None, user_message: str) -> str:
     if existing_title:
         return existing_title
     return _trim_text(user_message, limit=28) or "新对话"
-
-
-def _derive_context_signature(metadata: dict[str, Any]) -> str | None:
-    signature = context_signature_from_metadata(metadata)
-    if not signature:
-        return None
-    return signature
 
 
 def _friendly_stream_error(exc: Exception) -> str:
@@ -82,7 +87,7 @@ def _session_from_metadata(
         return rendered or fallback
 
     preview_source = assistant_message.strip() or user_message
-    derived_signature = _derive_context_signature(metadata)
+    derived_signature = context_signature_from_metadata(metadata)
     explicit_context_signature = pick(
         "context_signature",
         existing.context_signature if existing else None,
@@ -107,8 +112,8 @@ def _session_from_metadata(
         last_user_message=user_message,
         last_assistant_message=assistant_message or (existing.last_assistant_message if existing else None),
         last_message_preview=_trim_text(preview_source, limit=120),
-        created_at=existing.created_at if existing is not None else datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=existing.created_at if existing is not None else datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         turn_count=(existing.turn_count if existing is not None else 0),
     )
 
@@ -155,20 +160,36 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             LOGGER.warning("Failed to initialise session index for %s: %s", thread_id, exc)
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        # 发送会话信息信号
         yield _sse_event("session", {"thread_id": thread_id})
 
         full_content: list[str] = []
         trace_events: list[AgentTraceEvent] = []
         error_message: str | None = None
+        pending_next: asyncio.Task[Any] | None = None
 
         try:
-            async for event in graph.astream_events(
+            aiter = graph.astream_events(
                 input_msg, config=config, version="v2"
-            ):
+            ).__aiter__()
+
+            while True:
+                if pending_next is None:
+                    pending_next = asyncio.ensure_future(_next_event(aiter))
+
+                done, _ = await asyncio.wait(
+                    {pending_next}, timeout=_SSE_KEEPALIVE_INTERVAL
+                )
+                if not done:
+                    yield ": keepalive\n\n"
+                    continue
+
+                event = pending_next.result()
+                pending_next = None
+                if event is _STREAM_END:
+                    break
+
                 kind = event.get("event", "")
 
-                # LLM token 流
                 if kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if isinstance(chunk, AIMessageChunk) and chunk.content:
@@ -176,7 +197,6 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         full_content.append(token)
                         yield _sse_event("token", {"content": token})
 
-                # 工具调用开始
                 elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = event.get("data", {}).get("input", {})
@@ -192,7 +212,6 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         {"tool": tool_name, "input": tool_input},
                     )
 
-                # 工具调用结束
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "unknown")
                     tool_output = event.get("data", {}).get("output", "")
@@ -212,7 +231,6 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         },
                     )
 
-            # 最终完成事件
             yield _sse_event(
                 "done",
                 {
@@ -236,6 +254,8 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             LOGGER.exception("SSE stream error for thread %s", thread_id)
             yield _sse_event("error", {"message": error_message})
         finally:
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
             if memory_store is None:
                 return
             assistant_message = "".join(full_content)
@@ -250,8 +270,8 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         state_status = values.get("active_context_status")
                         if state_signature is not None and str(state_signature).strip():
                             turn_metadata["context_signature"] = str(state_signature).strip()
-                        elif _derive_context_signature(turn_metadata):
-                            turn_metadata["context_signature"] = _derive_context_signature(turn_metadata)
+                        elif context_signature_from_metadata(turn_metadata):
+                            turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
                         if state_status is not None and str(state_status).strip():
                             turn_metadata["context_status"] = str(state_status).strip().lower()
                 except Exception as exc:

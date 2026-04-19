@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from app.providers.llm import LLMError, LLMService
+from app.providers.llm import LLMError, LLMService, _PARSE_OUTPUT_SCHEMA
 
 
 class _StubStorage:
@@ -212,3 +212,93 @@ def test_parse_invalid_json_raises_biz_invalid_output(
         )
 
     assert exc_info.value.code == "BIZ_INVALID_LLM_OUTPUT"
+
+
+def test_parse_injects_response_format_when_structured_output_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    monkeypatch.setenv("OPENAI_STRUCTURED_OUTPUT", "true")
+    service = LLMService(
+        storage=_StubStorage(),
+        document=_StubDocument([{"type": "text", "text": "prompt"}]),
+    )
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return (
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"fields":[{"name":"ALT","value":"45","unit":"U/L",'
+                                '"referenceRange":"0-40","standardCode":"ALT",'
+                                '"confidence":0.95,"evidence":null}],"reportDate":null}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send)
+    result = service.parse(
+        {"assetRefs": [{"objectKey": "report.pdf", "fileType": "PDF"}]},
+        "gpt-5.4",
+        1,
+    )
+
+    sent_payload = captured_payloads[0]
+    assert "response_format" in sent_payload
+    assert sent_payload["response_format"]["type"] == "json_schema"
+    assert sent_payload["response_format"]["json_schema"] is _PARSE_OUTPUT_SCHEMA
+    assert result["structuredResult"]["fields"][0]["standardCode"] == "ALT"
+
+
+def test_parse_omits_response_format_when_structured_output_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    monkeypatch.setenv("OPENAI_STRUCTURED_OUTPUT", "false")
+    service = LLMService(
+        storage=_StubStorage(),
+        document=_StubDocument([{"type": "text", "text": "prompt"}]),
+    )
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return (
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"fields":[{"name":"GLU","value":"5.1","confidence":0.9}]}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send)
+    service.parse(
+        {"assetRefs": [{"objectKey": "report.pdf", "fileType": "PDF"}]},
+        "gpt-5.4",
+        1,
+    )
+
+    sent_payload = captured_payloads[0]
+    assert "response_format" not in sent_payload
+    system_prompt = str(sent_payload["messages"][0]["content"])
+    assert "Return only a valid JSON object" in system_prompt
+    assert "Do not use markdown code fences" in system_prompt

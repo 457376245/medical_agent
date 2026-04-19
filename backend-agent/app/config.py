@@ -1,8 +1,4 @@
-"""应用配置模块（非环境变量部分）。
-
-环境敏感配置（API密钥、连接字符串）保存在 .env 文件中。
-本模块管理应用行为参数、模型默认值和业务常量。
-"""
+"""应用配置模块。"""
 
 from __future__ import annotations
 
@@ -12,7 +8,7 @@ from app.utils import read_float_env, read_int_env, to_bool
 
 
 # ---------------------------------------------------------------------------
-# 模型默认配置
+# 模型默认配置（仅保留被其他模块 import 的部分）
 # ---------------------------------------------------------------------------
 OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "").strip()
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "").strip()
@@ -21,24 +17,10 @@ OPENAI_AGENT_MODEL: str = (
     or os.getenv("AGENT_MODEL", "").strip()
     or "gpt-5.4"
 )
-OPENAI_PARSE_MODEL: str = os.getenv("OPENAI_PARSE_MODEL", "gpt-5.4").strip()
-OPENAI_GENERATE_MODEL: str = os.getenv(
-    "OPENAI_GENERATE_MODEL", "gpt-5.4"
-).strip()
-OPENAI_VISION_MODEL: str = os.getenv("OPENAI_VISION_MODEL", "gpt-5.4").strip()
-OPENAI_FALLBACK_MODEL: str = os.getenv(
-    "OPENAI_FALLBACK_MODEL", "gpt-5.4"
-).strip()
-OPENAI_TEMPERATURE: float = read_float_env("OPENAI_TEMPERATURE", 0.0, 0.0)
 OPENAI_REQUEST_TIMEOUT_SECONDS: float = read_float_env(
     "OPENAI_REQUEST_TIMEOUT_SECONDS", 90.0, 1.0
 )
 OPENAI_SDK_RETRIES: int = read_int_env("OPENAI_SDK_RETRIES", 2, 0)
-OPENAI_TRUST_ENV: bool = to_bool(os.getenv("OPENAI_TRUST_ENV", "false"))
-OPENAI_PROXY: str = os.getenv("OPENAI_PROXY", "").strip()
-OPENAI_RETRY_WITH_ENV_PROXY: bool = to_bool(
-    os.getenv("OPENAI_RETRY_WITH_ENV_PROXY", "true")
-)
 
 DEFAULT_AGENT_MODEL: str = OPENAI_AGENT_MODEL
 DEFAULT_AGENT_TEMPERATURE: float = float(os.getenv("AGENT_TEMPERATURE", "0.3"))
@@ -48,12 +30,6 @@ DEFAULT_AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "4096"))
 # Agent 行为配置
 # ---------------------------------------------------------------------------
 MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
-"""单条用户消息允许的最大工具调用轮数。"""
-
-SESSION_IDLE_TIMEOUT_SECONDS: int = int(
-    os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "1800")
-)
-"""会话空闲超时时间，超过此时间无活动的会话可能被清理（30分钟）。"""
 
 # ---------------------------------------------------------------------------
 # 内存 / 持久化配置
@@ -71,7 +47,7 @@ CORS_ALLOW_ORIGINS: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Java 上下文聚合 API（用于疾病档案上下文工具）
+# Java 上下文聚合 API
 # ---------------------------------------------------------------------------
 JAVA_API_BASE_URL: str = os.getenv("JAVA_API_BASE_URL", "http://localhost:8080")
 JAVA_AGENT_CONTEXT_PATH: str = os.getenv(
@@ -98,12 +74,3 @@ LLM_PROXY_MODE: str = os.getenv("LLM_PROXY_MODE", "sanitize").strip().lower()
 LANGCHAIN_TRACING_V2: bool = to_bool(os.getenv("LANGCHAIN_TRACING_V2", "false"))
 LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "").strip()
 LANGCHAIN_PROJECT: str = os.getenv("LANGCHAIN_PROJECT", "medical-agent").strip()
-LANGCHAIN_ENDPOINT: str = os.getenv(
-    "LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"
-).strip()
-
-# ---------------------------------------------------------------------------
-# 业务常量（从现有代码迁移）
-# ---------------------------------------------------------------------------
-MAX_DOWNLOAD_BYTES: int = 20 * 1024 * 1024  # 20 MB
-MAX_PDF_TEXT_CHARS: int = 18_000

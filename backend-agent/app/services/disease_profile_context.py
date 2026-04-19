@@ -184,12 +184,7 @@ class DiseaseProfileContextClient:
             headers["X-Patient-Id"] = _txt(patient_id)
 
         try:
-            raw_payload = _http_get_json(url, headers=headers, timeout_seconds=self._timeout_seconds)
-            payload = (
-                raw_payload[1]
-                if isinstance(raw_payload, tuple) and len(raw_payload) > 1 and isinstance(raw_payload[1], dict)
-                else raw_payload
-            )
+            payload = _http_get_json(url, headers=headers, timeout_seconds=self._timeout_seconds)
             if not isinstance(payload, dict):
                 payload = {}
             return _normalize_bundle(payload, profile_id=profile_id)
