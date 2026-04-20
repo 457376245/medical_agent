@@ -2,16 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { agentFetch } from "../../lib/api";
-import { createSseEventParser, toRequestMetadata } from "./agent-utils";
+import { createSseEventParser, toRequestMetadata, WORKFLOW_LABELS } from "./agent-utils";
 import type {
+  AgentAudience,
   AgentMessage,
   AgentProfile,
   AgentSessionSummary,
   AgentTraceEvent,
+  AgentWorkflow,
   AgentWorkbenchProps,
 } from "./types";
 import { useRecordContext } from "./useRecordContext";
+import { useCareSupport } from "./useCareSupport";
 import { useSessionManager } from "./useSessionManager";
+
+const DEFAULT_AUDIENCE: AgentAudience = "patient";
 
 function appendSystemMessage(messages: AgentMessage[], content: string): AgentMessage[] {
   return [
@@ -58,7 +63,9 @@ export type UseAgentWorkbenchResult = {
   recordAnalysis: ReturnType<typeof useRecordContext>["recordAnalysis"];
   trendData: ReturnType<typeof useRecordContext>["trendData"];
   requestMetadata: ReturnType<typeof toRequestMetadata>;
+  workflow: AgentWorkflow;
   setDraft: (value: string) => void;
+  setWorkflow: (nextWorkflow: AgentWorkflow) => void;
   setProfileId: (nextProfileId: string) => void;
   setRecordId: (nextRecordId: string) => void;
   setSourceType: (nextSourceType: string) => void;
@@ -70,6 +77,17 @@ export type UseAgentWorkbenchResult = {
   reloadSessions: () => Promise<void>;
   deleteSession: (threadId: string) => Promise<void>;
   renameSession: (threadId: string, newTitle: string) => Promise<void>;
+  careProfile: ReturnType<typeof useCareSupport>["careProfile"];
+  followUpTasks: ReturnType<typeof useCareSupport>["followUpTasks"];
+  symptoms: ReturnType<typeof useCareSupport>["symptoms"];
+  riskOverview: ReturnType<typeof useCareSupport>["riskOverview"];
+  loadingCare: boolean;
+  loadingRisk: boolean;
+  careError: string;
+  saveCareProfile: ReturnType<typeof useCareSupport>["saveCareProfile"];
+  createFollowUpTask: ReturnType<typeof useCareSupport>["createFollowUpTask"];
+  updateFollowUpTask: ReturnType<typeof useCareSupport>["updateFollowUpTask"];
+  createSymptomLog: ReturnType<typeof useCareSupport>["createSymptomLog"];
 };
 
 export function useAgentWorkbench({
@@ -84,6 +102,7 @@ export function useAgentWorkbench({
   const [sourceType, setSourceTypeState] = useState("");
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [workflow, setWorkflowState] = useState<AgentWorkflow>("report_interpretation");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState("");
 
@@ -97,11 +116,13 @@ export function useAgentWorkbench({
     setSourceTypeState("");
     setMessages([]);
     setDraft("");
+    setWorkflowState("report_interpretation");
     setStreamError("");
   }, [patientId]);
 
   // Delegate record/context loading
   const context = useRecordContext(profileId, recordId, initialProfileId, initialRecords, patientId);
+  const careSupport = useCareSupport(patientId, profileId || undefined, recordId || undefined);
 
   // Delegate session management
   const sessionMgr = useSessionManager(profileId, isStreaming, patientId);
@@ -122,9 +143,13 @@ export function useAgentWorkbench({
         diseaseName: selectedProfile?.diseaseName,
         recordId: recordId || undefined,
         recordTitle: selectedRecord?.title,
+        recordDate: selectedRecord?.recordDate,
         sourceType: sourceType || undefined,
+        workflow,
+        urgencyLevel: careSupport.riskOverview.riskLevel,
+        audience: DEFAULT_AUDIENCE,
       }),
-    [profileId, recordId, selectedProfile?.diseaseName, selectedRecord?.title, sourceType],
+    [careSupport.riskOverview.riskLevel, profileId, recordId, selectedProfile?.diseaseName, selectedRecord?.recordDate, selectedRecord?.title, sourceType, workflow],
   );
 
   const setProfileId = (nextProfileId: string) => {
@@ -172,6 +197,15 @@ export function useAgentWorkbench({
     }
   };
 
+  const setWorkflow = (nextWorkflow: AgentWorkflow) => {
+    if (nextWorkflow === workflow) return;
+    setWorkflowState(nextWorkflow);
+    setStreamError("");
+    if (messages.length > 0) {
+      setMessages((prev) => appendSystemMessage(prev, `对话工作流已切换到 ${WORKFLOW_LABELS[nextWorkflow]}。`));
+    }
+  };
+
   const selectSession = async (threadId: string) => {
     setStreamError("");
     const result = await sessionMgr.selectSession(threadId);
@@ -183,6 +217,15 @@ export function useAgentWorkbench({
     }
     if (result.recordId) {
       setRecordIdState(result.recordId);
+    }
+    const lastTurnMetadata = result.lastTurnMetadata;
+    const nextWorkflow = lastTurnMetadata?.workflow;
+    if (
+      nextWorkflow === "report_interpretation"
+      || nextWorkflow === "follow_up_prep"
+      || nextWorkflow === "medication_review"
+    ) {
+      setWorkflowState(nextWorkflow);
     }
   };
 
@@ -374,8 +417,9 @@ export function useAgentWorkbench({
   };
 
   const deleteSession = async (threadId: string) => {
+    const wasActive = sessionMgr.activeThreadId === threadId;
     await sessionMgr.deleteSession(threadId);
-    if (sessionMgr.activeThreadId === threadId) {
+    if (wasActive) {
       setMessages([]);
       setStreamError("");
     }
@@ -406,7 +450,9 @@ export function useAgentWorkbench({
     recordAnalysis: context.recordAnalysis,
     trendData: context.trendData,
     requestMetadata,
+    workflow,
     setDraft,
+    setWorkflow,
     setProfileId,
     setRecordId,
     setSourceType,
@@ -418,5 +464,16 @@ export function useAgentWorkbench({
     reloadSessions: sessionMgr.reloadSessions,
     deleteSession,
     renameSession: sessionMgr.renameSession,
+    careProfile: careSupport.careProfile,
+    followUpTasks: careSupport.followUpTasks,
+    symptoms: careSupport.symptoms,
+    riskOverview: careSupport.riskOverview,
+    loadingCare: careSupport.loadingCare,
+    loadingRisk: careSupport.loadingRisk,
+    careError: careSupport.careError,
+    saveCareProfile: careSupport.saveCareProfile,
+    createFollowUpTask: careSupport.createFollowUpTask,
+    updateFollowUpTask: careSupport.updateFollowUpTask,
+    createSymptomLog: careSupport.createSymptomLog,
   };
 }

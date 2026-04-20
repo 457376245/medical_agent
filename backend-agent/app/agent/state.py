@@ -18,7 +18,7 @@ class AgentState(TypedDict):
     Attributes:
         messages: 对话消息历史（通过 add_messages reducer 自动累积）。
         thread_id: 当前会话标识符。
-        metadata: 任意请求元数据（patient_id、scenario 等）。
+        metadata: 任意请求元数据（patient_id、scenario、workflow 等）。
     """
 
     messages: Annotated[list[BaseMessage], add_messages]

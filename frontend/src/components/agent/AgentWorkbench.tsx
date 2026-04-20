@@ -4,10 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrendComparisonPanel } from "../profiles/TrendComparisonPanel";
 import { AppSelect, type AppSelectOption } from "../common/AppSelect";
-import { formatRelativeDate, getSessionDisplayTitle, quickPrompts } from "./agent-utils";
+import { formatRelativeDate, getSessionDisplayTitle, quickPrompts, severityLabel, WORKFLOW_LABELS } from "./agent-utils";
 import type { AgentWorkbenchProps } from "./types";
 import { useAgentWorkbench } from "./useAgentWorkbench";
 import { AgentMessageBubble } from "./AgentMessageBubble";
+import { AgentWorkflowBar } from "./AgentWorkflowBar";
+import { CareProfilePanel } from "./CareProfilePanel";
+import { FollowUpTasksPanel } from "./FollowUpTasksPanel";
+import { RiskOverviewPanel } from "./RiskOverviewPanel";
+import { SymptomLogPanel } from "./SymptomLogPanel";
 import { ArrowLeft, MessageSquare, ClipboardList, Search, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 
@@ -115,6 +120,11 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
       return title.includes(query) || disease.includes(query);
     });
   }, [workbench.sessions, sessionSearch]);
+
+  const riskLabel = useMemo(
+    () => severityLabel(workbench.riskOverview.riskLevel),
+    [workbench.riskOverview.riskLevel],
+  );
 
   // Auto-scroll to bottom when new messages arrive or streaming
   const scrollToBottom = useCallback(() => {
@@ -358,8 +368,11 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
             <div className="meta-row">
               {workbench.selectedProfile ? <span className="badge">{workbench.selectedProfile.recordCount} 份报告</span> : null}
               {workbench.selectedRecord ? <span className="badge">{workbench.selectedRecord.title}</span> : null}
+              <span className={`badge badge-risk-${workbench.riskOverview.riskLevel}`}>风险：{riskLabel}</span>
             </div>
           </div>
+
+          <AgentWorkflowBar workflow={workbench.workflow} onChange={workbench.setWorkflow} />
 
           {workbench.messages.length === 0 && (
             <div className="agent-prompt-row">
@@ -422,6 +435,7 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
                   <span className="badge">当前会话：{getSessionDisplayTitle(workbench.activeSessionSummary)}</span>
                 ) : null}
                 {workbench.requestMetadata.record_title ? <span className="badge">当前报告：{workbench.requestMetadata.record_title}</span> : null}
+                <span className="badge">工作流：{WORKFLOW_LABELS[workbench.workflow]}</span>
               </div>
               <div className="actions">
                 {workbench.isStreaming ? (
@@ -486,6 +500,32 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
             {workbench.loadingRecords ? <p className="agent-context-note">加载中...</p> : null}
             {!workbench.profileId ? <p className="agent-context-note">请先选择上方的疾病档案。</p> : null}
           </div>
+
+          {workbench.careError ? <p className="status-text error">{workbench.careError}</p> : null}
+
+          <RiskOverviewPanel riskOverview={workbench.riskOverview} loading={workbench.loadingRisk} />
+
+          <CareProfilePanel
+            careProfile={workbench.careProfile}
+            onSave={workbench.saveCareProfile}
+          />
+
+          <FollowUpTasksPanel
+            tasks={workbench.followUpTasks}
+            profileId={workbench.profileId || undefined}
+            recordId={workbench.recordId || undefined}
+            onCreateTask={workbench.createFollowUpTask}
+            onToggleTask={(task) =>
+              workbench.updateFollowUpTask(task.id, {
+                status: (task.status ?? "OPEN") === "DONE" ? "OPEN" : "DONE",
+              })}
+          />
+
+          <SymptomLogPanel
+            symptoms={workbench.symptoms}
+            profileId={workbench.profileId || undefined}
+            onCreateSymptom={workbench.createSymptomLog}
+          />
 
           {workbench.recordId && (
             <div className="agent-context-card">

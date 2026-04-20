@@ -37,12 +37,28 @@ from app.config import (
     OPENAI_SDK_RETRIES,
 )
 from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
-from app.prompts.templates import get_scenario_prompt
+from app.prompts.templates import get_conversation_prompt
 from app.tools.registry import get_tools
 from app.utils import normalize_openai_base_url
 
 LOGGER = logging.getLogger(__name__)
 CONTEXT_TOOL_NAME = "fetch_disease_profile_context"
+_TOOL_ERROR_PREFIX = "Error:"
+
+
+def _detect_recent_tool_errors(messages: list[Any]) -> list[str]:
+    """扫描最近一轮消息，返回包含错误的工具名列表。"""
+    errors: list[str] = []
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if isinstance(msg, ToolMessage):
+            content = str(msg.content or "").strip()
+            if content.startswith(_TOOL_ERROR_PREFIX):
+                tool_name = str(getattr(msg, "name", "unknown"))
+                if tool_name not in errors:
+                    errors.append(tool_name)
+    return errors
 
 
 def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
@@ -199,7 +215,6 @@ def create_llm_node(
     llm_with_tools = llm.bind_tools(tool_list)
 
     def call_llm(state: dict[str, Any]) -> dict[str, Any]:
-        """使用当前消息历史调用 LLM。"""
         raw_messages = state["messages"]
         messages = trim_messages(
             raw_messages,
@@ -230,15 +245,37 @@ def create_llm_node(
                 *prepared_messages[1:],
             ]
 
-        scenario = (state.get("metadata") or {}).get("scenario")
-        scenario_prompt = get_scenario_prompt(scenario)
+        metadata = state.get("metadata") or {}
+        scenario_prompt = get_conversation_prompt(
+            workflow=metadata.get("workflow"),
+            scenario=metadata.get("scenario"),
+            audience=metadata.get("audience"),
+            urgency_level=metadata.get("urgency_level"),
+        )
         if scenario_prompt:
             idx = 0
             while idx < len(prepared_messages) and isinstance(prepared_messages[idx], SystemMessage):
                 idx += 1
             prepared_messages.insert(idx, SystemMessage(content=scenario_prompt))
 
+        recent_errors = _detect_recent_tool_errors(prepared_messages)
+        if recent_errors:
+            error_hint = (
+                f"[注意] 以下工具调用返回了错误：{'、'.join(recent_errors)}。"
+                "请勿使用相同参数重试，向用户说明情况并提供替代建议。"
+            )
+            err_idx = 0
+            while err_idx < len(prepared_messages) and isinstance(prepared_messages[err_idx], SystemMessage):
+                err_idx += 1
+            prepared_messages.insert(err_idx, SystemMessage(content=error_hint))
+
         response = llm_with_tools.invoke(prepared_messages)
+
+        if not response.tool_calls and not str(response.content or "").strip():
+            LOGGER.warning("LLM 返回空内容且无工具调用，尝试重试")
+            prepared_messages.append(SystemMessage(content="请根据上述信息为用户提供有价值的回答。"))
+            response = llm_with_tools.invoke(prepared_messages)
+
         return {"messages": [response]}
 
     return call_llm

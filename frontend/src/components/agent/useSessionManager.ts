@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { agentFetch } from "../../lib/api";
 import { normalizeSessionDetail, normalizeSessionSummary } from "./agent-utils";
-import type { AgentMessage, AgentSessionSummary } from "./types";
+import type { AgentMessage, AgentRequestMetadata, AgentSessionSummary } from "./types";
 
 function mergeSessionSummary(
   current: AgentSessionSummary[],
@@ -32,6 +32,7 @@ export type UseSessionManagerResult = {
     diseaseProfileId?: string;
     recordId?: string;
     messages: AgentMessage[];
+    lastTurnMetadata?: AgentRequestMetadata;
   } | null>;
   startDraftSession: () => void;
   reloadSessions: () => Promise<void>;
@@ -100,6 +101,7 @@ export function useSessionManager(
     diseaseProfileId?: string;
     recordId?: string;
     messages: AgentMessage[];
+    lastTurnMetadata?: AgentRequestMetadata;
   } | null> => {
     setActiveThreadId(threadId);
     setLoadingConversation(true);
@@ -124,6 +126,7 @@ export function useSessionManager(
         diseaseProfileId: detail.diseaseProfileId,
         recordId: detail.recordId,
         messages: detail.messages,
+        lastTurnMetadata: detail.turns[detail.turns.length - 1]?.metadata,
       };
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "加载会话详情失败，请稍后重试。");

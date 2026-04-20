@@ -2382,6 +2382,48 @@ a {
   margin: 0;
 }
 
+.agent-workflow-bar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 4px;
+}
+
+.agent-workflow-pill {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 249, 251, 0.98) 100%);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.agent-workflow-pill strong {
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.agent-workflow-pill span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.agent-workflow-pill:hover {
+  transform: translateY(-1px);
+  border-color: #9bb7c1;
+  box-shadow: var(--shadow-sm);
+}
+
+.agent-workflow-pill.active {
+  border-color: #a8d0c5;
+  background: linear-gradient(135deg, rgba(233, 245, 239, 0.98) 0%, rgba(246, 252, 248, 0.98) 100%);
+  box-shadow: var(--shadow-sm);
+}
+
 .agent-prompt-row {
   display: grid;
   gap: 8px;
@@ -2853,6 +2895,288 @@ a {
   background: linear-gradient(180deg, #fffaf3 0%, #fff 100%);
 }
 
+.badge-risk-routine {
+  background: #eef6f3;
+  color: var(--ok);
+}
+
+.badge-risk-watch {
+  background: #fff6e8;
+  color: #b7791f;
+}
+
+.badge-risk-warning {
+  background: #fff2df;
+  color: #c05621;
+}
+
+.badge-risk-alert {
+  background: #fdf0ef;
+  color: var(--danger);
+}
+
+.agent-care-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 250, 252, 0.98) 100%);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 12px;
+}
+
+.agent-care-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.agent-care-card-head h4 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.agent-care-summary {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.agent-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.agent-risk-badge.risk-routine {
+  background: #eef6f3;
+  color: var(--ok);
+}
+
+.agent-risk-badge.risk-watch {
+  background: #fff6e8;
+  color: #b7791f;
+}
+
+.agent-risk-badge.risk-warning {
+  background: #fff1e4;
+  color: #c05621;
+}
+
+.agent-risk-badge.risk-alert {
+  background: #fdf0ef;
+  color: var(--danger);
+}
+
+.agent-care-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-care-stack.compact {
+  gap: 8px;
+}
+
+.agent-risk-item,
+.agent-evidence-item,
+.agent-task-item,
+.agent-symptom-item {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.agent-risk-item strong,
+.agent-evidence-item strong,
+.agent-task-item strong,
+.agent-symptom-item strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.agent-risk-item p,
+.agent-evidence-item p,
+.agent-task-item p,
+.agent-symptom-item p {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.agent-risk-item small,
+.agent-evidence-item small {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.agent-risk-item.risk-alert,
+.agent-symptom-item.level-alert {
+  border-color: #f0c7bf;
+  background: #fdf2f0;
+}
+
+.agent-risk-item.risk-warning,
+.agent-task-item.status-open {
+  border-color: #efd7b1;
+  background: #fff9f0;
+}
+
+.agent-risk-item.risk-watch,
+.agent-symptom-item.level-watch {
+  border-color: #e7dcc2;
+  background: #fffdf6;
+}
+
+.agent-evidence-item {
+  background: #f9fbfc;
+}
+
+.agent-care-divider {
+  height: 1px;
+  background: var(--line);
+}
+
+.agent-care-subhead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.agent-care-subhead strong {
+  font-size: 0.86rem;
+}
+
+.agent-care-subhead span {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.agent-care-form {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-care-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-care-form label span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.agent-care-form textarea,
+.agent-inline-grid input,
+.agent-inline-grid select,
+.agent-care-card > input {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.agent-care-form textarea {
+  min-height: 68px;
+  resize: vertical;
+}
+
+.agent-care-form textarea:focus,
+.agent-inline-grid input:focus,
+.agent-inline-grid select:focus,
+.agent-care-card > input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+
+.agent-inline-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agent-care-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-care-empty {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.agent-care-inline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-care-inline-list strong {
+  font-size: 0.84rem;
+}
+
+.agent-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #f8fbfc;
+  color: var(--ink);
+}
+
+.agent-chip.chip-warning {
+  background: #fff6e8;
+  color: #b7791f;
+  border-color: #efd7b1;
+}
+
+.agent-chip.chip-alert {
+  background: #fdf2f0;
+  color: var(--danger);
+  border-color: #f0c7bf;
+}
+
+.agent-task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-task-item.status-done {
+  background: #eef9f4;
+  border-color: #cfe8da;
+}
+
 .agent-drawer-backdrop {
   display: none;
 }
@@ -2986,6 +3310,11 @@ a {
   }
 
   .agent-prompt-row {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-workflow-bar,
+  .agent-inline-grid {
     grid-template-columns: 1fr;
   }
 

@@ -17,5 +17,5 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="用户消息内容。")
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="可选元数据（patient_id、scenario 等）。",
+        description="可选元数据（patient_id、scenario、workflow、urgency_level、audience 等）。",
     )

@@ -4,6 +4,7 @@ from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
 
 
 def test_core_principles_present() -> None:
+    assert "慢病随访" in SYSTEM_MEDICAL_ASSISTANT
     assert "循证医学" in SYSTEM_MEDICAL_ASSISTANT
     assert "事实陈述和推理建议" in SYSTEM_MEDICAL_ASSISTANT
     assert "不编造信息" in SYSTEM_MEDICAL_ASSISTANT
@@ -19,7 +20,19 @@ def test_tool_strategy_present() -> None:
 
 
 def test_response_structure_present() -> None:
-    assert "发现" in SYSTEM_MEDICAL_ASSISTANT
-    assert "解读" in SYSTEM_MEDICAL_ASSISTANT
-    assert "建议" in SYSTEM_MEDICAL_ASSISTANT
-    assert "三段式结构" in SYSTEM_MEDICAL_ASSISTANT
+    assert "已知事实" in SYSTEM_MEDICAL_ASSISTANT
+    assert "可能解释" in SYSTEM_MEDICAL_ASSISTANT
+    assert "建议动作" in SYSTEM_MEDICAL_ASSISTANT
+    assert "结构化行动闭环" in SYSTEM_MEDICAL_ASSISTANT
+
+
+def test_chronic_care_context_guidance_present() -> None:
+    assert "当前用药" in SYSTEM_MEDICAL_ASSISTANT
+    assert "红旗信号" in SYSTEM_MEDICAL_ASSISTANT
+    assert "证据来源" in SYSTEM_MEDICAL_ASSISTANT
+
+
+def test_error_handling_guidance_present() -> None:
+    assert "Error:" in SYSTEM_MEDICAL_ASSISTANT
+    assert "相同参数" in SYSTEM_MEDICAL_ASSISTANT
+    assert "用户友好" in SYSTEM_MEDICAL_ASSISTANT

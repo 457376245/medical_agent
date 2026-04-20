@@ -1,4 +1,5 @@
 import type {
+  AgentAudience,
   AgentMessage,
   AgentRequestMetadata,
   AgentSessionDetail,
@@ -7,13 +8,15 @@ import type {
   AgentSseEvent,
   AgentStructuredField,
   AgentTraceEvent,
+  AgentUrgencyLevel,
+  AgentWorkflow,
 } from "./types";
 
-function toText(value: unknown): string {
+export function toText(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
 }
 
-function toOptionalText(value: unknown): string | undefined {
+export function toOptionalText(value: unknown): string | undefined {
   const rendered = toText(value).trim();
   return rendered || undefined;
 }
@@ -22,9 +25,34 @@ function toSingleLineText(value?: string): string | undefined {
   return value?.replace(/\s+/g, " ").trim() || undefined;
 }
 
-function asObject(value: unknown): Record<string, unknown> {
+export function asObject(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
+
+export const WORKFLOW_LABELS: Record<AgentWorkflow, string> = {
+  report_interpretation: "报告解读",
+  follow_up_prep: "复诊准备",
+  medication_review: "用药回顾",
+};
+
+export function severityLabel(level: string): string {
+  switch (level) {
+    case "alert":
+      return "高风险";
+    case "warning":
+      return "需加快复查";
+    case "watch":
+      return "持续观察";
+    default:
+      return "常规随访";
+  }
+}
+
+const WORKFLOW_SCENARIO_MAP: Record<AgentWorkflow, string> = {
+  report_interpretation: "report_interpretation",
+  follow_up_prep: "clinical_summary",
+  medication_review: "medication_review",
+};
 
 function normalizeTraceEvent(raw: unknown): AgentTraceEvent {
   const payload = asObject(raw);
@@ -185,15 +213,23 @@ export function toRequestMetadata(args: {
   diseaseName?: string;
   recordId?: string;
   recordTitle?: string;
+  recordDate?: string;
   sourceType?: string;
+  workflow: AgentWorkflow;
+  urgencyLevel?: AgentUrgencyLevel;
+  audience?: AgentAudience;
 }): AgentRequestMetadata {
   return {
     disease_profile_id: args.diseaseProfileId,
     disease_name: args.diseaseName,
     record_id: args.recordId,
     record_title: args.recordTitle,
+    record_date: args.recordDate,
     source_type: args.sourceType,
-    scenario: args.recordId ? "report_interpretation" : undefined,
+    scenario: WORKFLOW_SCENARIO_MAP[args.workflow],
+    workflow: args.workflow,
+    urgency_level: args.urgencyLevel,
+    audience: args.audience ?? "patient",
     entry: "agent_page",
   };
 }
@@ -216,14 +252,14 @@ export function formatRelativeDate(value?: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  const diffMinutes = Math.round((Date.now() - date.getTime()) / 60000);
+  const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
   if (diffMinutes < 1) {
     return "刚刚";
   }
   if (diffMinutes < 60) {
     return `${diffMinutes} 分钟前`;
   }
-  const diffHours = Math.round(diffMinutes / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) {
     return `${diffHours} 小时前`;
   }

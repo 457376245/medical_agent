@@ -62,6 +62,12 @@ def build_context_system_message(
     selected_record = active_context_bundle.get("selected_record")
     record_summary = active_context_bundle.get("record_summary")
     trend_summary = active_context_bundle.get("trend_summary")
+    patient_baseline = active_context_bundle.get("patient_baseline")
+    current_medications = active_context_bundle.get("current_medications")
+    care_goals = active_context_bundle.get("care_goals")
+    follow_up_tasks = active_context_bundle.get("follow_up_tasks")
+    red_flag_signals = active_context_bundle.get("red_flag_signals")
+    evidence_refs = active_context_bundle.get("evidence_refs")
     warnings = active_context_bundle.get("warnings")
 
     lines: list[str] = []
@@ -69,6 +75,9 @@ def build_context_system_message(
     has_key_fields = False
     has_trends = False
     has_analysis_or_summary = False
+    has_red_flags = False
+    has_medications = False
+    has_evidence_refs = False
 
     if isinstance(disease_profile, Mapping):
         disease_name = str(disease_profile.get("name") or "").strip()
@@ -140,6 +149,143 @@ def build_context_system_message(
             has_trends = True
             lines.append(f"- 趋势摘要：{'；'.join(rendered_trends)}")
 
+    if isinstance(patient_baseline, Mapping):
+        diagnosed_conditions = [
+            str(item).strip()
+            for item in patient_baseline.get("diagnosed_conditions", [])
+            if str(item).strip()
+        ]
+        allergies = [
+            str(item).strip()
+            for item in patient_baseline.get("allergies", [])
+            if str(item).strip()
+        ]
+        abnormal_baseline = [
+            str(item).strip()
+            for item in patient_baseline.get("abnormal_baseline", [])
+            if str(item).strip()
+        ]
+        doctor_instructions = str(patient_baseline.get("doctor_instructions") or "").strip()
+        recent_symptoms = patient_baseline.get("recent_symptoms")
+        if diagnosed_conditions:
+            lines.append(f"- 已知慢病/诊断：{'；'.join(diagnosed_conditions[:4])}")
+        if allergies:
+            lines.append(f"- 过敏/禁忌：{'；'.join(allergies[:4])}")
+        if abnormal_baseline:
+            lines.append(f"- 既往异常基线：{'；'.join(abnormal_baseline[:4])}")
+        if doctor_instructions:
+            lines.append(f"- 医生交代事项：{doctor_instructions}")
+        if isinstance(recent_symptoms, list) and recent_symptoms:
+            rendered_symptoms: list[str] = []
+            for item in recent_symptoms[:3]:
+                if not isinstance(item, Mapping):
+                    continue
+                label = str(item.get("label") or "").strip()
+                value = str(item.get("value") or "").strip()
+                unit = str(item.get("unit") or "").strip()
+                notes = str(item.get("notes") or "").strip()
+                if not label:
+                    continue
+                segment = label
+                if value:
+                    segment = f"{segment}={value}{unit}"
+                if notes:
+                    segment = f"{segment}（{notes}）"
+                rendered_symptoms.append(segment)
+            if rendered_symptoms:
+                lines.append(f"- 近期症状/体征：{'；'.join(rendered_symptoms)}")
+
+    if isinstance(current_medications, list) and current_medications:
+        rendered_meds: list[str] = []
+        for item in current_medications[:5]:
+            if not isinstance(item, Mapping):
+                continue
+            name = str(item.get("name") or "").strip()
+            dosage = str(item.get("dosage") or "").strip()
+            frequency = str(item.get("frequency") or "").strip()
+            purpose = str(item.get("purpose") or "").strip()
+            if not name:
+                continue
+            segment = name
+            if dosage:
+                segment = f"{segment} {dosage}"
+            if frequency:
+                segment = f"{segment} / {frequency}"
+            if purpose:
+                segment = f"{segment}（用途：{purpose}）"
+            rendered_meds.append(segment)
+        if rendered_meds:
+            has_medications = True
+            lines.append(f"- 当前用药：{'；'.join(rendered_meds)}")
+
+    if isinstance(care_goals, list):
+        rendered_goals = [str(item).strip() for item in care_goals[:4] if str(item).strip()]
+        if rendered_goals:
+            lines.append(f"- 当前健康目标：{'；'.join(rendered_goals)}")
+
+    if isinstance(follow_up_tasks, list):
+        rendered_tasks: list[str] = []
+        for item in follow_up_tasks[:4]:
+            if not isinstance(item, Mapping):
+                continue
+            title = str(item.get("title") or "").strip()
+            due_date = str(item.get("due_date") or "").strip()
+            priority = str(item.get("priority") or "").strip()
+            status_text = str(item.get("status") or "").strip()
+            if not title:
+                continue
+            segment = title
+            meta_parts = [part for part in [due_date, priority, status_text] if part]
+            if meta_parts:
+                segment = f"{segment}（{' / '.join(meta_parts)}）"
+            rendered_tasks.append(segment)
+        if rendered_tasks:
+            lines.append(f"- 随访任务：{'；'.join(rendered_tasks)}")
+
+    if isinstance(red_flag_signals, list):
+        rendered_flags: list[str] = []
+        for item in red_flag_signals[:3]:
+            if not isinstance(item, Mapping):
+                continue
+            severity = str(item.get("severity") or "").strip().lower() or "watch"
+            title = str(item.get("title") or "").strip()
+            detail = str(item.get("detail") or "").strip()
+            if not title:
+                continue
+            label = "高优先级"
+            if severity == "warning":
+                label = "需关注"
+            elif severity == "watch":
+                label = "观察"
+            segment = f"{label}:{title}"
+            if detail:
+                segment = f"{segment}（{detail}）"
+            rendered_flags.append(segment)
+        if rendered_flags:
+            has_red_flags = True
+            lines.append(f"- 红旗信号：{'；'.join(rendered_flags)}")
+
+    if isinstance(evidence_refs, list):
+        rendered_evidence: list[str] = []
+        for item in evidence_refs[:4]:
+            if not isinstance(item, Mapping):
+                continue
+            title = str(item.get("title") or "").strip()
+            type_name = str(item.get("type") or "").strip()
+            confidence = str(item.get("confidence") or "").strip()
+            nature = str(item.get("nature") or "").strip()
+            source = str(item.get("source") or "").strip()
+            if not title:
+                continue
+            segment = title
+            meta_parts = [part for part in [type_name, confidence, nature, source] if part]
+            if meta_parts:
+                segment = f"{segment}（{' / '.join(meta_parts)}）"
+            rendered_evidence.append(segment)
+        if rendered_evidence:
+            has_evidence_refs = True
+            lines.append(f"- 证据来源：{'；'.join(rendered_evidence)}")
+
     warning_list: list[str] = []
     if isinstance(warnings, list):
         for item in warnings:
@@ -205,6 +351,24 @@ def build_context_system_message(
         guidance.append(
             "[提示] 上方包含历史趋势数据，回答时请分析指标随时间的变化方向"
             "（升高/降低/稳定），并结合趋势讨论当前值的临床意义。"
+        )
+
+    if has_medications:
+        guidance.append(
+            "[提示] 当前上下文已包含长期用药信息。涉及药物相关问题时，优先引用这些药物，"
+            "并明确区分既有事实与药物风险推断。"
+        )
+
+    if has_red_flags:
+        guidance.append(
+            "[提示] 当前上下文存在红旗信号。请优先处理紧急程度，"
+            "先说明是否需要尽快就医/复诊，再补充一般性解释。"
+        )
+
+    if has_evidence_refs:
+        guidance.append(
+            "[提示] 回答中请主动区分规则结论、趋势推断和长期画像记忆，"
+            "并用“已知事实 / 可能解释 / 建议动作”的结构组织内容。"
         )
 
     result = prefix + "\n" + "\n".join(lines)

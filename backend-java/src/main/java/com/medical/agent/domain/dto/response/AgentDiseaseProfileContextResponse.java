@@ -8,6 +8,12 @@ public record AgentDiseaseProfileContextResponse(
     List<AgentRecordContextSummary> recentRecords,
     AgentRecordContextData recordSummary,
     List<AgentTrendSnapshotSummary> trendSummary,
+    PatientCareProfileResponseData.BaselineSummary patientBaseline,
+    List<PatientCareProfileResponseData.MedicationItem> currentMedications,
+    List<String> careGoals,
+    List<PatientCareFollowUpTaskListResponseData.TaskSummary> followUpTasks,
+    List<PatientCareRiskOverviewResponseData.RiskSignal> redFlagSignals,
+    List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs,
     String contextStatus,
     List<String> warnings) {}
 

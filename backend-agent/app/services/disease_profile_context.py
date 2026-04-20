@@ -76,6 +76,21 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
     profile = _dict(payload.get("profile"))
     summary = _dict(payload.get("recordSummary"))
     selected = _dict(payload.get("selectedRecord"))
+    patient_baseline = _dict(payload.get("patientBaseline"))
+
+    def map_symptom(item: dict[str, Any]) -> dict[str, Any] | None:
+        label = _opt(item.get("label"))
+        if not label:
+            return None
+        return {
+            "id": _opt(item.get("id")),
+            "label": label,
+            "value": _opt(item.get("value")),
+            "unit": _opt(item.get("unit")),
+            "alert_level": _opt(item.get("alertLevel")),
+            "notes": _opt(item.get("notes")),
+            "recorded_at": _opt(item.get("recordedAt")),
+        }
 
     def map_key_field(item: dict[str, Any]) -> dict[str, Any] | None:
         name, value = _opt(item.get("name")), _opt(item.get("value"))
@@ -105,6 +120,57 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "summary": _opt(item.get("summary")),
         }
 
+    def map_medication(item: dict[str, Any]) -> dict[str, Any] | None:
+        name = _opt(item.get("name"))
+        if not name:
+            return None
+        return {
+            "name": name,
+            "dosage": _opt(item.get("dosage")),
+            "frequency": _opt(item.get("frequency")),
+            "purpose": _opt(item.get("purpose")),
+        }
+
+    def map_task(item: dict[str, Any]) -> dict[str, Any] | None:
+        title = _opt(item.get("title"))
+        if not title:
+            return None
+        return {
+            "id": _opt(item.get("id")),
+            "title": title,
+            "due_date": _opt(item.get("dueDate")),
+            "priority": _opt(item.get("priority")),
+            "status": _opt(item.get("status")),
+            "notes": _opt(item.get("notes")),
+            "disease_profile_id": _opt(item.get("diseaseProfileId")),
+            "record_id": _opt(item.get("recordId")),
+            "created_at": _opt(item.get("createdAt")),
+        }
+
+    def map_risk_signal(item: dict[str, Any]) -> dict[str, Any] | None:
+        title = _opt(item.get("title"))
+        if not title:
+            return None
+        return {
+            "severity": _opt(item.get("severity")),
+            "title": title,
+            "detail": _opt(item.get("detail")),
+            "recommended_action": _opt(item.get("recommendedAction")),
+        }
+
+    def map_evidence(item: dict[str, Any]) -> dict[str, Any] | None:
+        title = _opt(item.get("title"))
+        if not title:
+            return None
+        return {
+            "type": _opt(item.get("type")),
+            "title": title,
+            "detail": _opt(item.get("detail")),
+            "source": _opt(item.get("source")),
+            "confidence": _opt(item.get("confidence")),
+            "nature": _opt(item.get("nature")),
+        }
+
     return {
         "context_status": _status(payload.get("contextStatus")),
         "disease_profile": {
@@ -129,6 +195,22 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "key_fields": _map_slice(_dict_list(summary.get("keyFields")), limit=8, mapper=map_key_field),
         },
         "trend_summary": _map_slice(_dict_list(payload.get("trendSummary")), limit=3, mapper=map_trend),
+        "patient_baseline": {
+            "diagnosed_conditions": [_txt(item) for item in patient_baseline.get("diagnosedConditions", []) if _txt(item)],
+            "allergies": [_txt(item) for item in patient_baseline.get("allergies", []) if _txt(item)],
+            "abnormal_baseline": [_txt(item) for item in patient_baseline.get("abnormalBaseline", []) if _txt(item)],
+            "doctor_instructions": _opt(patient_baseline.get("doctorInstructions")),
+            "recent_symptoms": _map_slice(
+                _dict_list(patient_baseline.get("recentSymptoms")),
+                limit=4,
+                mapper=map_symptom,
+            ),
+        },
+        "current_medications": _map_slice(_dict_list(payload.get("currentMedications")), limit=8, mapper=map_medication),
+        "care_goals": [_txt(item) for item in payload.get("careGoals", []) if _txt(item)],
+        "follow_up_tasks": _map_slice(_dict_list(payload.get("followUpTasks")), limit=5, mapper=map_task),
+        "red_flag_signals": _map_slice(_dict_list(payload.get("redFlagSignals")), limit=4, mapper=map_risk_signal),
+        "evidence_refs": _map_slice(_dict_list(payload.get("evidenceRefs")), limit=6, mapper=map_evidence),
         "warnings": [_txt(item) for item in payload.get("warnings", []) if _txt(item)],
     }
 
@@ -141,6 +223,18 @@ def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict
         "recent_records": [],
         "record_summary": {"summary": None, "analysis": None, "key_fields": []},
         "trend_summary": [],
+        "patient_baseline": {
+            "diagnosed_conditions": [],
+            "allergies": [],
+            "abnormal_baseline": [],
+            "doctor_instructions": None,
+            "recent_symptoms": [],
+        },
+        "current_medications": [],
+        "care_goals": [],
+        "follow_up_tasks": [],
+        "red_flag_signals": [],
+        "evidence_refs": [],
         "warnings": [message],
         "error": {"code": code, "message": message},
     }

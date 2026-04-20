@@ -10,6 +10,10 @@ import com.medical.agent.domain.dto.response.AgentKeyFieldSummary;
 import com.medical.agent.domain.dto.response.AgentRecordContextData;
 import com.medical.agent.domain.dto.response.AgentRecordContextSummary;
 import com.medical.agent.domain.dto.response.AgentTrendSnapshotSummary;
+import com.medical.agent.domain.dto.response.PatientCareFollowUpTaskListResponseData;
+import com.medical.agent.domain.dto.response.PatientCareProfileResponseData;
+import com.medical.agent.domain.dto.response.PatientCareRiskOverviewResponseData;
+import com.medical.agent.domain.util.TextUtils;
 import com.medical.agent.domain.vo.RecordDetail;
 import com.medical.agent.domain.vo.RecordTrendData;
 import com.medical.agent.domain.vo.ReportAnalysisResult;
@@ -43,6 +47,7 @@ public class AgentDiseaseProfileContextService {
   private static final int MAX_KEY_FIELDS = 8;
   private static final int MAX_TREND_SNAPSHOTS = 3;
   private static final int PER_CATEGORY_RECORD_LIMIT = 3;
+  private static final int MAX_PROFILE_RECORDS = 20;
 
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final RecordMapper recordMapper;
@@ -50,6 +55,7 @@ public class AgentDiseaseProfileContextService {
   private final StructuredResultMapper structuredResultMapper;
   private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
+  private final PatientCareService patientCareService;
   private final TenantContextProvider tenantContextProvider;
   private final ObjectMapper objectMapper;
 
@@ -60,6 +66,7 @@ public class AgentDiseaseProfileContextService {
       StructuredResultMapper structuredResultMapper,
       RecordService recordService,
       ReportAnalysisService reportAnalysisService,
+      PatientCareService patientCareService,
       TenantContextProvider tenantContextProvider,
       ObjectMapper objectMapper) {
     this.diseaseProfileMapper = diseaseProfileMapper;
@@ -68,6 +75,7 @@ public class AgentDiseaseProfileContextService {
     this.structuredResultMapper = structuredResultMapper;
     this.recordService = recordService;
     this.reportAnalysisService = reportAnalysisService;
+    this.patientCareService = patientCareService;
     this.tenantContextProvider = tenantContextProvider;
     this.objectMapper = objectMapper;
   }
@@ -94,10 +102,14 @@ public class AgentDiseaseProfileContextService {
     AgentRecordContextSummary selectedRecord = null;
     AgentRecordContextData recordSummary = null;
     List<AgentTrendSnapshotSummary> trendSummary = List.of();
+    PatientCareProfileResponseData careProfile = patientCareService.getProfile();
+    PatientCareFollowUpTaskListResponseData followUpTasks = patientCareService.listFollowUpTasks("OPEN", 5);
+    String riskRecordId = null;
 
     if (hasText(recordId)) {
       // 有明确的 recordId：聚焦单份报告
       RecordEntity focusRecord = getRecordInProfileOrThrow(profileUuid, recordId);
+      riskRecordId = focusRecord.getId().toString();
       selectedRecord = toRecordSummary(focusRecord);
 
       RecordDetail detail = recordService.fetchRecord(focusRecord.getId());
@@ -117,7 +129,7 @@ public class AgentDiseaseProfileContextService {
         partial = true;
       }
 
-      recordSummary = new AgentRecordContextData(trimToNull(detail.summary()), analysis, keyFields);
+      recordSummary = new AgentRecordContextData(TextUtils.trimToNull(detail.summary()), analysis, keyFields);
     } else if (!profileRecords.isEmpty()) {
       // 无 recordId：聚合各分类下最近的报告数据
       List<AgentKeyFieldSummary> aggregatedKeyFields = aggregateKeyFieldsByCategory(profileRecords, warnings);
@@ -135,6 +147,7 @@ public class AgentDiseaseProfileContextService {
       // 不设置 selectedRecord 和 analysis，因为用户没有聚焦特定报告
       recordSummary = new AgentRecordContextData(null, null, aggregatedKeyFields);
     }
+    PatientCareRiskOverviewResponseData riskOverview = patientCareService.getRiskOverview(profileId, riskRecordId, careProfile);
 
     return new AgentDiseaseProfileContextResponse(
         profileSummary,
@@ -142,6 +155,12 @@ public class AgentDiseaseProfileContextService {
         summarizeRecentRecords(profileRecords),
         recordSummary,
         trendSummary,
+        careProfile.patientBaseline(),
+        careProfile.currentMedications(),
+        careProfile.careGoals(),
+        followUpTasks.tasks(),
+        riskOverview.signals(),
+        riskOverview.evidenceRefs(),
         partial ? "PARTIAL" : "READY",
         warnings);
   }
@@ -165,7 +184,8 @@ public class AgentDiseaseProfileContextService {
         .eq(RecordEntity::getDiseaseProfileId, profileUuid)
         .orderByDesc(RecordEntity::getRecordDate)
         .orderByDesc(RecordEntity::getUpdatedAt)
-        .orderByDesc(RecordEntity::getCreatedAt));
+        .orderByDesc(RecordEntity::getCreatedAt)
+        .last("limit " + MAX_PROFILE_RECORDS));
   }
 
   private RecordEntity getRecordInProfileOrThrow(UUID profileUuid, String recordId) {
@@ -207,7 +227,7 @@ public class AgentDiseaseProfileContextService {
   private String tryLoadAnalysis(UUID recordId, List<String> warnings) {
     try {
       ReportAnalysisResult analysisResult = reportAnalysisService.getOrGenerate(recordId);
-      return trimToNull(analysisResult.content());
+      return TextUtils.trimToNull(analysisResult.content());
     } catch (ReportAnalysisService.AnalysisNotReadyException ignored) {
       warnings.add("当前报告分析尚未就绪。");
       return null;
@@ -251,8 +271,8 @@ public class AgentDiseaseProfileContextService {
       fields.add(new AgentKeyFieldSummary(
           name,
           value,
-          trimToNull(readText(fieldNode, "unit")),
-          trimToNull(readText(fieldNode, "referenceRange"))));
+          TextUtils.trimToNull(readText(fieldNode, "unit")),
+          TextUtils.trimToNull(readText(fieldNode, "referenceRange"))));
     }
     return fields;
   }
@@ -309,10 +329,6 @@ public class AgentDiseaseProfileContextService {
 
   private String trimOrDefault(String value, String fallback) {
     return hasText(value) ? value.trim() : fallback;
-  }
-
-  private String trimToNull(String value) {
-    return hasText(value) ? value.trim() : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -374,8 +390,8 @@ public class AgentDiseaseProfileContextService {
           aggregatedFields.add(new AgentKeyFieldSummary(
               name + " [" + sourceType + "]",
               value,
-              trimToNull(readText(fieldNode, "unit")),
-              trimToNull(readText(fieldNode, "referenceRange"))));
+              TextUtils.trimToNull(readText(fieldNode, "unit")),
+              TextUtils.trimToNull(readText(fieldNode, "referenceRange"))));
 
           if (aggregatedFields.size() >= MAX_KEY_FIELDS) break;
         }

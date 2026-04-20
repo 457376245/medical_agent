@@ -10,6 +10,9 @@ import com.medical.agent.domain.dto.response.AgentDiseaseProfileSummary;
 import com.medical.agent.domain.dto.response.AgentRecordContextData;
 import com.medical.agent.domain.dto.response.AgentRecordContextSummary;
 import com.medical.agent.domain.dto.response.AgentTrendSnapshotSummary;
+import com.medical.agent.domain.dto.response.PatientCareFollowUpTaskListResponseData;
+import com.medical.agent.domain.dto.response.PatientCareProfileResponseData;
+import com.medical.agent.domain.dto.response.PatientCareRiskOverviewResponseData;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,12 @@ class AgentContextControllerTest {
         List.of(new AgentRecordContextSummary("record-1", "门诊检验", "2026-03-01", "LAB", "SUCCESS")),
         new AgentRecordContextData("summary", "analysis", List.of()),
         List.of(new AgentTrendSnapshotSummary("record-1", "2026-03-01", "门诊检验", "空腹血糖:6.5mmol/L")),
+        new PatientCareProfileResponseData.BaselineSummary(List.of("高血压"), List.of("青霉素"), List.of("ALT长期偏高"), "按季度复查", List.of()),
+        List.of(new PatientCareProfileResponseData.MedicationItem("缬沙坦", "80mg", "qd", "降压")),
+        List.of("血压稳定 < 130/80"),
+        List.of(new PatientCareFollowUpTaskListResponseData.TaskSummary("task-1", "两周后复查血压", "2026-03-15", "HIGH", "OPEN", null, "profile-1", null, "2026-03-01T09:00:00")),
+        List.of(new PatientCareRiskOverviewResponseData.RiskSignal("watch", "血压波动", "建议持续监测", "如头晕加重请提前就医")),
+        List.of(new PatientCareRiskOverviewResponseData.EvidenceItem("rule_engine", "高血压随访", "近期存在波动", "门诊检验", "medium", "RULE_CONCLUSION")),
         "READY",
         List.of());
     when(contextService.fetchProfileContext("profile-1", "record-1")).thenReturn(payload);

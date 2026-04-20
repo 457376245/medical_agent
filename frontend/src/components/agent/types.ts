@@ -44,6 +44,10 @@ export type AgentTrendData = {
   snapshots: AgentTrendSnapshot[];
 };
 
+export type AgentWorkflow = "report_interpretation" | "follow_up_prep" | "medication_review";
+export type AgentAudience = "patient" | "caregiver" | "clinician";
+export type AgentUrgencyLevel = "routine" | "watch" | "warning" | "alert";
+
 export type AgentRequestMetadata = {
   disease_profile_id?: string;
   disease_name?: string;
@@ -52,6 +56,9 @@ export type AgentRequestMetadata = {
   record_date?: string;
   source_type?: string;
   scenario?: string;
+  workflow?: AgentWorkflow;
+  urgency_level?: AgentUrgencyLevel;
+  audience?: AgentAudience;
   entry: "agent_page";
 };
 
@@ -131,4 +138,73 @@ export type AgentWorkbenchProps = {
 export type AgentSseEvent = {
   event: string;
   data: Record<string, unknown>;
+};
+
+export type CareMedication = {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  purpose?: string;
+};
+
+export type CareSymptomItem = {
+  id: string;
+  label: string;
+  value?: string;
+  unit?: string;
+  alertLevel?: string;
+  notes?: string;
+  recordedAt?: string;
+  diseaseProfileId?: string;
+};
+
+export type CareBaseline = {
+  diagnosedConditions: string[];
+  allergies: string[];
+  abnormalBaseline: string[];
+  doctorInstructions?: string;
+  recentSymptoms: CareSymptomItem[];
+};
+
+export type CareProfile = {
+  patientBaseline: CareBaseline;
+  currentMedications: CareMedication[];
+  careGoals: string[];
+  redFlagNotes: string[];
+  updatedAt?: string;
+};
+
+export type FollowUpTask = {
+  id: string;
+  title: string;
+  dueDate?: string;
+  priority?: string;
+  status?: string;
+  notes?: string;
+  diseaseProfileId?: string;
+  recordId?: string;
+  createdAt?: string;
+};
+
+export type RiskSignal = {
+  severity?: string;
+  title: string;
+  detail?: string;
+  recommendedAction?: string;
+};
+
+export type EvidenceRef = {
+  type?: string;
+  title: string;
+  detail?: string;
+  source?: string;
+  confidence?: string;
+  nature?: string;
+};
+
+export type RiskOverview = {
+  riskLevel: AgentUrgencyLevel;
+  summary: string;
+  signals: RiskSignal[];
+  evidenceRefs: EvidenceRef[];
 };

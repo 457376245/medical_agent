@@ -108,3 +108,21 @@ def test_guidance_appended_after_data_lines() -> None:
     data_end = result.index("趋势摘要")
     guidance_start = result.index("[提示]")
     assert guidance_start > data_end
+
+
+def test_red_flags_and_evidence_render_in_context() -> None:
+    bundle = _bundle(
+        selected_record={"title": "肝功能", "parse_status": "completed"},
+        record_summary={"analysis": "提示肝功能异常", "key_fields": []},
+    )
+    bundle["red_flag_signals"] = [
+        {"severity": "warning", "title": "趋势监测提醒", "detail": "ALT 连续异常", "recommended_action": "建议尽快复查"},
+    ]
+    bundle["evidence_refs"] = [
+        {"type": "rule_engine", "title": "肝功能联动", "detail": "规则触发", "confidence": "high", "nature": "RULE_CONCLUSION"},
+    ]
+    result = build_context_system_message(active_context_bundle=bundle, active_context_status="ready")
+    assert result is not None
+    assert "红旗信号" in result
+    assert "证据来源" in result
+    assert "已知事实 / 可能解释 / 建议动作" in result

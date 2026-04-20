@@ -8,7 +8,7 @@
 
 ## 摘要
 
-对 `backend-agent` Python 服务进行垂直方向增强，提升报告解析质量和 AI 对话精准度。已落地七项能力：场景模板注入、结构化输出强制、第一梯队快速修复、全模块代码精简、System Prompt 深度优化、Context 感知增强提示、对话历史窗口管理。
+对 `backend-agent` Python 服务进行垂直方向增强，提升报告解析质量和 AI 对话精准度。已落地十项能力：场景模板注入、结构化输出强制、第一梯队快速修复、全模块代码精简、System Prompt 深度优化、Context 感知增强提示、对话历史窗口管理、指标异常根因推理场景、工具调用失败恢复、Agent 回答质量防护。
 
 ---
 
@@ -270,11 +270,71 @@
 
 ---
 
+## 八、指标异常根因推理场景（已完成）
+
+### 目标
+
+新增 `abnormal_reasoning` 场景模板，为多指标异常的因果推理提供结构化框架引导。
+
+### 设计
+
+在 `_SCENARIO_REGISTRY` 中注册第四个场景模板，提供 7 步推理框架：列出异常→识别关联模式→提出根因假设→评估证据→建议确认检查→申明辅助参考性质→处理孤立异常。
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/prompts/templates.py` | 新增 `ABNORMAL_REASONING` 常量及注册 |
+| `backend-agent/tests/test_prompts/test_templates.py` | 新增 4 个测试 |
+
+---
+
+## 九、工具调用失败恢复（已完成）
+
+### 目标
+
+当工具返回错误时，引导 LLM 生成用户友好的错误说明，而非重复重试或透传技术错误。
+
+### 设计
+
+双层防护：
+
+1. **System Prompt 静态引导**：追加「工具调用错误处理」段落，指导 LLM 不重复重试、转化为用户友好说明、给出替代建议
+2. **动态错误检测**：`call_llm` 中新增 `_detect_recent_tool_errors()` 扫描最近 ToolMessage 的 `Error:` 前缀，检测到错误时注入 `[注意]` SystemMessage 明确指示 LLM 不重试
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/prompts/system.py` | 追加错误处理引导段落 |
+| `backend-agent/app/agent/nodes.py` | 新增 `_detect_recent_tool_errors()` + 错误提示注入 |
+| `backend-agent/tests/test_agent/test_tool_error_recovery.py` | 新增 4 个测试 |
+| `backend-agent/tests/test_prompts/test_system_prompt.py` | 新增 1 个测试 |
+
+---
+
+## 十、Agent 回答质量防护（已完成）
+
+### 目标
+
+防止 LLM 返回空内容（非工具调用场景），提供最基本的质量兜底。
+
+### 设计
+
+在 `call_llm` 中，LLM 调用后检查响应：若 `content` 为空且无 `tool_calls`，追加 nudge 提示并重试一次。最多重试一次，不会无限循环。
+
+### 产出文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend-agent/app/agent/nodes.py` | `call_llm` 中新增空回复检测 + 单次重试 |
+
+---
+
 ## 后续计划
 
 | 方向 | 优先级 | 说明 |
 |------|--------|------|
-| 纵向趋势智能解读 | 中 | 跨报告趋势分析工具，识别指标变化方向和速率 |
-| 多报告智能对比 | 中 | 对比两份报告的差异，关注新增异常和趋势变化 |
-| 指标异常根因推理 | 低 | 结合多项指标推理可能的根因，生成鉴别诊断线索 |
+| 纵向趋势智能解读 | 中 | 跨报告趋势分析工具，识别指标变化方向和速率（需 Java 端新增聚合 API） |
+| 多报告智能对比 | 中 | 对比两份报告的差异，关注新增异常和趋势变化（需 Java 端支持多记录上下文） |
 | 医学知识 RAG | 低 | 接入医学知识库作为工具，减少 LLM 幻觉 |

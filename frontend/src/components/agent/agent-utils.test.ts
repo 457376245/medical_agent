@@ -22,6 +22,7 @@ describe("buildMessagesFromTurns", () => {
           disease_name: "糖尿病",
           record_id: "record-1",
           record_title: "化验单 A",
+          workflow: "report_interpretation",
           entry: "agent_page",
         },
         traceEvents: [],
@@ -37,6 +38,7 @@ describe("buildMessagesFromTurns", () => {
           disease_name: "糖尿病",
           record_id: "record-2",
           record_title: "化验单 B",
+          workflow: "report_interpretation",
           entry: "agent_page",
         },
         traceEvents: [],
@@ -67,6 +69,8 @@ describe("normalizeSessionDetail", () => {
           metadata: {
             disease_profile_id: "profile-1",
             disease_name: "高血压",
+            workflow: "follow_up_prep",
+            audience: "patient",
             entry: "agent_page",
           },
           trace_events: [
@@ -116,6 +120,10 @@ describe("toRequestMetadata", () => {
       diseaseName: "高血压",
       recordId: "record-1",
       recordTitle: "门诊检验",
+      recordDate: "2026-04-19",
+      workflow: "follow_up_prep",
+      urgencyLevel: "warning",
+      audience: "patient",
     });
 
     expect(metadata).toEqual({
@@ -123,6 +131,11 @@ describe("toRequestMetadata", () => {
       disease_name: "高血压",
       record_id: "record-1",
       record_title: "门诊检验",
+      record_date: "2026-04-19",
+      scenario: "clinical_summary",
+      workflow: "follow_up_prep",
+      urgency_level: "warning",
+      audience: "patient",
       entry: "agent_page",
     });
     expect((metadata as Record<string, unknown>).context_snapshot).toBeUndefined();
