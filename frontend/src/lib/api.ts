@@ -1,7 +1,7 @@
 import { getToken, getCurrentPatientId, clearAll } from "./auth";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://35.208.147.180:8080/api";
-const AGENT_API_BASE = process.env.NEXT_PUBLIC_AGENT_API_BASE_URL || "http://35.208.147.180:8090/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8080/api";
+const AGENT_API_BASE = process.env.NEXT_PUBLIC_AGENT_API_BASE_URL || "http://127.0.0.1:8090/api/v1";
 
 function buildAuthHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);

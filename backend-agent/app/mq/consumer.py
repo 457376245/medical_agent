@@ -30,7 +30,7 @@ class AgentMqConsumer:
 
     async def start(self) -> None:
         """启动 MQ 消费者，连接 RabbitMQ 并订阅队列。"""
-        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@35.208.147.180:5672/")
+        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@127.0.0.1:5672/")
         self._connection = await aio_pika.connect_robust(rabbitmq_url)
         connection = self._connection
         self._channel = await connection.channel()
