@@ -1379,6 +1379,13 @@ a {
   margin-bottom: 12px;
 }
 
+.combination-analysis-disclaimer {
+  margin: -4px 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .combination-card-list {
   display: flex;
   flex-direction: column;

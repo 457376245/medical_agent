@@ -40,7 +40,7 @@ public class ReportAnalysisService {
       GeneratedOutputService generatedOutputService,
       RecordService recordService,
       ObjectMapper objectMapper,
-      @Value("${app.agent.base-url:http://35.208.147.180:8090}") String agentBaseUrl) {
+      @Value("${app.agent.base-url:http://127.0.0.1:8090}") String agentBaseUrl) {
     this.generatedOutputService = generatedOutputService;
     this.recordService = recordService;
     this.objectMapper = objectMapper;

@@ -92,7 +92,7 @@ def test_context_client_success_and_partial(monkeypatch: Any) -> None:
     monkeypatch.setattr(context_client_module, "_http_get_json", fake_get_json)
 
     client = DiseaseProfileContextClient(
-        base_url="http://35.208.147.180:8080",
+        base_url="http://127.0.0.1:8080",
         context_path="/internal/agent",
         timeout_seconds=3,
     )
@@ -116,7 +116,7 @@ def test_context_client_failure_returns_unavailable(monkeypatch: Any) -> None:
     monkeypatch.setattr(context_client_module, "_http_get_json", fake_get_json)
 
     client = DiseaseProfileContextClient(
-        base_url="http://35.208.147.180:8080",
+        base_url="http://127.0.0.1:8080",
         context_path="/internal/agent",
         timeout_seconds=3,
     )

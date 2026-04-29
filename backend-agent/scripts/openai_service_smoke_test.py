@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--api-key",
-        default="sk-blackandw",
+        default=os.getenv("OPENAI_API_KEY", ""),
         help="OpenAI 兼容服务密钥，优先建议通过环境变量传入。",
     )
     parser.add_argument(

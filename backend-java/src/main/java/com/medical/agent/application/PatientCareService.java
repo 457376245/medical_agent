@@ -249,6 +249,28 @@ public class PatientCareService {
     PatientCareProfileResponseData profile = preloadedProfile != null ? preloadedProfile : getProfile();
     RecordEntity focusRecord = resolveContextRecord(profileId, recordId);
 
+    appendCareProfileRiskSignals(profile, signals, evidenceRefs);
+    if (focusRecord != null) {
+      appendRecordRiskSignals(focusRecord, signals, evidenceRefs);
+    }
+    appendTaskRiskSignals(signals, evidenceRefs);
+    appendSymptomRiskSignals(signals, evidenceRefs);
+
+    String riskLevel = deriveRiskLevel(signals);
+    String summary = switch (riskLevel) {
+      case "alert" -> "存在需要优先处理的红旗信号，建议尽快就医或加快复诊。";
+      case "warning" -> "当前存在需关注的随访风险，建议尽快完成复查或与医生确认。";
+      case "watch" -> "当前以持续观察和按计划随访为主。";
+      default -> "当前未发现明显高优先级风险，可按既定计划随访。";
+    };
+
+    return new RiskComputation(riskLevel, summary, trimSignals(signals), trimEvidence(evidenceRefs));
+  }
+
+  private void appendCareProfileRiskSignals(
+      PatientCareProfileResponseData profile,
+      List<PatientCareRiskOverviewResponseData.RiskSignal> signals,
+      List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs) {
     for (String note : profile.redFlagNotes()) {
       if (signals.size() >= MAX_RISK_ITEMS) {
         break;
@@ -267,21 +289,41 @@ public class PatientCareService {
           "CARE_MEMORY"));
     }
 
-    if (focusRecord != null) {
-      appendRecordRiskSignals(focusRecord, signals, evidenceRefs);
+    PatientCareProfileResponseData.BaselineSummary baseline = profile.patientBaseline();
+    List<String> abnormalBaseline = baseline == null || baseline.abnormalBaseline() == null
+        ? List.of()
+        : baseline.abnormalBaseline();
+    for (String item : abnormalBaseline) {
+      String detail = TextUtils.trimToNull(item);
+      if (detail == null) {
+        continue;
+      }
+      if (signals.size() < MAX_RISK_ITEMS) {
+        signals.add(new PatientCareRiskOverviewResponseData.RiskSignal(
+            "watch",
+            "既往异常基线",
+            detail,
+            "建议结合本次报告和历史趋势持续观察。"));
+      }
+      evidenceRefs.add(new PatientCareRiskOverviewResponseData.EvidenceItem(
+          "patient_memory",
+          "既往异常基线",
+          detail,
+          "慢病长期画像",
+          "medium",
+          "CARE_MEMORY"));
     }
-    appendTaskRiskSignals(signals, evidenceRefs);
-    appendSymptomRiskSignals(signals, evidenceRefs);
 
-    String riskLevel = deriveRiskLevel(signals);
-    String summary = switch (riskLevel) {
-      case "alert" -> "存在需要优先处理的红旗信号，建议尽快就医或加快复诊。";
-      case "warning" -> "当前存在需关注的随访风险，建议尽快完成复查或与医生确认。";
-      case "watch" -> "当前以持续观察和按计划随访为主。";
-      default -> "当前未发现明显高优先级风险，可按既定计划随访。";
-    };
-
-    return new RiskComputation(riskLevel, summary, trimSignals(signals), trimEvidence(evidenceRefs));
+    String doctorInstructions = baseline == null ? null : TextUtils.trimToNull(baseline.doctorInstructions());
+    if (doctorInstructions != null) {
+      evidenceRefs.add(new PatientCareRiskOverviewResponseData.EvidenceItem(
+          "patient_memory",
+          "医生交代事项",
+          doctorInstructions,
+          "慢病长期画像",
+          "medium",
+          "CARE_MEMORY"));
+    }
   }
 
   private void appendTaskRiskSignals(

@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 @Service
 @Tag(name = "摄取服务", description = "承接文件上传链路，负责编排签名、代理上传、资产登记与解析任务创建")
 public class IngestionService {
-  @Value("${app.upload.base-url:http://35.208.147.180:8080/mock-upload}")
+  @Value("${app.upload.base-url:http://127.0.0.1:8080/mock-upload}")
   private String uploadBaseUrl;
 
   private final OssPresignService ossPresignService;
