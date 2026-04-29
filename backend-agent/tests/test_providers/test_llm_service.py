@@ -188,6 +188,45 @@ def test_report_analysis_prompt_marks_threshold_result_as_attention_needed(
     assert '"resultState": "threshold"' in user_prompt
 
 
+def test_report_analysis_prompt_references_combination_analysis_and_disclaimer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    service = LLMService(storage=_StubStorage(), document=_StubDocument([]))
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send_chat_completion_request(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return 200, {"choices": [{"message": {"content": "生成完成"}}]}
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
+
+    service.generate(
+        {
+            "type": "REPORT_ANALYSIS",
+            "recordId": "r-1",
+            "analysisContext": {
+                "combinationAnalysis": [
+                    {
+                        "ruleId": "LIVER_ALCOHOLIC",
+                        "summary": "AST/ALT 比值升高且 GGT 升高",
+                        "suggestion": "建议结合饮酒史和肝胆检查复核",
+                    }
+                ]
+            },
+        },
+        "gpt-5.4",
+        1,
+    )
+
+    user_prompt = str(captured_payloads[0]["messages"][1]["content"])
+    assert "prioritize referencing the identified combination patterns" in user_prompt
+    assert "Must include a short disclaimer that this is for reference only" in user_prompt
+    assert '"ruleId": "LIVER_ALCOHOLIC"' in user_prompt
+
+
 def test_parse_invalid_json_raises_biz_invalid_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

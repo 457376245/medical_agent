@@ -62,6 +62,28 @@ class RecordControllerTest {
   }
 
   @Test
+  void getRecordReturnsCombinationAnalysis() {
+    UUID recordId = UUID.randomUUID();
+    StructuredResultData structured = new StructuredResultData("v1", 1, new ObjectMapper().createObjectNode());
+    RecordDetail.CombinationAnalysisItem item = new RecordDetail.CombinationAnalysisItem(
+        "LIVER_ALCOHOLIC",
+        "肝功能酒精性损伤模式",
+        "warning",
+        "AST/ALT 比值升高且 GGT 升高",
+        "可能提示酒精相关肝功能异常风险",
+        "建议结合饮酒史和肝胆检查复核",
+        List.of("AST", "ALT", "GGT"));
+    when(recordService.fetchRecord(recordId)).thenReturn(
+        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured, List.of(item)));
+
+    ResponseEntity<ApiResponse<?>> response = controller.getRecord(recordId.toString());
+
+    RecordViewResponseData data = (RecordViewResponseData) response.getBody().data();
+    assertEquals(1, data.combinationAnalysis().size());
+    assertEquals("LIVER_ALCOHOLIC", data.combinationAnalysis().get(0).ruleId());
+  }
+
+  @Test
   void getRecordReturnsNotFoundWhenMissing() {
     UUID recordId = UUID.randomUUID();
     when(recordService.fetchRecord(recordId)).thenThrow(new IllegalArgumentException("record not found"));

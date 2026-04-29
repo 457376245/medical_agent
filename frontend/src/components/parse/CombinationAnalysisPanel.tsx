@@ -34,6 +34,9 @@ export function CombinationAnalysisPanel({ items }: { items: CombinationAnalysis
   return (
     <div className="combination-analysis-panel">
       <h4 className="summary-heading">指标联动分析</h4>
+      <p className="combination-analysis-disclaimer">
+        指标联动分析仅供参考，不构成医疗诊断建议；如有健康疑问，请咨询专业医疗人员。
+      </p>
       <div className="combination-card-list">
         {sorted.map((item) => (
           <div key={item.ruleId} className={`combination-card combination-card-${item.severity}`}>

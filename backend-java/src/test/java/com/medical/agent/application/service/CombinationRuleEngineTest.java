@@ -204,6 +204,7 @@ class CombinationRuleEngineTest {
   void thyroidSubclinicalTriggersWhenTshAbnormalFt4Normal() {
     Map<String, CombinationRuleEngine.IndicatorField> map = new HashMap<>();
     map.put("TSH", field("TSH", "high", 8.0));
+    map.put("FT3", field("FT3", "normal", 4.5));
     map.put("FT4", field("FT4", "normal", 14.0));
 
     List<TriggeredRule> results = engine.evaluate(map);
@@ -214,6 +215,18 @@ class CombinationRuleEngineTest {
   void thyroidSubclinicalDoesNotTriggerWhenTshNormal() {
     Map<String, CombinationRuleEngine.IndicatorField> map = new HashMap<>();
     map.put("TSH", field("TSH", "normal", 2.5));
+    map.put("FT3", field("FT3", "normal", 4.5));
+    map.put("FT4", field("FT4", "normal", 14.0));
+
+    List<TriggeredRule> results = engine.evaluate(map);
+    assertFalse(results.stream().anyMatch(r -> "THYROID_SUBCLINICAL".equals(r.ruleId())));
+  }
+
+  @Test
+  void thyroidSubclinicalDoesNotTriggerWhenFt3Abnormal() {
+    Map<String, CombinationRuleEngine.IndicatorField> map = new HashMap<>();
+    map.put("TSH", field("TSH", "high", 8.0));
+    map.put("FT3", field("FT3", "low", 2.0));
     map.put("FT4", field("FT4", "normal", 14.0));
 
     List<TriggeredRule> results = engine.evaluate(map);

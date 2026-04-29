@@ -1,6 +1,7 @@
 package com.medical.agent.application.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -60,6 +61,27 @@ class StructuredFieldInterpreterTest {
     assertEquals("range", enriched.path("fields").get(0).path("comparisonType").asText());
     assertEquals("high", enriched.path("fields").get(0).path("resultState").asText());
     assertEquals("normal", enriched.path("fields").get(1).path("resultState").asText());
+  }
+
+  @Test
+  void enrichPayloadDoesNotBlockUnmappedIndicator() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "某未知指标",
+              "value": "120",
+              "referenceRange": "0-100"
+            }
+          ]
+        }
+        """);
+
+    JsonNode field = interpreter.enrichPayload(payload).path("fields").get(0);
+
+    assertEquals("range", field.path("comparisonType").asText());
+    assertEquals("high", field.path("resultState").asText());
+    assertFalse(field.has("standardCode"));
   }
 
   @Test

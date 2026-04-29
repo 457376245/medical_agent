@@ -88,4 +88,14 @@ class IndicatorNormalizerTest {
     assertEquals("HBA1C", normalizer.normalize("糖化血红蛋白").code());
     assertEquals("HBA1C", normalizer.normalize("糖化").code());
   }
+
+  @Test
+  void 重复别名优先保留主指标且短英文不误伤() {
+    assertEquals("GLU", normalizer.normalize("GLU").code());
+    assertEquals("WBC", normalizer.normalize("WBC").code());
+    assertEquals("TG", normalizer.normalize("TG").code());
+    assertEquals("UA", normalizer.normalize("Uric Acid").code());
+    assertEquals("CYSC", normalizer.normalize("Cystatin C").code());
+    assertEquals("OGTT_0H", normalizer.normalize("OGTT 0h").code());
+  }
 }
