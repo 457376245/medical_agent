@@ -1,6 +1,7 @@
 package com.medical.agent.application.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -60,6 +61,90 @@ class StructuredFieldInterpreterTest {
     assertEquals("range", enriched.path("fields").get(0).path("comparisonType").asText());
     assertEquals("high", enriched.path("fields").get(0).path("resultState").asText());
     assertEquals("normal", enriched.path("fields").get(1).path("resultState").asText());
+  }
+
+  @Test
+  void enrichPayloadDoesNotBlockUnmappedIndicator() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "某未知指标",
+              "value": "120",
+              "referenceRange": "0-100"
+            }
+          ]
+        }
+        """);
+
+    JsonNode field = interpreter.enrichPayload(payload).path("fields").get(0);
+
+    assertEquals("range", field.path("comparisonType").asText());
+    assertEquals("high", field.path("resultState").asText());
+    assertFalse(field.has("standardCode"));
+  }
+
+  @Test
+  void enrichPayloadKeepsValidStandardCodeAndAddsCategory() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "随便写的名字",
+              "value": "17",
+              "referenceRange": "7-40",
+              "standardCode": "ALT"
+            }
+          ]
+        }
+        """);
+
+    JsonNode field = interpreter.enrichPayload(payload).path("fields").get(0);
+
+    assertEquals("ALT", field.path("standardCode").asText());
+    assertEquals("肝功能", field.path("category").asText());
+  }
+
+  @Test
+  void enrichPayloadFallsBackWhenStandardCodeIsInvalid() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "谷草转氨酶",
+              "value": "30",
+              "referenceRange": "0-40",
+              "standardCode": "NOT_A_REAL_CODE"
+            }
+          ]
+        }
+        """);
+
+    JsonNode field = interpreter.enrichPayload(payload).path("fields").get(0);
+
+    assertEquals("AST", field.path("standardCode").asText());
+    assertEquals("肝功能", field.path("category").asText());
+  }
+
+  @Test
+  void enrichPayloadRemovesInvalidStandardCodeWhenIndicatorIsUnmapped() throws Exception {
+    JsonNode payload = objectMapper.readTree("""
+        {
+          "fields": [
+            {
+              "name": "某未知指标",
+              "value": "120",
+              "referenceRange": "0-100",
+              "standardCode": "NOT_A_REAL_CODE"
+            }
+          ]
+        }
+        """);
+
+    JsonNode field = interpreter.enrichPayload(payload).path("fields").get(0);
+
+    assertEquals("high", field.path("resultState").asText());
+    assertFalse(field.has("standardCode"));
   }
 
   @Test

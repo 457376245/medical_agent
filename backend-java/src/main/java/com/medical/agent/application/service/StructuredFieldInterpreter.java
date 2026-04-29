@@ -171,6 +171,9 @@ final class StructuredFieldInterpreter {
       }
       return;
     }
+    if (!existingCode.isEmpty()) {
+      fieldNode.remove("standardCode");
+    }
 
     String name = readText(fieldNode, "name");
     if (name.isEmpty()) {

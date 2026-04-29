@@ -328,6 +328,106 @@ class ApiIntegrationTest {
   }
 
   @Test
+  void parseFlowNormalizesIndicatorsForRecordDetail() {
+    UUID recordId = UUID.randomUUID();
+    String jobId = createParseJob(recordId, "uploads/seed/indicator-normalization.pdf", "sha256:indicator-normalization");
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[" +
+            "{\"name\":\"谷丙转氨酶\",\"value\":\"17\",\"referenceRange\":\"7-40\",\"confidence\":0.95}," +
+            "{\"name\":\"γ-谷氨酰转肽酶（GGT）\",\"value\":\"35\",\"referenceRange\":\"0-50\",\"confidence\":0.95}," +
+            "{\"name\":\"丙氨酸氨基转移酶ALT测定\",\"value\":\"18\",\"referenceRange\":\"7-40\",\"confidence\":0.95}," +
+            "{\"name\":\"某未知指标\",\"value\":\"120\",\"referenceRange\":\"0-100\",\"confidence\":0.95}" +
+            "]}," +
+            "\"confidence\":0.95," +
+            "\"errors\":[]" +
+            "}");
+
+    List<Map<String, Object>> fields = recordFields(recordId);
+
+    Map<String, Object> alt = fieldByName(fields, "谷丙转氨酶");
+    assertEquals("ALT", String.valueOf(alt.get("standardCode")));
+    assertEquals("肝功能", String.valueOf(alt.get("category")));
+
+    Map<String, Object> ggt = fieldByName(fields, "γ-谷氨酰转肽酶（GGT）");
+    assertEquals("GGT", String.valueOf(ggt.get("standardCode")));
+    assertEquals("肝功能", String.valueOf(ggt.get("category")));
+
+    Map<String, Object> mixedAlt = fieldByName(fields, "丙氨酸氨基转移酶ALT测定");
+    assertEquals("ALT", String.valueOf(mixedAlt.get("standardCode")));
+
+    Map<String, Object> unmapped = fieldByName(fields, "某未知指标");
+    assertEquals("high", String.valueOf(unmapped.get("resultState")));
+    assertFalse(unmapped.containsKey("standardCode"));
+  }
+
+  @Test
+  void parseFlowHandlesValidAndInvalidStandardCode() {
+    UUID recordId = UUID.randomUUID();
+    String jobId = createParseJob(recordId, "uploads/seed/standard-code-fallback.pdf", "sha256:standard-code-fallback");
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[" +
+            "{\"name\":\"随便写的名字\",\"value\":\"17\",\"referenceRange\":\"7-40\",\"standardCode\":\"ALT\",\"confidence\":0.95}," +
+            "{\"name\":\"谷草转氨酶\",\"value\":\"30\",\"referenceRange\":\"0-40\",\"standardCode\":\"NOT_A_REAL_CODE\",\"confidence\":0.95}," +
+            "{\"name\":\"某未知指标\",\"value\":\"120\",\"referenceRange\":\"0-100\",\"standardCode\":\"NOT_A_REAL_CODE\",\"confidence\":0.95}" +
+            "]}," +
+            "\"confidence\":0.95," +
+            "\"errors\":[]" +
+            "}");
+
+    List<Map<String, Object>> fields = recordFields(recordId);
+
+    Map<String, Object> validCode = fieldByName(fields, "随便写的名字");
+    assertEquals("ALT", String.valueOf(validCode.get("standardCode")));
+    assertEquals("肝功能", String.valueOf(validCode.get("category")));
+
+    Map<String, Object> fallback = fieldByName(fields, "谷草转氨酶");
+    assertEquals("AST", String.valueOf(fallback.get("standardCode")));
+    assertEquals("肝功能", String.valueOf(fallback.get("category")));
+
+    Map<String, Object> unmapped = fieldByName(fields, "某未知指标");
+    assertFalse(unmapped.containsKey("standardCode"));
+  }
+
+  @Test
+  void normalizedIndicatorsDriveCombinationAnalysisInRecordDetail() {
+    UUID recordId = UUID.randomUUID();
+    String jobId = createParseJob(recordId, "uploads/seed/combination-normalization.pdf", "sha256:combination-normalization");
+
+    parseResultConsumer.consume(
+        "{" +
+            "\"jobId\":\"" + jobId + "\"," +
+            "\"status\":\"SUCCESS\"," +
+            "\"structuredResult\":{\"fields\":[" +
+            "{\"name\":\"谷草转氨酶\",\"value\":\"120\",\"referenceRange\":\"0-40\",\"confidence\":0.95}," +
+            "{\"name\":\"谷丙转氨酶\",\"value\":\"50\",\"referenceRange\":\"0-40\",\"confidence\":0.95}," +
+            "{\"name\":\"谷氨酰转肽酶\",\"value\":\"80\",\"referenceRange\":\"0-50\",\"confidence\":0.95}" +
+            "]}," +
+            "\"confidence\":0.95," +
+            "\"errors\":[]" +
+            "}");
+
+    Map<String, Object> recordData = recordData(recordId);
+    List<Map<String, Object>> fields = payloadFields(recordData);
+    assertEquals("AST", String.valueOf(fieldByName(fields, "谷草转氨酶").get("standardCode")));
+    assertEquals("ALT", String.valueOf(fieldByName(fields, "谷丙转氨酶").get("standardCode")));
+    assertEquals("GGT", String.valueOf(fieldByName(fields, "谷氨酰转肽酶").get("standardCode")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> combinationAnalysis =
+        (List<Map<String, Object>>) recordData.get("combinationAnalysis");
+    assertTrue(combinationAnalysis.stream()
+        .anyMatch(item -> "LIVER_ALCOHOLIC".equals(String.valueOf(item.get("ruleId")))));
+  }
+
+  @Test
   void parseJobStatusEndpointRejectsInvalidJobId() {
     ResponseEntity<Map<String, Object>> response = restTemplate.exchange("/api/ingestions/parse-jobs/not-a-uuid", HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
     assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
@@ -486,6 +586,54 @@ class ApiIntegrationTest {
 
   private ResponseEntity<Map<String, Object>> postJson(String path, Map<String, Object> body) {
     return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(body, jsonHeaders()), new ParameterizedTypeReference<Map<String, Object>>() {});
+  }
+
+  private String createParseJob(UUID recordId, String objectKey, String checksum) {
+    ResponseEntity<Map<String, Object>> assetResp = postJson("/api/ingestions/assets", Map.of(
+        "objectKey", objectKey,
+        "checksum", checksum,
+        "recordId", recordId.toString(),
+        "size", 100));
+    assertEquals(HttpStatus.OK, assetResp.getStatusCode());
+    String assetId = String.valueOf(dataOf(assetResp.getBody()).get("assetId"));
+
+    HttpHeaders jobHeaders = jsonHeaders();
+    jobHeaders.set("Idempotency-Key", "normalization-" + UUID.randomUUID());
+    ResponseEntity<Map<String, Object>> createJobResp = restTemplate.exchange(
+        "/api/ingestions/parse-jobs",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("assetIds", List.of(assetId), "recordId", recordId.toString()), jobHeaders),
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    assertEquals(HttpStatus.OK, createJobResp.getStatusCode());
+    return String.valueOf(dataOf(createJobResp.getBody()).get("jobId"));
+  }
+
+  private Map<String, Object> recordData(UUID recordId) {
+    ResponseEntity<Map<String, Object>> recordResp = restTemplate.exchange(
+        "/api/records/" + recordId,
+        HttpMethod.GET,
+        null,
+        new ParameterizedTypeReference<Map<String, Object>>() {});
+    assertEquals(HttpStatus.OK, recordResp.getStatusCode());
+    return dataOf(recordResp.getBody());
+  }
+
+  private List<Map<String, Object>> recordFields(UUID recordId) {
+    return payloadFields(recordData(recordId));
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> payloadFields(Map<String, Object> recordData) {
+    Map<String, Object> structuredResult = (Map<String, Object>) recordData.get("structuredResult");
+    Map<String, Object> payload = (Map<String, Object>) structuredResult.get("payload");
+    return (List<Map<String, Object>>) payload.get("fields");
+  }
+
+  private Map<String, Object> fieldByName(List<Map<String, Object>> fields, String name) {
+    return fields.stream()
+        .filter(item -> name.equals(String.valueOf(item.get("name"))))
+        .findFirst()
+        .orElseThrow();
   }
 
   private HttpHeaders jsonHeaders() {

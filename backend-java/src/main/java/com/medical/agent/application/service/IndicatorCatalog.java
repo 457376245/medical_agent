@@ -38,15 +38,15 @@ final class IndicatorCatalog {
           String commonUnit = textOrEmpty(node, "commonUnit");
           meta.put(code, new IndicatorMeta(code, displayName, shortName, category, commonUnit));
 
-          exact.put(code.toLowerCase(Locale.ROOT), code);
+          exact.putIfAbsent(normalizeKey(code), code);
 
           JsonNode aliases = node.path("aliases");
           if (aliases.isArray()) {
             for (JsonNode alias : aliases) {
               String aliasText = alias.asText("").trim();
               if (!aliasText.isEmpty()) {
-                String key = aliasText.toLowerCase(Locale.ROOT);
-                exact.put(key, code);
+                String key = normalizeKey(aliasText);
+                exact.putIfAbsent(key, code);
                 substring.add(new AliasEntry(key, code));
               }
             }
@@ -71,6 +71,9 @@ final class IndicatorCatalog {
     String bestMatch = null;
     int bestLength = 0;
     for (AliasEntry entry : substringEntries) {
+      if (isUnsafeShortAsciiAlias(entry.alias())) {
+        continue;
+      }
       if (normalizedName.contains(entry.alias()) && entry.alias().length() > bestLength) {
         bestMatch = entry.code();
         bestLength = entry.alias().length();
@@ -81,6 +84,9 @@ final class IndicatorCatalog {
     }
     // 其次：输入完全包含在某个 alias 中（输入较短，alias 较长）
     for (AliasEntry entry : substringEntries) {
+      if (isUnsafeShortAsciiAlias(normalizedName)) {
+        continue;
+      }
       if (entry.alias().contains(normalizedName) && normalizedName.length() >= 2) {
         return entry.code();
       }
@@ -99,6 +105,17 @@ final class IndicatorCatalog {
   private static String textOrEmpty(JsonNode node, String key) {
     JsonNode value = node.path(key);
     return value.isMissingNode() || value.isNull() ? "" : value.asText("");
+  }
+
+  private static String normalizeKey(String raw) {
+    return raw
+        .replaceAll("[\\s　]+", "")
+        .toLowerCase(Locale.ROOT)
+        .trim();
+  }
+
+  private static boolean isUnsafeShortAsciiAlias(String value) {
+    return value.length() < 3 && value.matches("[a-z0-9+-]+");
   }
 
   record IndicatorMeta(String code, String displayName, String shortName, String category, String commonUnit) {}
