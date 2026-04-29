@@ -26,16 +26,24 @@ class OSSStorageService:
     """管理阿里云 OSS 文件下载。"""
 
     def __init__(self) -> None:
-        endpoint = os.getenv("OSS_ENDPOINT", os.getenv("S3_ENDPOINT", "")).strip()
+        endpoint = os.getenv(
+            "OSS_ENDPOINT",
+            os.getenv("APP_OSS_ENDPOINT", os.getenv("S3_ENDPOINT", "")),
+        ).strip()
         if endpoint and not endpoint.startswith(("http://", "https://")):
             endpoint = f"https://{endpoint}"
         self._endpoint = endpoint
-        self._bucket_name = os.getenv("OSS_BUCKET", "").strip()
+        self._bucket_name = os.getenv("OSS_BUCKET", os.getenv("APP_OSS_BUCKET", "")).strip()
         self._access_key_id = os.getenv(
-            "OSS_ACCESS_KEY_ID", os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID", "")
+            "OSS_ACCESS_KEY_ID",
+            os.getenv("APP_OSS_ACCESS_KEY_ID", os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID", "")),
         ).strip()
         self._access_key_secret = os.getenv(
-            "OSS_ACCESS_KEY_SECRET", os.getenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "")
+            "OSS_ACCESS_KEY_SECRET",
+            os.getenv(
+                "APP_OSS_ACCESS_KEY_SECRET",
+                os.getenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET", ""),
+            ),
         ).strip()
 
     @property

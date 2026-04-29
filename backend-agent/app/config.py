@@ -44,7 +44,7 @@ CORS_ALLOW_ORIGINS: list[str] = [
     item.strip()
     for item in os.getenv(
         "CORS_ALLOW_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000",
+        "http://35.208.147.180:3000",
     ).split(",")
     if item.strip()
 ]
@@ -52,7 +52,7 @@ CORS_ALLOW_ORIGINS: list[str] = [
 # ---------------------------------------------------------------------------
 # Java 上下文聚合 API
 # ---------------------------------------------------------------------------
-JAVA_API_BASE_URL: str = os.getenv("JAVA_API_BASE_URL", "http://localhost:8080")
+JAVA_API_BASE_URL: str = os.getenv("JAVA_API_BASE_URL", "http://35.208.147.180:8080")
 JAVA_AGENT_CONTEXT_PATH: str = os.getenv(
     "JAVA_AGENT_CONTEXT_PATH",
     "/internal/agent",

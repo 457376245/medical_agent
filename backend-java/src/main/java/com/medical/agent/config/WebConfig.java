@@ -19,7 +19,7 @@ public class WebConfig implements WebMvcConfigurer {
 
   public WebConfig(
       IdempotencyInterceptor idempotencyInterceptor,
-      @Value("${app.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}") String origins) {
+      @Value("${app.cors.allowed-origins:http://35.208.147.180:3000}") String origins) {
     this.idempotencyInterceptor = idempotencyInterceptor;
     this.allowedOrigins = Arrays.stream(origins.split(","))
         .map(String::trim)
