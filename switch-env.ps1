@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Switch development environment between home (192.168.31.101) and office (100.113.121.53).
+    Switch development environment between home (192.168.31.101) and office (35.208.147.180).
 
 .DESCRIPTION
     Copies the appropriate .env.{env} files to .env for both backend-agent and backend-java.
@@ -25,7 +25,7 @@ $rootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $envMap = @{
     "home"   = "192.168.31.101"
-    "office" = "100.113.121.53"
+    "office" = "35.208.147.180"
 }
 
 $serverIp = $envMap[$Env]
