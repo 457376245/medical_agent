@@ -11,6 +11,11 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 DEFAULT_PROMPT = "请只回复 pong"
 
@@ -39,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float(os.getenv("OPENAI_TIMEOUT", "30")),
         help="请求超时时间，单位秒，默认 30。",
+    )
+    parser.add_argument(
+        "--proxy",
+        default=os.getenv("OPENAI_PROXY", "").strip(),
+        help="可选代理地址，例如 http://127.0.0.1:7897；为空时禁用代理。",
     )
     parser.add_argument(
         "--prompt",
@@ -71,6 +81,7 @@ def send_json_request(
     url: str,
     api_key: str,
     timeout: float,
+    proxy: str,
     payload: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     data = None
@@ -83,7 +94,8 @@ def send_json_request(
         headers["Content-Type"] = "application/json"
 
     request = urllib.request.Request(url=url, data=data, headers=headers, method=method)
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    proxies = {"http": proxy, "https": proxy} if proxy else {}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
     try:
         with opener.open(request, timeout=timeout) as response:
             raw_body = response.read().decode("utf-8")
@@ -98,7 +110,13 @@ def send_json_request(
         return exc.code, parsed_body
 
 
-def fetch_model(base_url: str, api_key: str, timeout: float, preferred: str) -> str:
+def fetch_model(
+    base_url: str,
+    api_key: str,
+    timeout: float,
+    preferred: str,
+    proxy: str,
+) -> str:
     if preferred:
         return preferred
 
@@ -107,6 +125,7 @@ def fetch_model(base_url: str, api_key: str, timeout: float, preferred: str) -> 
         url=f"{base_url}/models",
         api_key=api_key,
         timeout=timeout,
+        proxy=proxy,
     )
     if status_code >= 400:
         raise RuntimeError(
@@ -130,12 +149,14 @@ def run_smoke_test(
     model: str,
     timeout: float,
     prompt: str,
+    proxy: str,
 ) -> int:
     status_code, body = send_json_request(
         method="POST",
         url=f"{base_url}/chat/completions",
         api_key=api_key,
         timeout=timeout,
+        proxy=proxy,
         payload={
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
@@ -178,6 +199,7 @@ def main() -> int:
 
     print(f"目标服务：{base_url}")
     print(f"API Key：{mask_api_key(api_key)}")
+    print(f"代理：{args.proxy.strip() or 'disabled'}")
 
     try:
         model = fetch_model(
@@ -185,6 +207,7 @@ def main() -> int:
             api_key=api_key,
             timeout=args.timeout,
             preferred=args.model.strip(),
+            proxy=args.proxy.strip(),
         )
         print(f"使用模型：{model}")
         return run_smoke_test(
@@ -193,6 +216,7 @@ def main() -> int:
             model=model,
             timeout=args.timeout,
             prompt=args.prompt,
+            proxy=args.proxy.strip(),
         )
     except Exception as exc:  # noqa: BLE001 - 统一输出测试失败原因
         print(f"连通性测试失败：{exc}", file=sys.stderr)
