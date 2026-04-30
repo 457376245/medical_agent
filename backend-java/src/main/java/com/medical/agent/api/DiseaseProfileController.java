@@ -6,6 +6,7 @@ import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.NameRequest;
 import com.medical.agent.domain.dto.response.DiseaseProfileCreateResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileDeleteResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileParsingCancelResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileDetailResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileListResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileOverviewResponseData;
@@ -242,5 +243,43 @@ public class DiseaseProfileController {
             null,
             result.deletedRecordCount(),
             result.deletedAssetCount())));
+  }
+
+  @DeleteMapping("/{profileId}/parsing-records")
+  @Operation(summary = "取消当前档案未完成解析记录", description = "删除当前档案下所有非成功解析的记录及关联资源")
+  public ResponseEntity<ApiResponse<?>> cancelParsingRecords(
+      @Parameter(description = "疾病档案ID，传 unknown 可取消未分类疾病", example = "d5a113ca-56cf-4aca-a265-8f4ec0a3292c")
+      @PathVariable("profileId") String profileId) {
+    if (!"unknown".equalsIgnoreCase(profileId)) {
+      UUID diseaseProfileUuid;
+      try {
+        diseaseProfileUuid = UUID.fromString(profileId);
+      } catch (IllegalArgumentException error) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+            "INVALID_DISEASE_PROFILE_ID",
+            "profileId is invalid",
+            RequestIdUtil.newRequestId(),
+            new DiseaseProfileRefResponseData(profileId, false)));
+      }
+      if (!diseaseProfileService.profileExists(diseaseProfileUuid)) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+            "NOT_FOUND",
+            "disease profile not found",
+            RequestIdUtil.newRequestId(),
+            new DiseaseProfileRefResponseData(profileId, false)));
+      }
+    }
+
+    DiseaseProfileService.CancelParsingRecordsResult result =
+        diseaseProfileService.cancelParsingRecords(profileId);
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "cancelled",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileParsingCancelResponseData(
+            result.diseaseProfileId(),
+            result.deletedRecordCount(),
+            result.deletedAssetCount(),
+            result.deletedParseJobCount())));
   }
 }

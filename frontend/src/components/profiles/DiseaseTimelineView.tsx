@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
 import { CombinationAnalysisPanel } from "../parse/CombinationAnalysisPanel";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
 import {
@@ -77,6 +78,7 @@ export function DiseaseTimelineView({
   examNodes = [],
   parsingCount = 0,
   patientId,
+  onParsingCanceled,
 }: {
   profileId?: string;
   diseaseName?: string;
@@ -84,6 +86,7 @@ export function DiseaseTimelineView({
   examNodes?: TimelineExamNode[];
   parsingCount?: number;
   patientId?: string;
+  onParsingCanceled?: () => void | Promise<void>;
 }) {
   const [mutableRecords, setMutableRecords] = useState<TimelineRecord[]>(records);
   const [mutableExamNodes, setMutableExamNodes] = useState<TimelineExamNode[]>(examNodes);
@@ -104,6 +107,9 @@ export function DiseaseTimelineView({
   const [trendLoading, setTrendLoading] = useState(false);
   const [trendError, setTrendError] = useState("");
   const categoryMenuRef = useRef<HTMLDivElement | null>(null);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   useEffect(() => {
     setMutableRecords(records);
@@ -153,6 +159,9 @@ export function DiseaseTimelineView({
     setTrendCache({});
     setTrendLoading(false);
     setTrendError("");
+    setCancelConfirmOpen(false);
+    setCancelLoading(false);
+    setCancelError("");
   }, [profileId, patientId]);
 
   useEffect(() => {
@@ -213,6 +222,28 @@ export function DiseaseTimelineView({
         },
       }),
     );
+  };
+
+  const onConfirmCancelParsing = async () => {
+    if (!profileId) return;
+    setCancelLoading(true);
+    setCancelError("");
+    try {
+      const response = await authFetch(`/disease-profiles/${profileId}/parsing-records`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("取消解析失败，请稍后重试。");
+      }
+      setCancelConfirmOpen(false);
+      if (onParsingCanceled) {
+        await onParsingCanceled();
+      }
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "取消解析失败，请稍后重试。");
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
   const onSelectDate = (nodeId: string) => {
@@ -492,9 +523,20 @@ export function DiseaseTimelineView({
         <article className="panel">
           <h3 className="panel-title-small">1. 选择时间节点</h3>
           {parsingCount > 0 && (
-            <p className="status-text" style={{ marginBottom: 12 }}>
-              正在解析中：{parsingCount} 份报告...
-            </p>
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <p className="status-text" style={{ margin: 0 }}>
+                正在解析中：{parsingCount} 份报告...
+              </p>
+              <button
+                className="btn btn-danger btn-small"
+                type="button"
+                onClick={() => setCancelConfirmOpen(true)}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? "处理中..." : "取消解析"}
+              </button>
+              {cancelError ? <span className="status-text error" style={{ margin: 0 }}>{cancelError}</span> : null}
+            </div>
           )}
           {groupedByDate.length === 0 ? (
             <p className="muted">该疾病下暂无报告，请先上传。</p>
@@ -637,6 +679,16 @@ export function DiseaseTimelineView({
           )}
         </article>
       </section>
+      <ConfirmDialog
+        open={cancelConfirmOpen}
+        title="确认取消解析"
+        description={`将删除这 ${parsingCount} 份未完成解析的报告、关联解析数据和已上传文件，删除后不可恢复。`}
+        confirmText="确认取消"
+        tone="danger"
+        loading={cancelLoading}
+        onCancel={() => !cancelLoading && setCancelConfirmOpen(false)}
+        onConfirm={() => void onConfirmCancelParsing()}
+      />
     </main>
   );
 }

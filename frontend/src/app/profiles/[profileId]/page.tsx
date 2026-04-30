@@ -17,57 +17,56 @@ export default function ProfilePage() {
   const [parsingCount, setParsingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  const loadProfileData = async (signal?: AbortSignal) => {
+    const res = await authFetch(`/disease-profiles/${profileId}/records`);
+    if (!res.ok) throw new Error();
+    const payload = await res.json();
+    if (signal?.aborted) return;
+    const fromApi = String(payload.data?.diseaseName ?? "").trim();
+    if (fromApi && fromApi !== "Unassigned" && fromApi !== "未分类疾病") {
+      setDiseaseName(fromApi);
+    }
+    setRecords(
+      (payload.data?.records ?? []).map((item: Record<string, unknown>) => ({
+        id: String(item.id ?? ""),
+        title: String(item.title ?? "未命名报告"),
+        recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
+        sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
+      })),
+    );
+    setExamNodes(
+      (payload.data?.examNodes ?? []).map((node: Record<string, unknown>) => ({
+        examNodeId: String(node.examNodeId ?? ""),
+        anchorDate: String(node.anchorDate ?? ""),
+        dateRangeStart: String(node.dateRangeStart ?? ""),
+        dateRangeEnd: String(node.dateRangeEnd ?? ""),
+        displayDate: String(node.displayDate ?? node.anchorDate ?? ""),
+        records: (Array.isArray(node.records) ? node.records : []).map((item: Record<string, unknown>) => ({
+          id: String(item.id ?? ""),
+          title: String(item.title ?? "未命名报告"),
+          recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
+          sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
+        })),
+      })),
+    );
+    setParsingCount(Number(payload.data?.parsingCount ?? 0));
+  };
+
   useEffect(() => {
     if (!profileId) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await authFetch(`/disease-profiles/${profileId}/records`);
-        if (!res.ok) throw new Error();
-        const payload = await res.json();
-        if (cancelled) return;
-        const fromApi = String(payload.data?.diseaseName ?? "").trim();
-        if (fromApi && fromApi !== "Unassigned" && fromApi !== "未分类疾病") {
-          setDiseaseName(fromApi);
-        }
-        setRecords(
-          (payload.data?.records ?? []).map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ""),
-            title: String(item.title ?? "未命名报告"),
-            recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
-            sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
-          })),
-        );
-        setExamNodes(
-          (payload.data?.examNodes ?? []).map((node: Record<string, unknown>) => ({
-            examNodeId: String(node.examNodeId ?? ""),
-            anchorDate: String(node.anchorDate ?? ""),
-            dateRangeStart: String(node.dateRangeStart ?? ""),
-            dateRangeEnd: String(node.dateRangeEnd ?? ""),
-            displayDate: String(node.displayDate ?? node.anchorDate ?? ""),
-            records: (Array.isArray(node.records) ? node.records : []).map((item: Record<string, unknown>) => ({
-              id: String(item.id ?? ""),
-              title: String(item.title ?? "未命名报告"),
-              recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
-              sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
-            })),
-          })),
-        );
-        setParsingCount(Number(payload.data?.parsingCount ?? 0));
-      } catch {
-        if (!cancelled) {
-          setRecords([]);
-          setExamNodes([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+    const controller = new AbortController();
+    loadProfileData(controller.signal).catch(() => {
+      if (!controller.signal.aborted) {
+        setRecords([]);
+        setExamNodes([]);
       }
-    }
-    load();
-    return () => { cancelled = true; };
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => { controller.abort(); };
   }, [profileId, currentPatient?.id]);
 
   if (loading) {
@@ -86,6 +85,9 @@ export default function ProfilePage() {
       examNodes={examNodes}
       parsingCount={parsingCount}
       patientId={currentPatient?.id}
+      onParsingCanceled={async () => {
+        await loadProfileData();
+      }}
     />
   );
 }

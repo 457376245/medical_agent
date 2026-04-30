@@ -169,6 +169,98 @@ public class DiseaseProfileService {
     return new DeleteDiseaseProfileIfEmptyResult(true, "DELETED", 0);
   }
 
+  @Transactional
+  @Operation(summary = "取消当前档案未完成解析记录", description = "删除当前档案下所有非成功解析的记录、关联资产、解析任务与上传文件")
+  public CancelParsingRecordsResult cancelParsingRecords(String profileId) {
+    UUID tenantId = tenantContextProvider.currentTenantId();
+    UUID patientId = tenantContextProvider.currentPatientId();
+
+    LambdaQueryWrapper<RecordEntity> recordQuery = new LambdaQueryWrapper<RecordEntity>()
+        .select(RecordEntity::getId)
+        .eq(RecordEntity::getTenantId, tenantId)
+        .eq(RecordEntity::getPatientId, patientId);
+    if ("unknown".equalsIgnoreCase(profileId)) {
+      recordQuery.isNull(RecordEntity::getDiseaseProfileId);
+    } else {
+      recordQuery.eq(RecordEntity::getDiseaseProfileId, UUID.fromString(profileId));
+    }
+
+    List<RecordEntity> allRecords = recordMapper.selectList(recordQuery);
+    if (allRecords.isEmpty()) {
+      return new CancelParsingRecordsResult(profileId, 0, 0, 0);
+    }
+
+    List<UUID> candidateRecordIds = new ArrayList<>();
+    for (RecordEntity record : allRecords) {
+      String parseStatus = queryLatestParseStatus(record.getId());
+      if (!"SUCCESS".equals(parseStatus)) {
+        candidateRecordIds.add(record.getId());
+      }
+    }
+    if (candidateRecordIds.isEmpty()) {
+      return new CancelParsingRecordsResult(profileId, 0, 0, 0);
+    }
+
+    List<AssetEntity> assets = assetMapper.selectList(new LambdaQueryWrapper<AssetEntity>()
+        .select(AssetEntity::getObjectKey)
+        .in(AssetEntity::getRecordId, candidateRecordIds));
+    List<String> objectKeys = assets.stream()
+        .map(AssetEntity::getObjectKey)
+        .filter(v -> v != null && !v.isBlank())
+        .toList();
+    for (String objectKey : objectKeys) {
+      ossPresignService.deleteObject(objectKey);
+    }
+
+    int deletedParseJobs = deleteRecordsCascadeInternal(candidateRecordIds);
+    return new CancelParsingRecordsResult(profileId, candidateRecordIds.size(), objectKeys.size(), deletedParseJobs);
+  }
+
+  public record CancelParsingRecordsResult(
+      String diseaseProfileId,
+      int deletedRecordCount,
+      int deletedAssetCount,
+      int deletedParseJobCount) {}
+
+  private String queryLatestParseStatus(UUID recordId) {
+    List<ParseJobEntity> jobs = parseJobMapper.selectList(new LambdaQueryWrapper<ParseJobEntity>()
+        .eq(ParseJobEntity::getRecordId, recordId)
+        .orderByDesc(ParseJobEntity::getUpdatedAt)
+        .orderByDesc(ParseJobEntity::getCreatedAt)
+        .last("limit 1"));
+    if (jobs.isEmpty()) {
+      return "NOT_PARSED";
+    }
+    return String.valueOf(jobs.get(0).getStatus());
+  }
+
+  private int deleteRecordsCascadeInternal(List<UUID> recordIds) {
+    dataRightsRequestMapper.delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity>()
+        .in(com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity::getRecordId, recordIds));
+    structuredResultMapper.delete(new LambdaQueryWrapper<StructuredResultEntity>()
+        .in(StructuredResultEntity::getRecordId, recordIds));
+    generatedOutputMapper.delete(new LambdaQueryWrapper<GeneratedOutputEntity>()
+        .in(GeneratedOutputEntity::getRecordId, recordIds));
+
+    List<ParseJobEntity> jobs = parseJobMapper.selectList(new LambdaQueryWrapper<ParseJobEntity>()
+        .select(ParseJobEntity::getId)
+        .in(ParseJobEntity::getRecordId, recordIds));
+    int deletedParseJobs = jobs.size();
+    if (!jobs.isEmpty()) {
+      List<UUID> jobIds = jobs.stream().map(ParseJobEntity::getId).toList();
+      parseJobAssetMapper.delete(new LambdaQueryWrapper<ParseJobAssetEntity>()
+          .in(ParseJobAssetEntity::getJobId, jobIds));
+    }
+
+    parseJobMapper.delete(new LambdaQueryWrapper<ParseJobEntity>()
+        .in(ParseJobEntity::getRecordId, recordIds));
+    assetMapper.delete(new LambdaQueryWrapper<AssetEntity>()
+        .in(AssetEntity::getRecordId, recordIds));
+    recordMapper.delete(new LambdaQueryWrapper<RecordEntity>()
+        .in(RecordEntity::getId, recordIds));
+    return deletedParseJobs;
+  }
+
   private List<String> listAssetObjectKeysByDiseaseProfile(UUID diseaseProfileId) {
     List<RecordEntity> records = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
         .select(RecordEntity::getId)
