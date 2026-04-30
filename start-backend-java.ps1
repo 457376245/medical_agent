@@ -13,4 +13,7 @@ if (Test-Path $envFile) {
     }
 }
 
+$env:Path = (($env:Path -split ';') |
+    Where-Object { $_ -and $_ -ne 'D:\apache-tomcat-8.5.50\bin' }) -join ';'
+
 mvn spring-boot:run

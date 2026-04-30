@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.service.ParseJobService;
 import com.medical.agent.application.service.RecordService;
+import com.medical.agent.domain.exception.ResourceNotFoundException;
 import com.medical.agent.domain.vo.GenerateRequestEvent;
 import com.medical.agent.domain.vo.ParseJobContext;
 import com.medical.agent.domain.vo.RecordAnalysisContext;
@@ -84,6 +85,8 @@ public class ParseResultConsumer {
       }
     } catch (JsonProcessingException ex) {
       LOGGER.error("Invalid parse result payload: {}", payload, ex);
+    } catch (ResourceNotFoundException ex) {
+      LOGGER.warn("Ignored parse result for unknown job: {}", payload);
     } catch (Exception ex) {
       LOGGER.error("Failed to consume parse result payload: {}", payload, ex);
     }
