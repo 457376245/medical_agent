@@ -8,6 +8,8 @@ import sys
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Any
 
 # 在导入 config 之前加载 .env，确保环境变量已就绪
@@ -59,10 +61,37 @@ MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "8"))
 def configure_logging() -> None:
     level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    if not root_logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+
+    log_file = os.getenv("LOG_FILE", "logs/backend-agent.log").strip()
+    if not log_file:
+        return
+
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    target = str(log_path.resolve())
+    for handler in root_logger.handlers:
+        if isinstance(handler, RotatingFileHandler) and handler.baseFilename == target:
+            handler.setLevel(level)
+            handler.setFormatter(formatter)
+            return
+
+    file_handler = RotatingFileHandler(
+        target,
+        maxBytes=read_int_env("LOG_MAX_BYTES", 10 * 1024 * 1024, 1),
+        backupCount=read_int_env("LOG_BACKUP_COUNT", 14, 0),
+        encoding="utf-8",
     )
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
 
 
 configure_logging()
