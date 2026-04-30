@@ -1,6 +1,7 @@
 package com.medical.agent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.medical.agent.domain.vo.DiseaseProfileExamNode;
 import com.medical.agent.domain.vo.DiseaseProfileOverview;
 import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.application.context.TenantContextProvider;
@@ -12,7 +13,10 @@ import com.medical.agent.infrastructure.persistence.mapper.ParseJobMapper;
 import com.medical.agent.infrastructure.persistence.mapper.RecordMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +26,8 @@ import org.springframework.stereotype.Service;
 @Service
 @Tag(name = "疾病档案查询服务", description = "聚合疾病档案与记录信息，提供列表总览与按档案维度的查询能力")
 public class DiseaseProfileQueryService {
+  private static final int EXAM_NODE_WINDOW_DAYS = 3;
+
   private final RecordMapper recordMapper;
   private final DiseaseProfileMapper diseaseProfileMapper;
   private final ParseJobMapper parseJobMapper;
@@ -115,7 +121,7 @@ public class DiseaseProfileQueryService {
       try {
         targetProfileId = UUID.fromString(profileId);
       } catch (IllegalArgumentException error) {
-        return new ProfileRecordsResult(List.of(), 0);
+        return new ProfileRecordsResult(List.of(), List.of(), 0);
       }
       query.eq(RecordEntity::getDiseaseProfileId, targetProfileId);
     }
@@ -138,10 +144,80 @@ public class DiseaseProfileQueryService {
       }
     }
 
-    return new ProfileRecordsResult(successRecords, parsingCount);
+    return new ProfileRecordsResult(successRecords, buildExamNodes(successRecords), parsingCount);
   }
 
-  public record ProfileRecordsResult(List<DiseaseProfileRecordSummary> records, int parsingCount) {}
+  public record ProfileRecordsResult(
+      List<DiseaseProfileRecordSummary> records,
+      List<DiseaseProfileExamNode> examNodes,
+      int parsingCount) {}
+
+  private List<DiseaseProfileExamNode> buildExamNodes(List<DiseaseProfileRecordSummary> records) {
+    if (records.isEmpty()) {
+      return List.of();
+    }
+
+    List<DiseaseProfileRecordSummary> sorted = records.stream()
+        .sorted(Comparator
+            .comparing((DiseaseProfileRecordSummary record) -> parseRecordDate(record.recordDate())).reversed()
+            .thenComparing(DiseaseProfileRecordSummary::id))
+        .toList();
+
+    List<DiseaseProfileExamNode> nodes = new ArrayList<>();
+    List<DiseaseProfileRecordSummary> currentRecords = new ArrayList<>();
+    LocalDate currentStart = null;
+    LocalDate currentEnd = null;
+
+    for (DiseaseProfileRecordSummary record : sorted) {
+      LocalDate recordDate = parseRecordDate(record.recordDate());
+      if (currentRecords.isEmpty()) {
+        currentRecords.add(record);
+        currentStart = recordDate;
+        currentEnd = recordDate;
+        continue;
+      }
+
+      LocalDate nextStart = recordDate.isBefore(currentStart) ? recordDate : currentStart;
+      LocalDate nextEnd = recordDate.isAfter(currentEnd) ? recordDate : currentEnd;
+      if (ChronoUnit.DAYS.between(nextStart, nextEnd) <= EXAM_NODE_WINDOW_DAYS) {
+        currentRecords.add(record);
+        currentStart = nextStart;
+        currentEnd = nextEnd;
+      } else {
+        nodes.add(toExamNode(currentStart, currentEnd, currentRecords));
+        currentRecords = new ArrayList<>();
+        currentRecords.add(record);
+        currentStart = recordDate;
+        currentEnd = recordDate;
+      }
+    }
+
+    if (!currentRecords.isEmpty()) {
+      nodes.add(toExamNode(currentStart, currentEnd, currentRecords));
+    }
+    return nodes;
+  }
+
+  private DiseaseProfileExamNode toExamNode(
+      LocalDate dateRangeStart,
+      LocalDate dateRangeEnd,
+      List<DiseaseProfileRecordSummary> records) {
+    List<DiseaseProfileRecordSummary> nodeRecords = records.stream()
+        .sorted(Comparator
+            .comparing((DiseaseProfileRecordSummary record) -> parseRecordDate(record.recordDate()))
+            .thenComparing(DiseaseProfileRecordSummary::sourceType)
+            .thenComparing(DiseaseProfileRecordSummary::id))
+        .toList();
+    String start = String.valueOf(dateRangeStart);
+    String end = String.valueOf(dateRangeEnd);
+    String displayDate = start.equals(end) ? start : start + " 至 " + end;
+    String examNodeId = start + "_" + end + "_" + nodeRecords.get(0).id();
+    return new DiseaseProfileExamNode(examNodeId, start, start, end, displayDate, nodeRecords);
+  }
+
+  private LocalDate parseRecordDate(String recordDate) {
+    return LocalDate.parse(recordDate);
+  }
 
   @Operation(summary = "按档案ID解析疾病名称", description = "根据档案ID解析展示名称，无法匹配时统一返回未分类疾病")
   public String diseaseNameByProfile(String profileId) {

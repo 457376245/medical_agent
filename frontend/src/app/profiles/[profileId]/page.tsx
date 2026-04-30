@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { usePatient } from "../../../components/auth/PatientProvider";
 import { DiseaseTimelineView } from "../../../components/profiles/DiseaseTimelineView";
+import type { TimelineExamNode } from "../../../components/profiles/timelineGrouping";
 import { authFetch } from "../../../lib/api";
 
 export default function ProfilePage() {
@@ -12,6 +13,7 @@ export default function ProfilePage() {
   const { currentPatient } = usePatient();
   const [diseaseName, setDiseaseName] = useState("未分类疾病");
   const [records, setRecords] = useState<Array<{ id: string; title: string; recordDate: string; sourceType: string }>>([]);
+  const [examNodes, setExamNodes] = useState<TimelineExamNode[]>([]);
   const [parsingCount, setParsingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -39,9 +41,27 @@ export default function ProfilePage() {
             sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
           })),
         );
+        setExamNodes(
+          (payload.data?.examNodes ?? []).map((node: Record<string, unknown>) => ({
+            examNodeId: String(node.examNodeId ?? ""),
+            anchorDate: String(node.anchorDate ?? ""),
+            dateRangeStart: String(node.dateRangeStart ?? ""),
+            dateRangeEnd: String(node.dateRangeEnd ?? ""),
+            displayDate: String(node.displayDate ?? node.anchorDate ?? ""),
+            records: (Array.isArray(node.records) ? node.records : []).map((item: Record<string, unknown>) => ({
+              id: String(item.id ?? ""),
+              title: String(item.title ?? "未命名报告"),
+              recordDate: String(item.recordDate ?? item.record_date ?? "暂无"),
+              sourceType: String(item.sourceType ?? item.source_type ?? "UPLOAD"),
+            })),
+          })),
+        );
         setParsingCount(Number(payload.data?.parsingCount ?? 0));
       } catch {
-        if (!cancelled) setRecords([]);
+        if (!cancelled) {
+          setRecords([]);
+          setExamNodes([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -58,5 +78,14 @@ export default function ProfilePage() {
     );
   }
 
-  return <DiseaseTimelineView profileId={profileId || undefined} diseaseName={diseaseName} records={records} parsingCount={parsingCount} patientId={currentPatient?.id} />;
+  return (
+    <DiseaseTimelineView
+      profileId={profileId || undefined}
+      diseaseName={diseaseName}
+      records={records}
+      examNodes={examNodes}
+      parsingCount={parsingCount}
+      patientId={currentPatient?.id}
+    />
+  );
 }

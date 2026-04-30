@@ -7,22 +7,16 @@ import { CombinationAnalysisPanel } from "../parse/CombinationAnalysisPanel";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
-
-const REPORT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "UPLOAD", label: "常规检查" },
-  { value: "LAB", label: "检验报告" },
-  { value: "IMAGING", label: "影像报告" },
-  { value: "OUTPATIENT", label: "门诊记录" },
-  { value: "DISCHARGE", label: "出院小结" },
-  { value: "OTHER", label: "其他" },
-];
-
-type TimelineRecord = {
-  id: string;
-  title: string;
-  recordDate: string;
-  sourceType: string;
-};
+import {
+  REPORT_CATEGORY_OPTIONS,
+  buildGroupedTimelineItems,
+  categoryButtonLabel,
+  categoryLabel,
+  normalizeCategory,
+  type GroupedDateItem,
+  type TimelineExamNode,
+  type TimelineRecord,
+} from "./timelineGrouping";
 
 type CombinationAnalysisItem = {
   ruleId: string;
@@ -38,17 +32,6 @@ type TimelineRecordDetail = {
   parseStatus: string;
   payload: unknown;
   combinationAnalysis: CombinationAnalysisItem[];
-};
-
-type GroupedCategory = {
-  categoryValue: string;
-  categoryLabel: string;
-  record: TimelineRecord;
-};
-
-type GroupedDateItem = {
-  date: string;
-  categories: GroupedCategory[];
 };
 
 type RecordAnalysis = {
@@ -79,20 +62,6 @@ type TrendData = {
   snapshots: TrendSnapshot[];
 };
 
-function normalizeCategory(raw?: string): string {
-  const value = (raw ?? "UPLOAD").trim().toUpperCase();
-  return value || "UPLOAD";
-}
-
-function categoryLabel(categoryValue: string): string {
-  return REPORT_CATEGORY_OPTIONS.find((item) => item.value === categoryValue)?.label ?? categoryValue;
-}
-
-function categoryOrder(categoryValue: string): number {
-  const index = REPORT_CATEGORY_OPTIONS.findIndex((item) => item.value === categoryValue);
-  return index >= 0 ? index : REPORT_CATEGORY_OPTIONS.length + 1;
-}
-
 function hasStructuredFields(payload: unknown): boolean {
   if (typeof payload !== "object" || payload === null) {
     return false;
@@ -105,16 +74,19 @@ export function DiseaseTimelineView({
   profileId,
   diseaseName,
   records,
+  examNodes = [],
   parsingCount = 0,
   patientId,
 }: {
   profileId?: string;
   diseaseName?: string;
   records: TimelineRecord[];
+  examNodes?: TimelineExamNode[];
   parsingCount?: number;
   patientId?: string;
 }) {
   const [mutableRecords, setMutableRecords] = useState<TimelineRecord[]>(records);
+  const [mutableExamNodes, setMutableExamNodes] = useState<TimelineExamNode[]>(examNodes);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
@@ -137,37 +109,20 @@ export function DiseaseTimelineView({
     setMutableRecords(records);
   }, [records]);
 
-  const groupedByDate = useMemo<GroupedDateItem[]>(() => {
-    const dateMap = new Map<string, GroupedCategory[]>();
+  useEffect(() => {
+    setMutableExamNodes(examNodes);
+  }, [examNodes]);
 
-    for (const record of mutableRecords) {
-      const date = record.recordDate;
-      const categoryValue = normalizeCategory(record.sourceType);
-      const next: GroupedCategory = {
-        categoryValue,
-        categoryLabel: categoryLabel(categoryValue),
-        record,
-      };
-      if (!dateMap.has(date)) {
-        dateMap.set(date, [next]);
-      } else {
-        dateMap.get(date)?.push(next);
-      }
-    }
-
-    return Array.from(dateMap.entries())
-      .map(([date, categories]) => ({
-        date,
-        categories: [...categories].sort((a, b) => categoryOrder(a.categoryValue) - categoryOrder(b.categoryValue)),
-      }))
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  }, [mutableRecords]);
+  const groupedByDate = useMemo<GroupedDateItem[]>(
+    () => buildGroupedTimelineItems(mutableRecords, mutableExamNodes),
+    [mutableRecords, mutableExamNodes],
+  );
 
   const categoriesForSelectedDate = useMemo(() => {
     if (!selectedDate) {
       return [];
     }
-    return groupedByDate.find((item) => item.date === selectedDate)?.categories ?? [];
+    return groupedByDate.find((item) => item.id === selectedDate)?.categories ?? [];
   }, [groupedByDate, selectedDate]);
 
   const selectedRecord = useMemo(() => {
@@ -179,9 +134,7 @@ export function DiseaseTimelineView({
 
   const currentCategoryValue = selectedRecord
     ? normalizeCategory(selectedRecord.sourceType)
-    : selectedCategory
-      ? normalizeCategory(selectedCategory)
-      : null;
+    : null;
   const currentCategoryLabel = currentCategoryValue ? categoryLabel(currentCategoryValue) : "";
 
   useEffect(() => {
@@ -203,7 +156,7 @@ export function DiseaseTimelineView({
   }, [profileId, patientId]);
 
   useEffect(() => {
-    if (selectedDate && !groupedByDate.some((item) => item.date === selectedDate)) {
+    if (selectedDate && !groupedByDate.some((item) => item.id === selectedDate)) {
       setSelectedDate(null);
       setSelectedCategory(null);
       setSelectedRecordId(null);
@@ -262,8 +215,8 @@ export function DiseaseTimelineView({
     );
   };
 
-  const onSelectDate = (date: string) => {
-    setSelectedDate(date);
+  const onSelectDate = (nodeId: string) => {
+    setSelectedDate(nodeId);
     setSelectedCategory(null);
     setSelectedRecordId(null);
     setSelectedDetail(null);
@@ -313,16 +266,16 @@ export function DiseaseTimelineView({
     }
   };
 
-  const onSelectCategory = async (categoryValue: string) => {
+  const onSelectCategory = async (itemKey: string) => {
     if (!selectedDate) {
       return;
     }
-    const target = categoriesForSelectedDate.find((item) => item.categoryValue === categoryValue);
+    const target = categoriesForSelectedDate.find((item) => item.itemKey === itemKey);
     if (!target) {
       return;
     }
 
-    setSelectedCategory(categoryValue);
+    setSelectedCategory(itemKey);
     setSelectedRecordId(target.record.id);
     setSelectedDetail(null);
     setDetailError("");
@@ -446,7 +399,21 @@ export function DiseaseTimelineView({
             : item,
         ),
       );
-      setSelectedCategory(nextSourceType);
+      setMutableExamNodes((prev) =>
+        prev.map((node) => ({
+          ...node,
+          records: node.records.map((item) =>
+            item.id === selectedRecordId
+              ? {
+                  ...item,
+                  sourceType: nextSourceType,
+                  title: nextTitle || item.title,
+                }
+              : item,
+          ),
+        })),
+      );
+      setSelectedCategory(selectedRecordId);
       setCategoryMenuOpen(false);
       setTrendOpen(false);
       setTrendCache({});
@@ -534,15 +501,15 @@ export function DiseaseTimelineView({
           ) : (
             <ul className="date-node-timeline">
               {groupedByDate.map((item) => (
-                <li className="date-node-item" key={item.date}>
+                <li className="date-node-item" key={item.id}>
                   <button
-                    className={`date-node-btn ${selectedDate === item.date ? "active" : ""}`}
+                    className={`date-node-btn ${selectedDate === item.id ? "active" : ""}`}
                     type="button"
-                    onClick={() => onSelectDate(item.date)}
+                    onClick={() => onSelectDate(item.id)}
                   >
                     <span className="date-node-dot" aria-hidden="true" />
-                    <span className="date-node-label">{item.date}</span>
-                    <span className="badge">{item.categories.length} 类报告</span>
+                    <span className="date-node-label">{item.displayDate}</span>
+                    <span className="badge">{item.categories.length} 份报告</span>
                   </button>
                 </li>
               ))}
@@ -559,13 +526,13 @@ export function DiseaseTimelineView({
           ) : (
             <ul className="category-select-list">
               {categoriesForSelectedDate.map((item) => (
-                <li key={`${item.record.recordDate}-${item.categoryValue}`}>
+                <li key={item.itemKey}>
                   <button
-                    className={`category-select-btn ${selectedCategory === item.categoryValue ? "active" : ""}`}
+                    className={`category-select-btn ${selectedCategory === item.itemKey ? "active" : ""}`}
                     type="button"
-                    onClick={() => void onSelectCategory(item.categoryValue)}
+                    onClick={() => void onSelectCategory(item.itemKey)}
                   >
-                    {item.categoryLabel}
+                    {categoryButtonLabel(item, categoriesForSelectedDate)}
                   </button>
                 </li>
               ))}
@@ -590,7 +557,9 @@ export function DiseaseTimelineView({
           ) : (
             <>
               <div className="result-toolbar">
-                <span className="badge">{selectedDate}</span>
+                <span className="badge">
+                  {groupedByDate.find((item) => item.id === selectedDate)?.displayDate ?? selectedDate}
+                </span>
                 <div className="result-category-editor" ref={categoryMenuRef}>
                   <button
                     className="result-category-btn"

@@ -100,7 +100,12 @@ public class DiseaseProfileController {
         "OK",
         "success",
         RequestIdUtil.newRequestId(),
-        new DiseaseProfileDetailResponseData(profileId, diseaseName, result.records(), result.parsingCount()));
+        new DiseaseProfileDetailResponseData(
+            profileId,
+            diseaseName,
+            result.records(),
+            result.examNodes(),
+            result.parsingCount()));
   }
 
   @PostMapping
