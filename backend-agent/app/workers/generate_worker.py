@@ -42,11 +42,7 @@ class GenerateWorker:
 
     async def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         """执行生成任务。"""
-        result = await asyncio.to_thread(
-            self.gateway.execute_with_resilience,
-            "generate",
-            payload,
-        )
+        result = await self.gateway.aexecute_with_resilience("generate", payload)
         if not result.success:
             return {
                 "status": "FAILED",

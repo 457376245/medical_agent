@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, trim_messages
@@ -36,6 +35,7 @@ from app.config import (
     OPENAI_REQUEST_TIMEOUT_SECONDS,
     OPENAI_SDK_RETRIES,
 )
+from app.ids import new_prefixed_ordered_id
 from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
 from app.prompts.templates import get_conversation_prompt
 from app.tools.registry import get_tools
@@ -75,7 +75,7 @@ def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
         content="",
         tool_calls=[
             {
-                "id": f"context-{uuid.uuid4().hex[:12]}",
+                "id": new_prefixed_ordered_id("context"),
                 "name": CONTEXT_TOOL_NAME,
                 "args": call_args,
             }

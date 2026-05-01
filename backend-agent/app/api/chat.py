@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Any
@@ -19,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from app.agent.context import context_signature_from_metadata
+from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn, AgentTraceEvent
 from app.schemas.chat import ChatRequest
 
@@ -126,7 +126,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     """
     graph = request.app.state.agent_graph
     memory_store = getattr(request.app.state, "memory_store", None)
-    thread_id = body.thread_id or uuid.uuid4().hex
+    thread_id = body.thread_id or new_ordered_id()
     config = {"configurable": {"thread_id": thread_id}}
     turn_metadata: dict[str, Any] = dict(body.metadata)
 

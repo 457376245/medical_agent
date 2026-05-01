@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
 import random
@@ -208,6 +209,15 @@ class ProviderGateway:
             payload={"operation": operation, "input": payload},
             error_code="EXT_UNKNOWN",
             attempts=max_attempts,
+        )
+
+    async def aexecute_with_resilience(
+        self, operation: str, payload: dict[str, Any]
+    ) -> ProviderResponse:
+        return await asyncio.to_thread(
+            self.execute_with_resilience,
+            operation,
+            payload,
         )
 
     # ------------------------------------------------------------------

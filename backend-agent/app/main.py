@@ -305,10 +305,41 @@ if __name__ == "__main__":
 
     setup_signal_handlers()
 
+    reload_enabled = to_bool(os.getenv("UVICORN_RELOAD", "true"))
+    project_dir = Path(__file__).resolve().parent.parent
+    app_dir = project_dir / "app"
+    env_file = Path(os.getenv("UVICORN_ENV_FILE", ".env"))
+    if not env_file.is_absolute():
+        env_file = project_dir / env_file
+
+    if reload_enabled:
+        runtime_paths = {
+            "DATA_DIR": "data",
+            "CHECKPOINT_DB_PATH": "data/checkpoints.db",
+            "MEMORY_DB_PATH": "data/memory.db",
+            "LOG_FILE": "logs/backend-agent.log",
+        }
+        for env_name, default_path in runtime_paths.items():
+            raw_path = os.getenv(env_name, default_path).strip()
+            if raw_path:
+                path = Path(raw_path)
+                if not path.is_absolute():
+                    os.environ[env_name] = str(project_dir / path)
+
+        sys.path.insert(0, str(project_dir))
+        existing_pythonpath = os.getenv("PYTHONPATH", "")
+        pythonpath_parts = [str(project_dir)]
+        if existing_pythonpath:
+            pythonpath_parts.append(existing_pythonpath)
+        os.environ["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        os.chdir(app_dir)
+
     uvicorn.run(
         "app.main:app",
         host=os.getenv("UVICORN_HOST", "0.0.0.0"),
         port=read_int_env("UVICORN_PORT", 8090, 1),
-        env_file=os.getenv("UVICORN_ENV_FILE", ".env"),
-        reload=to_bool(os.getenv("UVICORN_RELOAD", "true")),
+        env_file=str(env_file),
+        reload=reload_enabled,
+        reload_dirs=[str(app_dir)],
+        reload_excludes=["__pycache__", "*.py[cod]"],
     )

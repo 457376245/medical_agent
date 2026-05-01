@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
 
 import aiosqlite
 
 from app.config import MEMORY_DB_PATH
+from app.ids import new_ordered_id
 from app.memory.models import (
     AgentSessionRecord,
     AgentSessionTurn,
@@ -251,7 +251,7 @@ class SqliteMemoryStore:
         ]
 
     async def save_agent_turn(self, turn: AgentSessionTurn) -> AgentSessionTurn:
-        turn_id = turn.turn_id or uuid.uuid4().hex
+        turn_id = turn.turn_id or new_ordered_id()
         await self._conn.execute(
             "INSERT OR REPLACE INTO agent_session_turns "
             "(turn_id, thread_id, turn_index, user_message, assistant_message, "

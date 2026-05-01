@@ -7,12 +7,12 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
+from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn
 
 LOGGER = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ async def list_sessions(
 @router.post("")
 async def create_session(request: Request) -> dict[str, Any]:
     """创建新的对话会话并返回其 thread_id。"""
-    thread_id = uuid.uuid4().hex
+    thread_id = new_ordered_id()
     LOGGER.info("Session created: %s", thread_id)
     return {"thread_id": thread_id}
 

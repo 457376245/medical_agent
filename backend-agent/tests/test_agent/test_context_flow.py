@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -37,6 +38,8 @@ def test_context_preload_forces_tool_call_on_new_signature() -> None:
     assert tool_calls[0]["name"] == "fetch_disease_profile_context"
     assert tool_calls[0]["args"]["disease_profile_id"] == "profile-1"
     assert tool_calls[0]["args"]["record_id"] == "record-1"
+    assert tool_calls[0]["id"].startswith("context-")
+    assert uuid.UUID(hex=tool_calls[0]["id"].removeprefix("context-")).version == 7
 
 
 def test_context_preload_skips_when_signature_unchanged() -> None:

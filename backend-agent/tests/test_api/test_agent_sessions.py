@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -83,12 +84,14 @@ def test_chat_stream_persists_session_index_and_turn_trace(tmp_path: Path) -> No
         assert session["record_title"] == "门诊化验单"
         assert session["context_signature"] == "profile-1:record-1"
         assert session["turn_count"] == 1
+        assert uuid.UUID(hex=session["thread_id"]).version == 7
 
         detail_response = client.get(f"/api/v1/sessions/{session['thread_id']}")
         detail_payload = detail_response.json()
         assert detail_payload["found"] is True
         assert detail_payload["message_count"] == 2
         assert len(detail_payload["turns"]) == 1
+        assert uuid.UUID(hex=detail_payload["turns"][0]["turn_id"]).version == 7
         assert detail_payload["turns"][0]["metadata"]["disease_profile_id"] == "profile-1"
         assert detail_payload["turns"][0]["metadata"]["context_signature"] == "profile-1:record-1"
         assert detail_payload["turns"][0]["trace_events"][0]["event"] == "tool_call"
@@ -123,6 +126,18 @@ def test_delete_session_removes_indexed_data(tmp_path: Path) -> None:
 
         list_response = client.get("/api/v1/sessions?disease_profile_id=profile-2")
         assert list_response.json()["count"] == 0
+    finally:
+        client.close()
+        asyncio.run(memory_store.close())
+
+
+def test_create_session_returns_uuid7_thread_id(tmp_path: Path) -> None:
+    client, memory_store = _create_client(tmp_path / "create-memory.db")
+    try:
+        response = client.post("/api/v1/sessions")
+
+        assert response.status_code == 200
+        assert uuid.UUID(hex=response.json()["thread_id"]).version == 7
     finally:
         client.close()
         asyncio.run(memory_store.close())

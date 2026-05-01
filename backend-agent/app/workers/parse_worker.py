@@ -52,11 +52,7 @@ class ParseWorker:
 
     async def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         """执行解析任务。"""
-        result = await asyncio.to_thread(
-            self.gateway.execute_with_resilience,
-            "parse",
-            payload,
-        )
+        result = await self.gateway.aexecute_with_resilience("parse", payload)
         if not result.success:
             LOGGER.error(
                 "Parse provider failed: jobId=%s error_code=%s attempts=%s",

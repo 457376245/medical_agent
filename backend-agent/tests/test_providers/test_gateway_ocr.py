@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,5 +63,30 @@ def test_gateway_does_not_retry_on_biz_llm_error() -> None:
 
     assert result.success is False
     assert result.error_code == "BIZ_LLM_REQUEST_INVALID"
+    assert result.attempts == 1
+    assert llm.parse_calls == 1
+
+
+def test_gateway_async_facade_returns_sync_result() -> None:
+    llm = _StubLLM(
+        sequence=[
+            {
+                "structuredResult": {
+                    "schemaVersion": "v1",
+                    "fields": [{"name": "葡萄糖", "value": "5.1", "confidence": 0.9}],
+                    "meta": {},
+                },
+                "confidence": 0.9,
+                "modelMeta": {"model": "parse-model-1"},
+            },
+        ]
+    )
+    gateway = ProviderGateway(llm=llm)
+
+    result = asyncio.run(
+        gateway.aexecute_with_resilience("parse", {"assetRefs": [{"objectKey": "x"}]})
+    )
+
+    assert result.success is True
     assert result.attempts == 1
     assert llm.parse_calls == 1
