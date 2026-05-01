@@ -1681,12 +1681,33 @@ a {
   position: relative;
 }
 
-.date-node-btn {
+.date-node-row {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-strong);
-  padding: 10px 10px 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 18px;
+}
+
+.date-node-row:hover {
+  border-color: #b9d5df;
+  background: #f8fcff;
+}
+
+.date-node-row.active {
+  border-color: #8fc1b2;
+  background: #eef9f4;
+}
+
+.date-node-btn {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 2px 0 2px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1696,13 +1717,16 @@ a {
 }
 
 .date-node-btn:hover {
-  border-color: #b9d5df;
-  background: #f8fcff;
+  color: var(--primary);
 }
 
-.date-node-btn.active {
-  border-color: #8fc1b2;
-  background: #eef9f4;
+.date-node-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.date-node-delete-btn {
+  flex: 0 0 auto;
 }
 
 .date-node-dot {
@@ -1720,6 +1744,7 @@ a {
 .date-node-label {
   font-weight: 700;
   color: var(--ink);
+  min-width: 0;
 }
 
 .category-select-list {
@@ -3227,6 +3252,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .date-node-row {
+    align-items: stretch;
+  }
+
   .timeline-item {
     align-items: flex-start;
     flex-direction: column;
@@ -3266,6 +3295,18 @@ a {
 
   .agent-workbench {
     position: relative;
+  }
+
+  .date-node-row {
+    flex-direction: column;
+  }
+
+  .date-node-btn {
+    width: 100%;
+  }
+
+  .date-node-delete-btn {
+    align-self: flex-end;
   }
 
   .agent-sidebar {

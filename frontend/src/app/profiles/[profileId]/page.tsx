@@ -88,6 +88,9 @@ export default function ProfilePage() {
       onParsingCanceled={async () => {
         await loadProfileData();
       }}
+      onRecordsDeleted={async () => {
+        await loadProfileData();
+      }}
     />
   );
 }

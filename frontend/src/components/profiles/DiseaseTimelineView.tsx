@@ -14,6 +14,7 @@ import {
   categoryButtonLabel,
   categoryLabel,
   normalizeCategory,
+  recordIdsForGroupedDateItem,
   type GroupedDateItem,
   type TimelineExamNode,
   type TimelineRecord,
@@ -79,6 +80,7 @@ export function DiseaseTimelineView({
   parsingCount = 0,
   patientId,
   onParsingCanceled,
+  onRecordsDeleted,
 }: {
   profileId?: string;
   diseaseName?: string;
@@ -87,6 +89,7 @@ export function DiseaseTimelineView({
   parsingCount?: number;
   patientId?: string;
   onParsingCanceled?: () => void | Promise<void>;
+  onRecordsDeleted?: () => void | Promise<void>;
 }) {
   const [mutableRecords, setMutableRecords] = useState<TimelineRecord[]>(records);
   const [mutableExamNodes, setMutableExamNodes] = useState<TimelineExamNode[]>(examNodes);
@@ -110,6 +113,9 @@ export function DiseaseTimelineView({
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState("");
+  const [deleteTargetNode, setDeleteTargetNode] = useState<GroupedDateItem | null>(null);
+  const [deletingNodeId, setDeletingNodeId] = useState<string | null>(null);
+  const [batchDeleteError, setBatchDeleteError] = useState("");
 
   useEffect(() => {
     setMutableRecords(records);
@@ -162,6 +168,9 @@ export function DiseaseTimelineView({
     setCancelConfirmOpen(false);
     setCancelLoading(false);
     setCancelError("");
+    setDeleteTargetNode(null);
+    setDeletingNodeId(null);
+    setBatchDeleteError("");
   }, [profileId, patientId]);
 
   useEffect(() => {
@@ -259,6 +268,75 @@ export function DiseaseTimelineView({
     setTrendOpen(false);
     setTrendLoading(false);
     setTrendError("");
+    setBatchDeleteError("");
+  };
+
+  const clearSelectedReportState = () => {
+    setSelectedDate(null);
+    setSelectedCategory(null);
+    setSelectedRecordId(null);
+    setSelectedDetail(null);
+    setDetailError("");
+    setCategoryMenuOpen(false);
+    setCategoryUpdateError("");
+    setAnalysisLoading(false);
+    setAnalysisError("");
+    setTrendOpen(false);
+    setTrendLoading(false);
+    setTrendError("");
+  };
+
+  const onConfirmDeleteNode = async () => {
+    if (!profileId || !deleteTargetNode) {
+      return;
+    }
+    const target = deleteTargetNode;
+    const recordIds = recordIdsForGroupedDateItem(target);
+    if (recordIds.length === 0) {
+      setDeleteTargetNode(null);
+      return;
+    }
+
+    setDeletingNodeId(target.id);
+    setBatchDeleteError("");
+    try {
+      const response = await authFetch(`/disease-profiles/${profileId}/records`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recordIds }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = String(payload?.message ?? "批量删除失败，请稍后重试。");
+        throw new Error(message);
+      }
+
+      const recordIdSet = new Set(recordIds);
+      setMutableRecords((prev) => prev.filter((item) => !recordIdSet.has(item.id)));
+      setMutableExamNodes((prev) =>
+        prev
+          .map((node) => ({
+            ...node,
+            records: node.records.filter((item) => !recordIdSet.has(item.id)),
+          }))
+          .filter((node) => node.records.length > 0),
+      );
+      setAnalysisCache({});
+      setTrendCache({});
+      if (selectedDate === target.id || (selectedRecordId && recordIdSet.has(selectedRecordId))) {
+        clearSelectedReportState();
+      }
+      setDeleteTargetNode(null);
+      if (onRecordsDeleted) {
+        await onRecordsDeleted();
+      }
+    } catch (error) {
+      setBatchDeleteError(error instanceof Error ? error.message : "批量删除失败，请稍后重试。");
+    } finally {
+      setDeletingNodeId(null);
+    }
   };
 
   const loadRecordAnalysis = async (recordId: string) => {
@@ -541,21 +619,41 @@ export function DiseaseTimelineView({
           {groupedByDate.length === 0 ? (
             <p className="muted">该疾病下暂无报告，请先上传。</p>
           ) : (
-            <ul className="date-node-timeline">
-              {groupedByDate.map((item) => (
-                <li className="date-node-item" key={item.id}>
-                  <button
-                    className={`date-node-btn ${selectedDate === item.id ? "active" : ""}`}
-                    type="button"
-                    onClick={() => onSelectDate(item.id)}
-                  >
-                    <span className="date-node-dot" aria-hidden="true" />
-                    <span className="date-node-label">{item.displayDate}</span>
-                    <span className="badge">{item.categories.length} 份报告</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {batchDeleteError ? <p className="status-text error">{batchDeleteError}</p> : null}
+              <ul className="date-node-timeline">
+                {groupedByDate.map((item) => {
+                  const isDeleting = deletingNodeId === item.id;
+                  return (
+                    <li className="date-node-item" key={item.id}>
+                      <div className={`date-node-row ${selectedDate === item.id ? "active" : ""}`}>
+                        <button
+                          className="date-node-btn"
+                          type="button"
+                          onClick={() => onSelectDate(item.id)}
+                          disabled={isDeleting}
+                        >
+                          <span className="date-node-dot" aria-hidden="true" />
+                          <span className="date-node-label">{item.displayDate}</span>
+                          <span className="badge">{item.categories.length} 份报告</span>
+                        </button>
+                        <button
+                          className="btn btn-danger btn-small date-node-delete-btn"
+                          type="button"
+                          onClick={() => {
+                            setBatchDeleteError("");
+                            setDeleteTargetNode(item);
+                          }}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? "删除中..." : "批量删除"}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </article>
 
@@ -688,6 +786,20 @@ export function DiseaseTimelineView({
         loading={cancelLoading}
         onCancel={() => !cancelLoading && setCancelConfirmOpen(false)}
         onConfirm={() => void onConfirmCancelParsing()}
+      />
+      <ConfirmDialog
+        open={Boolean(deleteTargetNode)}
+        title="确认删除该时间节点报告"
+        description={
+          deleteTargetNode
+            ? `将删除「${deleteTargetNode.displayDate}」下 ${deleteTargetNode.categories.length} 份报告、关联解析数据和已上传文件，删除后不可恢复。`
+            : ""
+        }
+        confirmText="确认删除"
+        tone="danger"
+        loading={Boolean(deletingNodeId)}
+        onCancel={() => !deletingNodeId && setDeleteTargetNode(null)}
+        onConfirm={() => void onConfirmDeleteNode()}
       />
     </main>
   );

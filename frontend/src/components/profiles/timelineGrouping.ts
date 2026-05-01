@@ -95,6 +95,10 @@ export function categoryButtonLabel(item: GroupedCategory, siblings: GroupedCate
   return `${item.categoryLabel} - ${item.record.recordDate}`;
 }
 
+export function recordIdsForGroupedDateItem(item: GroupedDateItem): string[] {
+  return item.categories.map((category) => category.record.id).filter(Boolean);
+}
+
 function toGroupedCategory(record: TimelineRecord): GroupedCategory {
   const categoryValue = normalizeCategory(record.sourceType);
   return {

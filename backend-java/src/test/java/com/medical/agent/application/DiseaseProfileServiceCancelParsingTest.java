@@ -1,6 +1,7 @@
 package com.medical.agent.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -276,6 +277,63 @@ class DiseaseProfileServiceCancelParsingTest {
 
     assertEquals(1, result.deletedRecordCount());
     assertEquals("unknown", result.diseaseProfileId());
+  }
+
+  @Test
+  void deleteProfileRecordsRejectsRecordsOutsideProfileWithoutDeleting() {
+    UUID profileId = UUID.randomUUID();
+    UUID targetRecordId = UUID.randomUUID();
+    UUID otherRecordId = UUID.randomUUID();
+
+    when(diseaseProfileMapper.selectCount(any())).thenReturn(1L);
+    when(recordMapper.selectList(any())).thenReturn(List.of(record(targetRecordId, profileId)));
+
+    DiseaseProfileService.DeleteProfileRecordsResult result =
+        service.deleteProfileRecords(profileId, List.of(targetRecordId, otherRecordId));
+
+    assertTrue(result.profileExists());
+    assertEquals(1, result.rejectedRecordIds().size());
+    assertEquals(otherRecordId.toString(), result.rejectedRecordIds().get(0));
+    assertEquals(0, result.deletedRecordCount());
+    verify(ossPresignService, never()).deleteObject(any());
+    verify(recordMapper, never()).delete(any());
+  }
+
+  @Test
+  void deleteProfileRecordsDeletesScopedRecordsAndAssets() {
+    UUID profileId = UUID.randomUUID();
+    UUID firstRecordId = UUID.randomUUID();
+    UUID secondRecordId = UUID.randomUUID();
+    ParseJobEntity firstJob = parseJob(firstRecordId, "SUCCESS");
+    ParseJobEntity secondJob = parseJob(secondRecordId, "SUCCESS");
+
+    when(diseaseProfileMapper.selectCount(any())).thenReturn(1L);
+    when(recordMapper.selectList(any())).thenReturn(List.of(
+        record(firstRecordId, profileId),
+        record(secondRecordId, profileId)));
+    when(assetMapper.selectList(any())).thenReturn(List.of(
+        asset(firstRecordId, "uploads/first.pdf"),
+        asset(secondRecordId, "uploads/second.pdf")));
+    when(parseJobMapper.selectList(any())).thenReturn(List.of(firstJob, secondJob));
+    when(assetMapper.delete(any())).thenReturn(2);
+    when(parseJobMapper.delete(any())).thenReturn(2);
+    when(parseJobAssetMapper.delete(any())).thenReturn(2);
+    when(structuredResultMapper.delete(any())).thenReturn(0);
+    when(generatedOutputMapper.delete(any())).thenReturn(0);
+    when(dataRightsRequestMapper.delete(any())).thenReturn(0);
+    when(recordMapper.delete(any())).thenReturn(2);
+
+    DiseaseProfileService.DeleteProfileRecordsResult result =
+        service.deleteProfileRecords(profileId, List.of(firstRecordId, firstRecordId, secondRecordId));
+
+    assertTrue(result.profileExists());
+    assertTrue(result.rejectedRecordIds().isEmpty());
+    assertEquals(2, result.requestedRecordCount());
+    assertEquals(2, result.deletedRecordCount());
+    assertEquals(2, result.deletedAssetCount());
+    assertEquals(2, result.deletedParseJobCount());
+    verify(ossPresignService).deleteObject("uploads/first.pdf");
+    verify(ossPresignService).deleteObject("uploads/second.pdf");
   }
 
   private RecordEntity record(UUID id, UUID profileId) {

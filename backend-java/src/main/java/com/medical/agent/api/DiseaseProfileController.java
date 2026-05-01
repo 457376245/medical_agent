@@ -3,6 +3,7 @@ package com.medical.agent.api;
 import com.medical.agent.application.DiseaseProfileQueryService;
 import com.medical.agent.application.DiseaseProfileService;
 import com.medical.agent.domain.dto.ApiResponse;
+import com.medical.agent.domain.dto.request.DeleteDiseaseProfileRecordsRequest;
 import com.medical.agent.domain.dto.request.NameRequest;
 import com.medical.agent.domain.dto.response.DiseaseProfileCreateResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileDeleteResponseData;
@@ -11,6 +12,7 @@ import com.medical.agent.domain.dto.response.DiseaseProfileDetailResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileListResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileOverviewResponseData;
 import com.medical.agent.domain.dto.response.DiseaseProfileRefResponseData;
+import com.medical.agent.domain.dto.response.DiseaseProfileRecordsDeleteResponseData;
 import com.medical.agent.domain.vo.DiseaseProfileOverview;
 import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.domain.vo.DiseaseProfileSummary;
@@ -20,6 +22,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -281,5 +285,105 @@ public class DiseaseProfileController {
             result.deletedRecordCount(),
             result.deletedAssetCount(),
             result.deletedParseJobCount())));
+  }
+
+  @DeleteMapping("/{profileId}/records")
+  @Operation(summary = "批量删除疾病档案记录", description = "按记录ID列表删除当前疾病档案下的报告及关联资源")
+  public ResponseEntity<ApiResponse<?>> deleteProfileRecords(
+      @Parameter(description = "疾病档案ID", example = "d5a113ca-56cf-4aca-a265-8f4ec0a3292c")
+      @PathVariable("profileId") String profileId,
+      @RequestBody DeleteDiseaseProfileRecordsRequest request) {
+    UUID diseaseProfileUuid;
+    try {
+      diseaseProfileUuid = UUID.fromString(profileId);
+    } catch (IllegalArgumentException error) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_DISEASE_PROFILE_ID",
+          "profileId is invalid",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRecordsDeleteResponseData(profileId, false, 0, 0, 0, 0, List.of())));
+    }
+
+    List<String> rawRecordIds = request == null ? List.of() : request.recordIds();
+    if (rawRecordIds == null || rawRecordIds.isEmpty()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_IDS",
+          "recordIds is required",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRecordsDeleteResponseData(profileId, false, 0, 0, 0, 0, List.of())));
+    }
+
+    List<UUID> recordIds = new ArrayList<>();
+    LinkedHashSet<String> invalidRecordIds = new LinkedHashSet<>();
+    for (String rawRecordId : rawRecordIds) {
+      String value = rawRecordId == null ? "" : rawRecordId.trim();
+      if (value.isEmpty()) {
+        invalidRecordIds.add(value);
+        continue;
+      }
+      try {
+        recordIds.add(UUID.fromString(value));
+      } catch (IllegalArgumentException error) {
+        invalidRecordIds.add(value);
+      }
+    }
+    if (!invalidRecordIds.isEmpty() || recordIds.isEmpty()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(
+          "INVALID_RECORD_IDS",
+          "recordIds contains invalid value",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRecordsDeleteResponseData(
+              profileId,
+              false,
+              rawRecordIds.size(),
+              0,
+              0,
+              0,
+              new ArrayList<>(invalidRecordIds))));
+    }
+
+    DiseaseProfileService.DeleteProfileRecordsResult result =
+        diseaseProfileService.deleteProfileRecords(diseaseProfileUuid, recordIds);
+    if (!result.profileExists()) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "disease profile not found",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRecordsDeleteResponseData(
+              profileId,
+              false,
+              result.requestedRecordCount(),
+              0,
+              0,
+              0,
+              List.of())));
+    }
+    if (!result.rejectedRecordIds().isEmpty()) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse<>(
+          "NOT_FOUND",
+          "record not found in disease profile",
+          RequestIdUtil.newRequestId(),
+          new DiseaseProfileRecordsDeleteResponseData(
+              profileId,
+              false,
+              result.requestedRecordCount(),
+              0,
+              0,
+              0,
+              result.rejectedRecordIds())));
+    }
+
+    return ResponseEntity.ok(new ApiResponse<>(
+        "OK",
+        "deleted",
+        RequestIdUtil.newRequestId(),
+        new DiseaseProfileRecordsDeleteResponseData(
+            profileId,
+            true,
+            result.requestedRecordCount(),
+            result.deletedRecordCount(),
+            result.deletedAssetCount(),
+            result.deletedParseJobCount(),
+            List.of())));
   }
 }

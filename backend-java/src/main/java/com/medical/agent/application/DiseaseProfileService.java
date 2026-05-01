@@ -22,7 +22,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -212,8 +214,59 @@ public class DiseaseProfileService {
       ossPresignService.deleteObject(objectKey);
     }
 
-    int deletedParseJobs = deleteRecordsCascadeInternal(candidateRecordIds);
-    return new CancelParsingRecordsResult(profileId, candidateRecordIds.size(), objectKeys.size(), deletedParseJobs);
+    CascadeDeleteResult deleted = deleteRecordsCascadeInternal(candidateRecordIds);
+    return new CancelParsingRecordsResult(profileId, candidateRecordIds.size(), objectKeys.size(), deleted.deletedParseJobCount());
+  }
+
+  @Transactional
+  @Operation(summary = "批量删除疾病档案记录", description = "按记录ID列表删除当前疾病档案下的记录及关联资源")
+  public DeleteProfileRecordsResult deleteProfileRecords(UUID diseaseProfileId, List<UUID> requestedRecordIds) {
+    List<UUID> recordIds = new ArrayList<>(new LinkedHashSet<>(requestedRecordIds));
+    if (!profileExists(diseaseProfileId)) {
+      return new DeleteProfileRecordsResult(false, List.of(), recordIds.size(), 0, 0, 0);
+    }
+
+    if (recordIds.isEmpty()) {
+      return new DeleteProfileRecordsResult(true, List.of(), 0, 0, 0, 0);
+    }
+    List<RecordEntity> scopedRecords = recordMapper.selectList(new LambdaQueryWrapper<RecordEntity>()
+        .select(RecordEntity::getId)
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
+        .eq(RecordEntity::getDiseaseProfileId, diseaseProfileId)
+        .in(RecordEntity::getId, recordIds));
+    Set<UUID> scopedRecordIds = new LinkedHashSet<>();
+    for (RecordEntity record : scopedRecords) {
+      scopedRecordIds.add(record.getId());
+    }
+
+    List<String> rejectedRecordIds = recordIds.stream()
+        .filter(recordId -> !scopedRecordIds.contains(recordId))
+        .map(UUID::toString)
+        .toList();
+    if (!rejectedRecordIds.isEmpty()) {
+      return new DeleteProfileRecordsResult(true, rejectedRecordIds, recordIds.size(), 0, 0, 0);
+    }
+
+    List<AssetEntity> assets = assetMapper.selectList(new LambdaQueryWrapper<AssetEntity>()
+        .select(AssetEntity::getObjectKey)
+        .in(AssetEntity::getRecordId, recordIds));
+    List<String> objectKeys = assets.stream()
+        .map(AssetEntity::getObjectKey)
+        .filter(v -> v != null && !v.isBlank())
+        .toList();
+    for (String objectKey : objectKeys) {
+      ossPresignService.deleteObject(objectKey);
+    }
+
+    CascadeDeleteResult deleted = deleteRecordsCascadeInternal(recordIds);
+    return new DeleteProfileRecordsResult(
+        true,
+        List.of(),
+        recordIds.size(),
+        deleted.deletedRecordCount(),
+        objectKeys.size(),
+        deleted.deletedParseJobCount());
   }
 
   public record CancelParsingRecordsResult(
@@ -234,7 +287,7 @@ public class DiseaseProfileService {
     return String.valueOf(jobs.get(0).getStatus());
   }
 
-  private int deleteRecordsCascadeInternal(List<UUID> recordIds) {
+  private CascadeDeleteResult deleteRecordsCascadeInternal(List<UUID> recordIds) {
     dataRightsRequestMapper.delete(new LambdaQueryWrapper<com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity>()
         .in(com.medical.agent.infrastructure.persistence.entity.DataRightsRequestEntity::getRecordId, recordIds));
     structuredResultMapper.delete(new LambdaQueryWrapper<StructuredResultEntity>()
@@ -256,9 +309,9 @@ public class DiseaseProfileService {
         .in(ParseJobEntity::getRecordId, recordIds));
     assetMapper.delete(new LambdaQueryWrapper<AssetEntity>()
         .in(AssetEntity::getRecordId, recordIds));
-    recordMapper.delete(new LambdaQueryWrapper<RecordEntity>()
+    int deletedRecords = recordMapper.delete(new LambdaQueryWrapper<RecordEntity>()
         .in(RecordEntity::getId, recordIds));
-    return deletedParseJobs;
+    return new CascadeDeleteResult(deletedRecords, deletedParseJobs);
   }
 
   private List<String> listAssetObjectKeysByDiseaseProfile(UUID diseaseProfileId) {
@@ -323,4 +376,14 @@ public class DiseaseProfileService {
   public record DeleteDiseaseProfileResult(boolean deleted, int deletedRecordCount, int deletedAssetCount) {}
 
   public record DeleteDiseaseProfileIfEmptyResult(boolean deleted, String reason, int linkedRecordCount) {}
+
+  public record DeleteProfileRecordsResult(
+      boolean profileExists,
+      List<String> rejectedRecordIds,
+      int requestedRecordCount,
+      int deletedRecordCount,
+      int deletedAssetCount,
+      int deletedParseJobCount) {}
+
+  private record CascadeDeleteResult(int deletedRecordCount, int deletedParseJobCount) {}
 }
