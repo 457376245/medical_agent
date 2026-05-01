@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 @Service
 @Tag(name = "疾病档案查询服务", description = "聚合疾病档案与记录信息，提供列表总览与按档案维度的查询能力")
 public class DiseaseProfileQueryService {
-  private static final int EXAM_NODE_WINDOW_DAYS = 3;
+  private static final int EXAM_NODE_WINDOW_DAYS = 5;
 
   private final RecordMapper recordMapper;
   private final DiseaseProfileMapper diseaseProfileMapper;
@@ -210,7 +210,7 @@ public class DiseaseProfileQueryService {
         .toList();
     String start = String.valueOf(dateRangeStart);
     String end = String.valueOf(dateRangeEnd);
-    String displayDate = start.equals(end) ? start : start + " 至 " + end;
+    String displayDate = start;
     String examNodeId = start + "_" + end + "_" + nodeRecords.get(0).id();
     return new DiseaseProfileExamNode(examNodeId, start, start, end, displayDate, nodeRecords);
   }

@@ -45,10 +45,10 @@ class DiseaseProfileQueryServiceTest {
   }
 
   @Test
-  void listProfileRecordsGroupsSuccessfulRecordsWithinThreeDaySpanIntoOneExamNode() {
+  void listProfileRecordsGroupsSuccessfulRecordsWithinFiveDaySpanIntoOneExamNode() {
     UUID profileId = UUID.randomUUID();
     when(recordMapper.selectList(any())).thenReturn(List.of(
-        record(profileId, "2026-04-04", "IMAGING"),
+        record(profileId, "2026-04-06", "IMAGING"),
         record(profileId, "2026-04-03", "OUTPATIENT"),
         record(profileId, "2026-04-01", "LAB")));
     when(parseJobMapper.selectList(any())).thenReturn(List.of(successJob()));
@@ -59,23 +59,23 @@ class DiseaseProfileQueryServiceTest {
     assertEquals(1, result.examNodes().size());
     DiseaseProfileExamNode node = result.examNodes().get(0);
     assertEquals("2026-04-01", node.dateRangeStart());
-    assertEquals("2026-04-04", node.dateRangeEnd());
-    assertEquals("2026-04-01 至 2026-04-04", node.displayDate());
+    assertEquals("2026-04-06", node.dateRangeEnd());
+    assertEquals("2026-04-01", node.displayDate());
     assertEquals(3, node.records().size());
   }
 
   @Test
-  void listProfileRecordsSplitsExamNodesWhenDateSpanWouldExceedThreeDays() {
+  void listProfileRecordsSplitsExamNodesWhenDateSpanWouldExceedFiveDays() {
     UUID profileId = UUID.randomUUID();
     when(recordMapper.selectList(any())).thenReturn(List.of(
-        record(profileId, "2026-04-05", "LAB"),
+        record(profileId, "2026-04-07", "LAB"),
         record(profileId, "2026-04-01", "IMAGING")));
     when(parseJobMapper.selectList(any())).thenReturn(List.of(successJob()));
 
     DiseaseProfileQueryService.ProfileRecordsResult result = service.listProfileRecords(profileId.toString());
 
     assertEquals(2, result.examNodes().size());
-    assertEquals("2026-04-05", result.examNodes().get(0).displayDate());
+    assertEquals("2026-04-07", result.examNodes().get(0).displayDate());
     assertEquals("2026-04-01", result.examNodes().get(1).displayDate());
   }
 

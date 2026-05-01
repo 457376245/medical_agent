@@ -60,7 +60,7 @@ export function buildGroupedTimelineItems(
       .map((node) => ({
         id: node.examNodeId,
         date: node.anchorDate,
-        displayDate: node.displayDate || node.anchorDate,
+        displayDate: node.dateRangeStart || node.anchorDate,
         categories: sortCategories(node.records.map(toGroupedCategory)),
       }))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));

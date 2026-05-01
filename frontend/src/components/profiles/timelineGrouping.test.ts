@@ -27,7 +27,7 @@ describe("timelineGrouping", () => {
     const grouped = buildGroupedTimelineItems([], examNodes);
 
     expect(grouped).toHaveLength(1);
-    expect(grouped[0]?.displayDate).toBe("2026-04-01 至 2026-04-04");
+    expect(grouped[0]?.displayDate).toBe("2026-04-01");
     expect(grouped[0]?.categories.map((item) => item.record.id)).toEqual(["lab-1", "image-1", "visit-1"]);
   });
 
