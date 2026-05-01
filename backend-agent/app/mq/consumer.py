@@ -1,5 +1,6 @@
 """RabbitMQ 消息消费者，处理解析和生成任务请求。"""
 
+import asyncio
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aio_pika
+from aiormq.exceptions import ChannelInvalidStateError
 
 from app.utils import extract_error_codes
 
@@ -72,52 +74,70 @@ class AgentMqConsumer:
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
         """处理解析任务消息。"""
-        async with message.process(requeue=False):
-            try:
-                payload = json.loads(message.body.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                LOGGER.error("MQ parse: 消息体格式错误: %s", exc)
+        try:
+            async with message.process(requeue=False):
+                try:
+                    payload = json.loads(message.body.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    LOGGER.error("MQ parse: 消息体格式错误: %s", exc)
+                    await self._publish_result(
+                        exchange,
+                        routing_key="agent.parse.result.v1",
+                        event={
+                            "jobId": None,
+                            "status": "FAILED",
+                            "structuredResult": {},
+                            "confidence": 0.0,
+                            "errors": [
+                                {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
+                            ],
+                            "traceId": "",
+                            "schemaVersion": "v1",
+                        },
+                    )
+                    return
+
+                LOGGER.info("MQ parse request received: jobId=%s", payload.get("jobId"))
+                result = await self._parse_handler(payload)
+                event = {
+                    "jobId": payload.get("jobId"),
+                    "status": result.get("status", "FAILED"),
+                    "structuredResult": result.get("structuredResult", {}),
+                    "confidence": result.get("confidence", 0.0),
+                    "errors": result.get("errors", []),
+                    "traceId": payload.get("traceId", ""),
+                    "schemaVersion": payload.get("schemaVersion", "v1"),
+                    "classifiedSourceType": result.get("classifiedSourceType"),
+                    "reportDate": result.get("reportDate"),
+                }
                 await self._publish_result(
                     exchange,
                     routing_key="agent.parse.result.v1",
-                    event={
-                        "jobId": None,
-                        "status": "FAILED",
-                        "structuredResult": {},
-                        "confidence": 0.0,
-                        "errors": [
-                            {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
-                        ],
-                        "traceId": "",
-                        "schemaVersion": "v1",
-                    },
+                    event=event,
                 )
-                return
+                LOGGER.info(
+                    "MQ parse result published: jobId=%s status=%s error_codes=%s",
+                    payload.get("jobId"),
+                    event.get("status"),
+                    extract_error_codes(event),
+                )
+        except ChannelInvalidStateError as exc:
+            self._log_interrupted_message("parse", exc)
+        except asyncio.CancelledError as exc:
+            self._log_interrupted_message("parse", exc)
+            raise
 
-            LOGGER.info("MQ parse request received: jobId=%s", payload.get("jobId"))
-            result = await self._parse_handler(payload)
-            event = {
-                "jobId": payload.get("jobId"),
-                "status": result.get("status", "FAILED"),
-                "structuredResult": result.get("structuredResult", {}),
-                "confidence": result.get("confidence", 0.0),
-                "errors": result.get("errors", []),
-                "traceId": payload.get("traceId", ""),
-                "schemaVersion": payload.get("schemaVersion", "v1"),
-                "classifiedSourceType": result.get("classifiedSourceType"),
-                "reportDate": result.get("reportDate"),
-            }
-            await self._publish_result(
-                exchange,
-                routing_key="agent.parse.result.v1",
-                event=event,
-            )
-            LOGGER.info(
-                "MQ parse result published: jobId=%s status=%s error_codes=%s",
-                payload.get("jobId"),
-                event.get("status"),
-                extract_error_codes(event),
-            )
+    def _log_interrupted_message(
+        self, queue_name: str, exc: BaseException
+    ) -> None:
+        if self._closing:
+            LOGGER.info("MQ %s handler interrupted during shutdown", queue_name)
+            return
+        LOGGER.warning(
+            "MQ %s handler interrupted because the channel is not available: %s",
+            queue_name,
+            exc,
+        )
 
     async def _handle_generate(
         self,
@@ -125,54 +145,60 @@ class AgentMqConsumer:
         exchange: aio_pika.abc.AbstractExchange,
     ) -> None:
         """处理生成任务消息。"""
-        async with message.process(requeue=False):
-            try:
-                payload = json.loads(message.body.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                LOGGER.error("MQ generate: 消息体格式错误: %s", exc)
+        try:
+            async with message.process(requeue=False):
+                try:
+                    payload = json.loads(message.body.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    LOGGER.error("MQ generate: 消息体格式错误: %s", exc)
+                    await self._publish_result(
+                        exchange,
+                        routing_key="agent.generate.result.v1",
+                        event={
+                            "taskId": None,
+                            "recordId": None,
+                            "status": "FAILED",
+                            "type": "SUMMARY",
+                            "content": "",
+                            "modelMeta": {},
+                            "errors": [
+                                {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
+                            ],
+                            "traceId": "",
+                        },
+                    )
+                    return
+
+                LOGGER.info(
+                    "MQ generate request received: taskId=%s", payload.get("taskId")
+                )
+                result = await self._generate_handler(payload)
+                event = {
+                    "taskId": payload.get("taskId"),
+                    "recordId": payload.get("recordId"),
+                    "status": result.get("status", "FAILED"),
+                    "type": result.get("type", payload.get("type", "SUMMARY")),
+                    "content": result.get("content", ""),
+                    "modelMeta": result.get("modelMeta", {}),
+                    "errors": result.get("errors", []),
+                    "traceId": payload.get("traceId", ""),
+                }
                 await self._publish_result(
                     exchange,
                     routing_key="agent.generate.result.v1",
-                    event={
-                        "taskId": None,
-                        "recordId": None,
-                        "status": "FAILED",
-                        "type": "SUMMARY",
-                        "content": "",
-                        "modelMeta": {},
-                        "errors": [
-                            {"code": "BIZ_MALFORMED_MESSAGE", "message": str(exc)}
-                        ],
-                        "traceId": "",
-                    },
+                    event=event,
                 )
-                return
-
-            LOGGER.info(
-                "MQ generate request received: taskId=%s", payload.get("taskId")
-            )
-            result = await self._generate_handler(payload)
-            event = {
-                "taskId": payload.get("taskId"),
-                "recordId": payload.get("recordId"),
-                "status": result.get("status", "FAILED"),
-                "type": result.get("type", payload.get("type", "SUMMARY")),
-                "content": result.get("content", ""),
-                "modelMeta": result.get("modelMeta", {}),
-                "errors": result.get("errors", []),
-                "traceId": payload.get("traceId", ""),
-            }
-            await self._publish_result(
-                exchange,
-                routing_key="agent.generate.result.v1",
-                event=event,
-            )
-            LOGGER.info(
-                "MQ generate result published: taskId=%s status=%s error_codes=%s",
-                payload.get("taskId"),
-                event.get("status"),
-                extract_error_codes(event),
-            )
+                LOGGER.info(
+                    "MQ generate result published: taskId=%s status=%s error_codes=%s",
+                    payload.get("taskId"),
+                    event.get("status"),
+                    extract_error_codes(event),
+                )
+        except ChannelInvalidStateError as exc:
+            self._log_interrupted_message("generate", exc)
+        except asyncio.CancelledError as exc:
+            self._log_interrupted_message("generate", exc)
+            raise
 
     @staticmethod
     async def _publish_result(
