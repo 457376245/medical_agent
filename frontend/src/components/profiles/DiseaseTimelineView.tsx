@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Bot, CalendarDays, FileText, Home, ListChecks, Sparkles, TrendingUp, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
 import { CombinationAnalysisPanel } from "../parse/CombinationAnalysisPanel";
@@ -148,6 +149,8 @@ export function DiseaseTimelineView({
     ? normalizeCategory(selectedRecord.sourceType)
     : null;
   const currentCategoryLabel = currentCategoryValue ? categoryLabel(currentCategoryValue) : "";
+  const latestReportDate = groupedByDate[0]?.displayDate ?? "暂无报告";
+  const totalReportCount = mutableRecords.length;
 
   useEffect(() => {
     setSelectedDate(null);
@@ -556,20 +559,44 @@ export function DiseaseTimelineView({
   return (
     <main className="page-stack">
       <section className="panel reveal">
-        <p className="hero-kicker">疾病报告时间线</p>
-        <h2 className="panel-title">{diseaseName || "疾病详情"}</h2>
-        <p className="muted panel-subtitle">先选择时间节点，再选择报告分类，最后查看该报告的解析结果。</p>
-        <div className="actions">
+        <div className="timeline-profile-header">
+          <div className="timeline-profile-copy">
+            <p className="hero-kicker">疾病报告时间线</p>
+            <h2 className="panel-title">{diseaseName || "疾病详情"}</h2>
+            <p className="muted panel-subtitle">先选择时间节点，再选择报告分类，最后查看该报告的解析结果。</p>
+          </div>
+          <div className="timeline-profile-stats" aria-label="疾病档案摘要">
+            <div className="timeline-stat-card">
+              <FileText size={18} aria-hidden="true" />
+              <span>报告总数</span>
+              <strong>{totalReportCount}</strong>
+            </div>
+            <div className="timeline-stat-card">
+              <CalendarDays size={18} aria-hidden="true" />
+              <span>最近报告</span>
+              <strong>{latestReportDate}</strong>
+            </div>
+            <div className="timeline-stat-card">
+              <ListChecks size={18} aria-hidden="true" />
+              <span>解析中</span>
+              <strong>{parsingCount}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="actions timeline-profile-actions">
           <button className="btn btn-primary" type="button" onClick={openUploadDialog}>
+            <Upload size={16} aria-hidden="true" />
             上传该疾病报告
           </button>
           <Link
             className="btn btn-ghost"
             href={`/agent?profileId=${encodeURIComponent(profileId)}${selectedRecordId ? `&recordId=${encodeURIComponent(selectedRecordId)}` : ""}`}
           >
+            <Bot size={16} aria-hidden="true" />
             进入 Agent 对话
           </Link>
           <Link className="btn btn-ghost" href="/">
+            <Home size={16} aria-hidden="true" />
             返回首页
           </Link>
         </div>
@@ -672,6 +699,7 @@ export function DiseaseTimelineView({
                     type="button"
                     onClick={() => void onSelectCategory(item.itemKey)}
                   >
+                    <FileText size={16} aria-hidden="true" />
                     {categoryButtonLabel(item, categoriesForSelectedDate)}
                   </button>
                 </li>
@@ -687,7 +715,13 @@ export function DiseaseTimelineView({
             {selectedRecord ? `3. 报告解析结果 - ${selectedRecord.title}` : "3. 报告解析结果"}
           </h3>
           {!selectedDate || !selectedCategory ? (
-            <p className="muted">请先选择时间节点与报告分类。</p>
+            <div className="result-empty-state">
+              <Sparkles size={24} aria-hidden="true" />
+              <div>
+                <p className="result-empty-title">等待选择报告</p>
+                <p className="muted">请先选择时间节点与报告分类，系统会展示 AI 分析、趋势对比与结构化解析结果。</p>
+              </div>
+            </div>
           ) : detailLoading ? (
             <p className="status-text">正在加载报告结果...</p>
           ) : detailError ? (
@@ -744,7 +778,8 @@ export function DiseaseTimelineView({
                     }
                   }}
                 >
-                  {trendOpen ? "收起趋势" : "📊 趋势对比"}
+                  <TrendingUp size={15} aria-hidden="true" />
+                  {trendOpen ? "收起趋势" : "趋势对比"}
                 </button>
               </div>
 
