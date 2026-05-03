@@ -29,6 +29,7 @@ export function FollowUpTasksPanel({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
     if (!title.trim()) return;
@@ -47,6 +48,7 @@ export function FollowUpTasksPanel({
       setDueDate("");
       setPriority("MEDIUM");
       setNotes("");
+      setCreating(false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "创建随访任务失败。");
     } finally {
@@ -61,7 +63,12 @@ export function FollowUpTasksPanel({
           <p className="hero-kicker">行动闭环</p>
           <h4>随访任务</h4>
         </div>
-        <span className="badge">{tasks.length} 项待办</span>
+        <div className="agent-care-head-actions">
+          <span className="badge">{tasks.length} 项待办</span>
+          <button className="btn btn-ghost btn-small" type="button" onClick={() => setCreating((current) => !current)}>
+            {creating ? "收起" : "新增任务"}
+          </button>
+        </div>
       </div>
 
       {tasks.length > 0 ? (
@@ -82,27 +89,32 @@ export function FollowUpTasksPanel({
         <p className="agent-care-empty">还没有随访任务，可以先添加复查或复诊事项。</p>
       )}
 
-      <div className="agent-care-divider" />
-
-      <div className="agent-inline-grid">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="任务标题，例如：两周后复查肝功能" />
-        <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} type="date" />
-      </div>
-      <div className="agent-inline-grid">
-        <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-          <option value="LOW">低优先级</option>
-          <option value="MEDIUM">中优先级</option>
-          <option value="HIGH">高优先级</option>
-        </select>
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="备注，例如：携带最近3次检验单" />
-      </div>
+      {creating ? (
+        <>
+          <div className="agent-care-divider" />
+          <div className="agent-inline-grid">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="任务标题，例如：两周后复查肝功能" />
+            <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} type="date" />
+          </div>
+          <div className="agent-inline-grid">
+            <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="LOW">低优先级</option>
+              <option value="MEDIUM">中优先级</option>
+              <option value="HIGH">高优先级</option>
+            </select>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="备注，例如：携带最近3次检验单" />
+          </div>
+        </>
+      ) : null}
 
       {error ? <p className="status-text error">{error}</p> : null}
-      <div className="agent-care-actions">
-        <button className="btn btn-primary btn-small" type="button" onClick={handleCreate} disabled={saving || !title.trim()}>
-          {saving ? "添加中..." : "添加任务"}
-        </button>
-      </div>
+      {creating ? (
+        <div className="agent-care-actions">
+          <button className="btn btn-primary btn-small" type="button" onClick={handleCreate} disabled={saving || !title.trim()}>
+            {saving ? "添加中..." : "添加任务"}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

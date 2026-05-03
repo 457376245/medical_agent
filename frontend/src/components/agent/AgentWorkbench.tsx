@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TrendComparisonPanel } from "../profiles/TrendComparisonPanel";
 import { AppSelect, type AppSelectOption } from "../common/AppSelect";
 import { formatRelativeDate, getSessionDisplayTitle, quickPrompts, severityLabel, WORKFLOW_LABELS } from "./agent-utils";
 import type { AgentWorkbenchProps } from "./types";
 import { useAgentWorkbench } from "./useAgentWorkbench";
 import { AgentMessageBubble } from "./AgentMessageBubble";
 import { AgentWorkflowBar } from "./AgentWorkflowBar";
+import { AgentContextPanel } from "./AgentContextPanel";
 import { CareProfilePanel } from "./CareProfilePanel";
 import { FollowUpTasksPanel } from "./FollowUpTasksPanel";
 import { RiskOverviewPanel } from "./RiskOverviewPanel";
 import { SymptomLogPanel } from "./SymptomLogPanel";
-import { ArrowLeft, MessageSquare, ClipboardList, Search, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageSquare, ClipboardList, Search, MoreHorizontal, Pencil, Trash2, ShieldCheck } from "lucide-react";
 
 
 
@@ -358,16 +358,20 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
 
         <article className="panel agent-chat-panel" role="main" aria-label="对话区域">
           <div className="agent-disclaimer" role="status">
-            ⚕️ 仅供医疗辅助参考，诊疗请由专业医师确认
+            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+            <span>仅供理解病情和整理问题，诊疗决定请由专业医师确认</span>
           </div>
 
           <div className="agent-chat-head">
-            <h3 className="panel-title-small">
-              {workbench.selectedProfile ? workbench.selectedProfile.diseaseName : "请选择疾病档案后开始"}
-            </h3>
-            <div className="meta-row">
+            <div className="agent-chat-title-block">
+              <p className="hero-kicker">病情问答</p>
+              <h3 className="panel-title-small">
+                {workbench.selectedProfile ? workbench.selectedProfile.diseaseName : "请选择疾病档案后开始"}
+              </h3>
+            </div>
+            <div className="agent-chat-context-pills">
               {workbench.selectedProfile ? <span className="badge">{workbench.selectedProfile.recordCount} 份报告</span> : null}
-              {workbench.selectedRecord ? <span className="badge">{workbench.selectedRecord.title}</span> : null}
+              {workbench.selectedRecord ? <span className="badge">{workbench.selectedRecord.title}</span> : <span className="badge">疾病全局</span>}
               <span className={`badge badge-risk-${workbench.riskOverview.riskLevel}`}>风险：{riskLabel}</span>
             </div>
           </div>
@@ -462,44 +466,12 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
         </article>
 
         <aside className={`panel agent-sidebar agent-sidebar-right ${mobilePanel === "context" ? "agent-drawer-open" : ""}`} aria-label="病例上下文">
-          <div className="agent-sidebar-head">
-            <div>
-              <p className="hero-kicker">病例上下文</p>
-              <h3 className="panel-title-small">档案与报告</h3>
-            </div>
-          </div>
-
-          <div className="agent-context-card agent-context-filter-card agent-context-card-divider">
-            <span className="agent-context-label">选择疾病档案</span>
-            <AppSelect
-              ariaLabel="选择疾病档案"
-              value={workbench.profileId}
-              options={profileOptions}
-              rootClassName="agent-custom-select"
-              triggerClassName="agent-select-trigger"
-              menuClassName="agent-select-menu"
-              onChange={workbench.setProfileId}
-            />
-          </div>
-
-          <div className="agent-context-card agent-context-filter-card">
-            <span className="agent-context-label">选择报告分类</span>
-            <AppSelect
-              ariaLabel="选择报告分类"
-              value={workbench.sourceType || ""}
-              options={sourceTypeOptions}
-              disabled={!workbench.profileId || workbench.loadingRecords}
-              rootClassName="agent-custom-select"
-              triggerClassName="agent-select-trigger"
-              menuClassName="agent-select-menu"
-              onChange={(nextValue) => {
-                workbench.setSourceType(nextValue);
-                setMobilePanel(null);
-              }}
-            />
-            {workbench.loadingRecords ? <p className="agent-context-note">加载中...</p> : null}
-            {!workbench.profileId ? <p className="agent-context-note">请先选择上方的疾病档案。</p> : null}
-          </div>
+          <AgentContextPanel
+            workbench={workbench}
+            profileOptions={profileOptions}
+            sourceTypeOptions={sourceTypeOptions}
+            onCloseMobile={() => setMobilePanel(null)}
+          />
 
           {workbench.careError ? <p className="status-text error">{workbench.careError}</p> : null}
 
@@ -526,16 +498,6 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
             profileId={workbench.profileId || undefined}
             onCreateSymptom={workbench.createSymptomLog}
           />
-
-          {workbench.recordId && (
-            <div className="agent-context-card">
-              <TrendComparisonPanel
-                loading={workbench.contextLoading}
-                error={workbench.contextError}
-                data={workbench.trendData ?? undefined}
-              />
-            </div>
-          )}
         </aside>
       </section>
     </main>

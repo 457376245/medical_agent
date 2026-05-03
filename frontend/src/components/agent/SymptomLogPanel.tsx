@@ -27,6 +27,7 @@ export function SymptomLogPanel({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
     if (!label.trim()) return;
@@ -47,6 +48,7 @@ export function SymptomLogPanel({
       setUnit("");
       setAlertLevel("NORMAL");
       setNotes("");
+      setCreating(false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "新增症状记录失败。");
     } finally {
@@ -61,6 +63,9 @@ export function SymptomLogPanel({
           <p className="hero-kicker">自我监测</p>
           <h4>症状 / 体征记录</h4>
         </div>
+        <button className="btn btn-ghost btn-small" type="button" onClick={() => setCreating((current) => !current)}>
+          {creating ? "收起" : "新增记录"}
+        </button>
       </div>
 
       {symptoms.length > 0 ? (
@@ -80,29 +85,34 @@ export function SymptomLogPanel({
         <p className="agent-care-empty">暂时还没有家庭测量或症状记录。</p>
       )}
 
-      <div className="agent-care-divider" />
-
-      <div className="agent-inline-grid">
-        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：空腹血糖 / 血压 / 胸闷" />
-        <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="数值或严重程度" />
-      </div>
-      <div className="agent-inline-grid">
-        <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="单位，可选" />
-        <select value={alertLevel} onChange={(e) => setAlertLevel(e.target.value)}>
-          <option value="NORMAL">常规</option>
-          <option value="WATCH">观察</option>
-          <option value="WARNING">警示</option>
-          <option value="ALERT">高风险</option>
-        </select>
-      </div>
-      <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="备注，例如：饭后2小时测量" />
+      {creating ? (
+        <>
+          <div className="agent-care-divider" />
+          <div className="agent-inline-grid">
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例如：空腹血糖 / 血压 / 胸闷" />
+            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="数值或严重程度" />
+          </div>
+          <div className="agent-inline-grid">
+            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="单位，可选" />
+            <select value={alertLevel} onChange={(e) => setAlertLevel(e.target.value)}>
+              <option value="NORMAL">常规</option>
+              <option value="WATCH">观察</option>
+              <option value="WARNING">警示</option>
+              <option value="ALERT">高风险</option>
+            </select>
+          </div>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="备注，例如：饭后2小时测量" />
+        </>
+      ) : null}
 
       {error ? <p className="status-text error">{error}</p> : null}
-      <div className="agent-care-actions">
-        <button className="btn btn-primary btn-small" type="button" onClick={handleCreate} disabled={saving || !label.trim()}>
-          {saving ? "记录中..." : "新增记录"}
-        </button>
-      </div>
+      {creating ? (
+        <div className="agent-care-actions">
+          <button className="btn btn-primary btn-small" type="button" onClick={handleCreate} disabled={saving || !label.trim()}>
+            {saving ? "记录中..." : "新增记录"}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
