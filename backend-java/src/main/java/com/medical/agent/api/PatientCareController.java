@@ -49,8 +49,9 @@ public class PatientCareController {
   @Operation(summary = "查询随访任务", description = "按状态查询当前患者的行动任务清单")
   public ApiResponse<PatientCareFollowUpTaskListResponseData> listFollowUpTasks(
       @RequestParam(name = "status", required = false) String status,
-      @RequestParam(name = "limit", required = false) Integer limit) {
-    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientCareService.listFollowUpTasks(status, limit));
+      @RequestParam(name = "limit", required = false) Integer limit,
+      @RequestParam(name = "profileId", required = false) String profileId) {
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientCareService.listFollowUpTasks(status, limit, profileId));
   }
 
   @PostMapping("/follow-up-tasks")
@@ -71,8 +72,9 @@ public class PatientCareController {
   @GetMapping("/symptoms")
   @Operation(summary = "查询症状/体征记录", description = "返回当前患者最近的症状或体征记录")
   public ApiResponse<PatientCareSymptomLogListResponseData> listSymptoms(
-      @RequestParam(name = "limit", required = false) Integer limit) {
-    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientCareService.listSymptoms(limit));
+      @RequestParam(name = "limit", required = false) Integer limit,
+      @RequestParam(name = "profileId", required = false) String profileId) {
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientCareService.listSymptoms(limit, profileId));
   }
 
   @PostMapping("/symptoms")

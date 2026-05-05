@@ -114,8 +114,13 @@ public class PatientCareService {
   }
 
   public PatientCareFollowUpTaskListResponseData listFollowUpTasks(String status, Integer limit) {
+    return listFollowUpTasks(status, limit, null);
+  }
+
+  public PatientCareFollowUpTaskListResponseData listFollowUpTasks(String status, Integer limit, String profileId) {
     String normalizedStatus = normalizeTaskStatusFilter(status);
     int normalizedLimit = clampLimit(limit, DEFAULT_TASK_LIMIT, 20);
+    UUID profileUuid = resolveOptionalProfileId(profileId);
 
     LambdaQueryWrapper<FollowUpTaskEntity> query = new LambdaQueryWrapper<FollowUpTaskEntity>()
         .eq(FollowUpTaskEntity::getTenantId, tenantContextProvider.currentTenantId())
@@ -126,6 +131,9 @@ public class PatientCareService {
         .last("limit " + normalizedLimit);
     if (normalizedStatus != null) {
       query.eq(FollowUpTaskEntity::getStatus, normalizedStatus);
+    }
+    if (profileUuid != null) {
+      query.eq(FollowUpTaskEntity::getDiseaseProfileId, profileUuid);
     }
 
     List<PatientCareFollowUpTaskListResponseData.TaskSummary> tasks = followUpTaskMapper.selectList(query).stream()
@@ -195,7 +203,12 @@ public class PatientCareService {
   }
 
   public PatientCareSymptomLogListResponseData listSymptoms(Integer limit) {
-    return new PatientCareSymptomLogListResponseData(listRecentSymptomLogs(clampLimit(limit, DEFAULT_SYMPTOM_LIMIT, 20)));
+    return listSymptoms(limit, null);
+  }
+
+  public PatientCareSymptomLogListResponseData listSymptoms(Integer limit, String profileId) {
+    UUID profileUuid = resolveOptionalProfileId(profileId);
+    return new PatientCareSymptomLogListResponseData(listRecentSymptomLogs(clampLimit(limit, DEFAULT_SYMPTOM_LIMIT, 20), profileUuid));
   }
 
   @Transactional
@@ -270,8 +283,9 @@ public class PatientCareService {
     if (focusRecord != null) {
       appendRecordRiskSignals(focusRecord, signals, evidenceRefs);
     }
-    appendTaskRiskSignals(signals, evidenceRefs);
-    appendSymptomRiskSignals(signals, evidenceRefs);
+    UUID profileUuid = resolveOptionalProfileId(profileId);
+    appendTaskRiskSignals(signals, evidenceRefs, profileUuid);
+    appendSymptomRiskSignals(signals, evidenceRefs, profileUuid);
 
     String riskLevel = deriveRiskLevel(signals);
     String summary = switch (riskLevel) {
@@ -286,14 +300,19 @@ public class PatientCareService {
 
   private void appendTaskRiskSignals(
       List<PatientCareRiskOverviewResponseData.RiskSignal> signals,
-      List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs) {
+      List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs,
+      UUID profileId) {
     LocalDate today = LocalDate.now();
-    List<FollowUpTaskEntity> tasks = followUpTaskMapper.selectList(new LambdaQueryWrapper<FollowUpTaskEntity>()
+    LambdaQueryWrapper<FollowUpTaskEntity> query = new LambdaQueryWrapper<FollowUpTaskEntity>()
         .eq(FollowUpTaskEntity::getTenantId, tenantContextProvider.currentTenantId())
         .eq(FollowUpTaskEntity::getPatientId, tenantContextProvider.currentPatientId())
         .eq(FollowUpTaskEntity::getStatus, "OPEN")
         .orderByAsc(FollowUpTaskEntity::getDueDate)
-        .last("limit 3"));
+        .last("limit 3");
+    if (profileId != null) {
+      query.eq(FollowUpTaskEntity::getDiseaseProfileId, profileId);
+    }
+    List<FollowUpTaskEntity> tasks = followUpTaskMapper.selectList(query);
     for (FollowUpTaskEntity task : tasks) {
       if (task.getDueDate() == null || task.getDueDate().isAfter(today)) {
         continue;
@@ -315,12 +334,17 @@ public class PatientCareService {
 
   private void appendSymptomRiskSignals(
       List<PatientCareRiskOverviewResponseData.RiskSignal> signals,
-      List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs) {
-    List<SymptomLogEntity> logs = symptomLogMapper.selectList(new LambdaQueryWrapper<SymptomLogEntity>()
+      List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs,
+      UUID profileId) {
+    LambdaQueryWrapper<SymptomLogEntity> query = new LambdaQueryWrapper<SymptomLogEntity>()
         .eq(SymptomLogEntity::getTenantId, tenantContextProvider.currentTenantId())
         .eq(SymptomLogEntity::getPatientId, tenantContextProvider.currentPatientId())
         .orderByDesc(SymptomLogEntity::getRecordedAt)
-        .last("limit 3"));
+        .last("limit 3");
+    if (profileId != null) {
+      query.eq(SymptomLogEntity::getDiseaseProfileId, profileId);
+    }
+    List<SymptomLogEntity> logs = symptomLogMapper.selectList(query);
     for (SymptomLogEntity log : logs) {
       String severity = normalizeSeverity(log.getAlertLevel());
       if ("info".equals(severity)) {
@@ -501,12 +525,16 @@ public class PatientCareService {
             .toList();
   }
 
-  private List<PatientCareSymptomLogListResponseData.SymptomLogItem> listRecentSymptomLogs(int limit) {
-    return symptomLogMapper.selectList(new LambdaQueryWrapper<SymptomLogEntity>()
+  private List<PatientCareSymptomLogListResponseData.SymptomLogItem> listRecentSymptomLogs(int limit, UUID profileId) {
+    LambdaQueryWrapper<SymptomLogEntity> query = new LambdaQueryWrapper<SymptomLogEntity>()
         .eq(SymptomLogEntity::getTenantId, tenantContextProvider.currentTenantId())
         .eq(SymptomLogEntity::getPatientId, tenantContextProvider.currentPatientId())
         .orderByDesc(SymptomLogEntity::getRecordedAt)
-        .last("limit " + limit)).stream()
+        .last("limit " + limit);
+    if (profileId != null) {
+      query.eq(SymptomLogEntity::getDiseaseProfileId, profileId);
+    }
+    return symptomLogMapper.selectList(query).stream()
             .map(this::toSymptomItem)
             .toList();
   }

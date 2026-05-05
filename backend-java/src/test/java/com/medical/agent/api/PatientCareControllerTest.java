@@ -108,11 +108,11 @@ class PatientCareControllerTest {
 
   @Test
   void listSymptomsReturnsRecentLogs() {
-    when(patientCareService.listSymptoms(4)).thenReturn(new PatientCareSymptomLogListResponseData(
+    when(patientCareService.listSymptoms(4, "profile-1")).thenReturn(new PatientCareSymptomLogListResponseData(
         List.of(new PatientCareSymptomLogListResponseData.SymptomLogItem(
             "log-1", "空腹血糖", "7.2", "mmol/L", "WARNING", "晨起测量", "2026-04-19T09:00:00", "profile-1"))));
 
-    ApiResponse<PatientCareSymptomLogListResponseData> response = controller.listSymptoms(4);
+    ApiResponse<PatientCareSymptomLogListResponseData> response = controller.listSymptoms(4, "profile-1");
 
     assertEquals(1, response.data().logs().size());
     assertEquals("空腹血糖", response.data().logs().get(0).label());

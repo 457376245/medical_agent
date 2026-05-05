@@ -224,6 +224,7 @@ export function useAgentWorkbench({
       nextWorkflow === "report_interpretation"
       || nextWorkflow === "follow_up_prep"
       || nextWorkflow === "medication_review"
+      || nextWorkflow === "abnormal_reasoning"
     ) {
       setWorkflowState(nextWorkflow);
     }

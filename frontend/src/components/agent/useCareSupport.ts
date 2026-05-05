@@ -249,10 +249,11 @@ export function useCareSupport(
     setLoadingCare(true);
     setCareError("");
     try {
+      const scoped = profileId ? `&profileId=${encodeURIComponent(profileId)}` : "";
       const [profileData, taskData, symptomData] = await Promise.all([
         readApiData("/patient-care/profile"),
-        readApiData("/patient-care/follow-up-tasks?status=OPEN&limit=8"),
-        readApiData("/patient-care/symptoms?limit=6"),
+        readApiData(`/patient-care/follow-up-tasks?status=OPEN&limit=8${scoped}`),
+        readApiData(`/patient-care/symptoms?limit=6${profileId ? `&profileId=${encodeURIComponent(profileId)}` : ""}`),
       ]);
       setCareProfile(normalizeCareProfile(profileData));
       setFollowUpTasks(
@@ -273,7 +274,7 @@ export function useCareSupport(
     } finally {
       setLoadingCare(false);
     }
-  }, []);
+  }, [profileId]);
 
   const loadRisk = useCallback(async () => {
     setLoadingRisk(true);
@@ -294,7 +295,7 @@ export function useCareSupport(
 
   const loadTasks = useCallback(async () => {
     try {
-      const data = await readApiData("/patient-care/follow-up-tasks?status=OPEN&limit=8");
+      const data = await readApiData(`/patient-care/follow-up-tasks?status=OPEN&limit=8${profileId ? `&profileId=${encodeURIComponent(profileId)}` : ""}`);
       setFollowUpTasks(
         Array.isArray(data.tasks)
           ? data.tasks.map(normalizeTask).filter((item): item is FollowUpTask => Boolean(item))
@@ -303,11 +304,11 @@ export function useCareSupport(
     } catch {
       setFollowUpTasks([]);
     }
-  }, []);
+  }, [profileId]);
 
   const loadSymptoms = useCallback(async () => {
     try {
-      const data = await readApiData("/patient-care/symptoms?limit=6");
+      const data = await readApiData(`/patient-care/symptoms?limit=6${profileId ? `&profileId=${encodeURIComponent(profileId)}` : ""}`);
       setSymptoms(
         Array.isArray(data.logs)
           ? data.logs.map(normalizeSymptom).filter((item): item is CareSymptomItem => Boolean(item))
@@ -316,7 +317,7 @@ export function useCareSupport(
     } catch {
       setSymptoms([]);
     }
-  }, []);
+  }, [profileId]);
 
   const reloadCareSupport = useCallback(async () => {
     await Promise.all([loadCare(), loadRisk()]);

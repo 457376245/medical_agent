@@ -32,7 +32,8 @@ export function asObject(value: unknown): Record<string, unknown> {
 export const WORKFLOW_LABELS: Record<AgentWorkflow, string> = {
   report_interpretation: "报告解读",
   follow_up_prep: "复诊准备",
-  medication_review: "用药回顾",
+  medication_review: "用药检查",
+  abnormal_reasoning: "异常原因",
 };
 
 export function severityLabel(level: string): string {
@@ -52,6 +53,7 @@ const WORKFLOW_SCENARIO_MAP: Record<AgentWorkflow, string> = {
   report_interpretation: "report_interpretation",
   follow_up_prep: "clinical_summary",
   medication_review: "medication_review",
+  abnormal_reasoning: "abnormal_reasoning",
 };
 
 function normalizeTraceEvent(raw: unknown): AgentTraceEvent {

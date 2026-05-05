@@ -8,17 +8,14 @@ async function runViewport(name, viewport) {
 
   try {
     await page.goto(baseUrl, { waitUntil: "networkidle" });
-    await page.waitForSelector("text=疾病档案对话工作台");
+    await page.waitForSelector("text=患者慢病追踪");
 
     if (viewport.width <= 680) {
-      await page.getByRole("button", { name: "会话栏" }).click();
-      await page.waitForSelector(".agent-sidebar-left.agent-drawer-open");
-      await page.getByRole("button", { name: "关闭抽屉" }).click();
-      await page.getByRole("button", { name: "病例上下文" }).click();
-      await page.waitForSelector(".agent-sidebar-right.agent-drawer-open");
+      await page.waitForSelector(".agent-patient-nav");
+      await page.waitForSelector(".agent-patient-nav-link");
     } else {
-      await page.waitForSelector(".agent-chat-panel");
-      await page.waitForSelector(".agent-sidebar-right");
+      await page.waitForSelector(".agent-patient-hero");
+      await page.waitForSelector(".agent-dashboard-grid, .agent-empty-state");
     }
 
     console.log(`[ok] ${name}`);

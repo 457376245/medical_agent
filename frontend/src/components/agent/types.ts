@@ -1,8 +1,11 @@
+import type { ComparisonType, ResultState } from "../parse/structuredFieldInterpretation";
+
 export type AgentProfile = {
   profileId: string;
   diseaseName: string;
   recordCount: number;
   latestRecordAt?: string;
+  latestRecordId?: string;
   latestRecordTitle?: string;
   latestParseStatus?: string;
 };
@@ -19,6 +22,13 @@ export type AgentStructuredField = {
   value: string;
   unit?: string;
   referenceRange?: string;
+  numericValue?: number;
+  comparisonType?: ComparisonType;
+  resultState?: ResultState;
+  referenceLowerBound?: number;
+  referenceUpperBound?: number;
+  referenceLowerInclusive?: boolean;
+  referenceUpperInclusive?: boolean;
 };
 
 export type AgentRecordDetail = {
@@ -44,7 +54,7 @@ export type AgentTrendData = {
   snapshots: AgentTrendSnapshot[];
 };
 
-export type AgentWorkflow = "report_interpretation" | "follow_up_prep" | "medication_review";
+export type AgentWorkflow = "report_interpretation" | "follow_up_prep" | "medication_review" | "abnormal_reasoning";
 export type AgentAudience = "patient" | "caregiver" | "clinician";
 export type AgentUrgencyLevel = "routine" | "watch" | "warning" | "alert";
 
@@ -207,4 +217,29 @@ export type RiskOverview = {
   summary: string;
   signals: RiskSignal[];
   evidenceRefs: EvidenceRef[];
+};
+
+export type AgentTrendHighlight = {
+  name: string;
+  currentValue: string;
+  previousValue?: string;
+  unit?: string;
+  direction?: "up" | "down" | "stable" | string;
+  resultState?: string;
+  recordId?: string;
+  recordDate?: string;
+};
+
+export type AgentDashboardData = {
+  profiles: AgentProfile[];
+  selectedProfile?: AgentProfile;
+  latestRecord?: AgentRecord;
+  records: AgentRecord[];
+  riskOverview: RiskOverview;
+  followUpTasks: FollowUpTask[];
+  symptoms: CareSymptomItem[];
+  currentMedications: CareMedication[];
+  careGoals: string[];
+  trendHighlights: AgentTrendHighlight[];
+  sourceTypes: string[];
 };

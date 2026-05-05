@@ -140,6 +140,16 @@ describe("toRequestMetadata", () => {
     });
     expect((metadata as Record<string, unknown>).context_snapshot).toBeUndefined();
   });
+
+  it("maps abnormal reasoning workflow to the matching agent scenario", () => {
+    const metadata = toRequestMetadata({
+      diseaseProfileId: "profile-1",
+      workflow: "abnormal_reasoning",
+    });
+
+    expect(metadata.scenario).toBe("abnormal_reasoning");
+    expect(metadata.workflow).toBe("abnormal_reasoning");
+  });
 });
 
 describe("getSessionDisplayTitle", () => {
