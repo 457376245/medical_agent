@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { BarChart3, TrendingDown, TrendingUp } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { AppSelect, type AppSelectOption } from "../../../components/common/AppSelect";
 import { AgentPageFrame } from "../../../components/agent/AgentPageFrame";
 import { asObject, toOptionalText, toText } from "../../../components/agent/agent-utils";
+import { buildTrendSummary, type TrendSummaryItem } from "../../../components/agent/trendSummary";
 import { useAgentDashboard } from "../../../components/agent/useAgentDashboard";
 import type { AgentStructuredField, AgentTrendData } from "../../../components/agent/types";
 import { usePatient } from "../../../components/auth/PatientProvider";
@@ -97,6 +98,31 @@ function normalizeSourceType(raw: unknown): string {
   return value;
 }
 
+function resultStateLabel(value?: string): string {
+  if (value === "high") return "偏高";
+  if (value === "low") return "偏低";
+  if (value === "threshold") return "阈值异常";
+  if (value === "normal") return "正常";
+  return "无法判定";
+}
+
+function directionText(item: TrendSummaryItem): string {
+  if (!item.previousValue || item.direction === "unknown") {
+    return "暂无上次值";
+  }
+  if (item.direction === "up") return `较上次上升，上次 ${item.previousValue}${item.unit ?? ""}`;
+  if (item.direction === "down") return `较上次下降，上次 ${item.previousValue}${item.unit ?? ""}`;
+  return `较上次持平，上次 ${item.previousValue}${item.unit ?? ""}`;
+}
+
+function resultStateClass(value?: string): string {
+  if (value === "high") return "state-high";
+  if (value === "low") return "state-low";
+  if (value === "threshold") return "state-threshold";
+  if (value === "normal") return "state-normal";
+  return "state-unknown";
+}
+
 export default function AgentTrendsPage() {
   const searchParams = useSearchParams();
   const { currentPatient } = usePatient();
@@ -107,6 +133,7 @@ export default function AgentTrendsPage() {
   const [trendError, setTrendError] = useState("");
   const [loadingTrend, setLoadingTrend] = useState(false);
   const selectedProfileId = data?.selectedProfile?.profileId ?? "";
+  const selectedSourceTypeLabel = sourceType ? categoryLabel(sourceType) : "当前分类";
 
   const sourceTypeOptions: AppSelectOption[] = useMemo(() => {
     const seen = new Set<string>();
@@ -178,6 +205,42 @@ export default function AgentTrendsPage() {
     };
   }, [selectedProfileId, sourceType]);
 
+  const trendSummary = useMemo(
+    () => buildTrendSummary(trendData, selectedSourceTypeLabel),
+    [selectedSourceTypeLabel, trendData],
+  );
+  const hasSummaryRows = trendSummary.items.length > 0;
+
+  const renderSummaryGroup = (title: string, items: TrendSummaryItem[], className: string) => {
+    if (items.length === 0) {
+      return null;
+    }
+    return (
+      <section className={`agent-trend-summary-group ${className}`} aria-label={title}>
+        <h4>{title}</h4>
+        <div className="agent-trend-summary-rows">
+          {items.map((item) => (
+            <div className="agent-trend-summary-row" key={`${item.key}-${item.kind}`}>
+              <div className="agent-trend-summary-main">
+                <strong>{item.name}</strong>
+                <span className={`agent-trend-state-pill ${resultStateClass(item.resultState)}`}>
+                  {resultStateLabel(item.resultState)}
+                </span>
+              </div>
+              <span className="agent-trend-summary-value">
+                当前 {item.currentValue}{item.unit ?? ""}
+              </span>
+              <span className="agent-trend-summary-change">{directionText(item)}</span>
+              <span className="agent-trend-summary-reference">
+                {item.referenceRange ? `参考 ${item.referenceRange}` : "参考范围缺失"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <AgentPageFrame profiles={data?.profiles ?? []} selectedProfile={data?.selectedProfile}>
       {loading ? (
@@ -202,49 +265,71 @@ export default function AgentTrendsPage() {
               value={sourceType}
               options={sourceTypeOptions.length > 0 ? sourceTypeOptions : [{ value: "", label: "暂无可用报告分类", disabled: true }]}
               disabled={sourceTypeOptions.length === 0}
-              rootClassName="agent-record-select"
+              rootClassName="agent-record-select agent-trends-category-select"
               triggerClassName="agent-profile-select-trigger"
               menuClassName="agent-select-menu"
               onChange={setSourceType}
             />
           </div>
 
-          <div className="agent-trends-layout">
-            <article className="agent-dashboard-card agent-chart-card">
+          <div className="agent-trends-stack">
+            <section className={`agent-dashboard-card agent-trend-summary-card trend-summary-${trendSummary.state}`}>
+              <div className="agent-card-headline">
+                <div>
+                  <p className="hero-kicker">变化摘要</p>
+                  <h3>{loadingTrend ? "正在整理趋势" : trendSummary.title}</h3>
+                </div>
+                <BarChart3 className="w-5 h-5" aria-hidden="true" />
+              </div>
+
+              {loadingTrend ? (
+                <p className="status-text">正在加载当前分类的变化摘要...</p>
+              ) : trendError ? (
+                <p className="status-text error">{trendError}</p>
+              ) : (
+                <>
+                  <div className="agent-trend-summary-metrics" aria-label="当前趋势摘要统计">
+                    <span>
+                      <strong>{trendSummary.snapshotCount}</strong>
+                      次报告
+                    </span>
+                    <span>
+                      <strong>{trendSummary.currentAbnormalCount}</strong>
+                      当前异常
+                    </span>
+                    <span>
+                      <strong>{trendSummary.historicalAbnormalCount}</strong>
+                      已恢复
+                    </span>
+                    <span>
+                      <strong>{trendSummary.unknownCount}</strong>
+                      无法判定
+                    </span>
+                  </div>
+                  <p className="agent-trend-summary-detail">
+                    {trendSummary.latestRecordDate ? `最新报告：${trendSummary.latestRecordDate}。` : ""}
+                    {trendSummary.detail}
+                  </p>
+                  {hasSummaryRows ? (
+                    <div className="agent-trend-summary-groups">
+                      {renderSummaryGroup("当前异常", trendSummary.currentItems, "summary-group-current")}
+                      {renderSummaryGroup("已恢复正常", trendSummary.historicalItems, "summary-group-historical")}
+                      {renderSummaryGroup("无法判定", trendSummary.unknownItems, "summary-group-unknown")}
+                    </div>
+                  ) : (
+                    <p className="status-text success">{trendSummary.detail}</p>
+                  )}
+                </>
+              )}
+            </section>
+
+            <article className="agent-dashboard-card agent-chart-card agent-trend-chart-card-full">
               <TrendComparisonPanel
                 loading={loadingTrend}
                 error={trendError}
                 data={trendData ?? undefined}
               />
             </article>
-
-            <aside className="agent-dashboard-card">
-              <div className="agent-card-headline">
-                <div>
-                  <p className="hero-kicker">变化摘要</p>
-                  <h3>近期关注项</h3>
-                </div>
-                <BarChart3 className="w-5 h-5" aria-hidden="true" />
-              </div>
-              {data?.trendHighlights.length ? (
-                <div className="agent-risk-list">
-                  {data.trendHighlights.map((item) => {
-                    const Icon = item.direction === "down" ? TrendingDown : TrendingUp;
-                    return (
-                      <div className="agent-trend-highlight" key={`${item.name}-${item.recordDate}`}>
-                        <Icon className="w-4 h-4" aria-hidden="true" />
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>{item.previousValue ? `${item.previousValue} -> ` : ""}{item.currentValue}{item.unit ?? ""}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p>暂无明确趋势亮点。继续上传同一分类报告后，这里会自动整理变化。</p>
-              )}
-            </aside>
           </div>
         </section>
       )}
