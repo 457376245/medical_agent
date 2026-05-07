@@ -11,7 +11,7 @@ import logging
 import os
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, trim_messages
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
 
 try:
@@ -20,9 +20,14 @@ except Exception:  # pragma: no cover - 允许在没有可选依赖的情况下�
     ChatOpenAI = None  # type: ignore[assignment]
 
 from app.agent.context import (
-    build_context_system_message,
     context_signature_from_metadata,
     parse_context_bundle,
+)
+from app.agent.prompting import (
+    build_prompt_messages,
+    detect_recent_tool_error_names,
+    detect_recent_tool_failures,
+    hash_tool_args,
 )
 from app.config import (
     CONVERSATION_WINDOW_MAX_TOKENS,
@@ -36,29 +41,16 @@ from app.config import (
     OPENAI_SDK_RETRIES,
 )
 from app.ids import new_prefixed_ordered_id
-from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
-from app.prompts.templates import get_conversation_prompt
-from app.tools.registry import get_tools
+from app.tools.registry import get_model_tools, get_tools
 from app.utils import normalize_openai_base_url
 
 LOGGER = logging.getLogger(__name__)
 CONTEXT_TOOL_NAME = "fetch_disease_profile_context"
-_TOOL_ERROR_PREFIX = "Error:"
 
 
 def _detect_recent_tool_errors(messages: list[Any]) -> list[str]:
     """扫描最近一轮消息，返回包含错误的工具名列表。"""
-    errors: list[str] = []
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            break
-        if isinstance(msg, ToolMessage):
-            content = str(msg.content or "").strip()
-            if content.startswith(_TOOL_ERROR_PREFIX):
-                tool_name = str(getattr(msg, "name", "unknown"))
-                if tool_name not in errors:
-                    errors.append(tool_name)
-    return errors
+    return detect_recent_tool_error_names(messages)
 
 
 def _context_tool_call_message(metadata: dict[str, Any]) -> AIMessage:
@@ -188,7 +180,7 @@ def create_llm_node(
     返回的函数用作图节点。它读取 state["messages"] 并返回一个 AIMessage
     （可能包含工具调用请求）。
     """
-    tool_list = tools or get_tools()
+    tool_list = tools if tools is not None else get_model_tools()
     if ChatOpenAI is None:
         raise RuntimeError("langchain-openai 未安装")
 
@@ -216,58 +208,20 @@ def create_llm_node(
 
     def call_llm(state: dict[str, Any]) -> dict[str, Any]:
         raw_messages = state["messages"]
-        messages = trim_messages(
-            raw_messages,
+        prompt_result = build_prompt_messages(
+            raw_messages=list(raw_messages),
+            state=state,
             max_tokens=CONVERSATION_WINDOW_MAX_TOKENS,
-            token_counter="approximate",
-            strategy="last",
-            include_system=True,
-            start_on="human",
         )
-        if len(messages) < len(raw_messages):
+        prepared_messages = prompt_result.messages
+        if len(prepared_messages) < prompt_result.diagnostics["prepared_message_count"]:
             LOGGER.info(
-                "对话消息已裁剪：%d -> %d 条（预算 %d tokens）",
-                len(raw_messages), len(messages), CONVERSATION_WINDOW_MAX_TOKENS,
+                "对话消息已裁剪：%d -> %d 条（预算 %d tokens, prompt_version=%s）",
+                prompt_result.diagnostics["prepared_message_count"],
+                len(prepared_messages),
+                CONVERSATION_WINDOW_MAX_TOKENS,
+                prompt_result.diagnostics["prompt_version"],
             )
-
-        prepared_messages = list(messages)
-        if not prepared_messages or not isinstance(prepared_messages[0], SystemMessage):
-            prepared_messages = [SystemMessage(content=SYSTEM_MEDICAL_ASSISTANT)] + prepared_messages
-
-        context_message = build_context_system_message(
-            active_context_bundle=state.get("active_context_bundle"),
-            active_context_status=str(state.get("active_context_status") or "").strip() or None,
-        )
-        if context_message:
-            prepared_messages = [
-                prepared_messages[0],
-                SystemMessage(content=context_message),
-                *prepared_messages[1:],
-            ]
-
-        metadata = state.get("metadata") or {}
-        scenario_prompt = get_conversation_prompt(
-            workflow=metadata.get("workflow"),
-            scenario=metadata.get("scenario"),
-            audience=metadata.get("audience"),
-            urgency_level=metadata.get("urgency_level"),
-        )
-        if scenario_prompt:
-            idx = 0
-            while idx < len(prepared_messages) and isinstance(prepared_messages[idx], SystemMessage):
-                idx += 1
-            prepared_messages.insert(idx, SystemMessage(content=scenario_prompt))
-
-        recent_errors = _detect_recent_tool_errors(prepared_messages)
-        if recent_errors:
-            error_hint = (
-                f"[注意] 以下工具调用返回了错误：{'、'.join(recent_errors)}。"
-                "请勿使用相同参数重试，向用户说明情况并提供替代建议。"
-            )
-            err_idx = 0
-            while err_idx < len(prepared_messages) and isinstance(prepared_messages[err_idx], SystemMessage):
-                err_idx += 1
-            prepared_messages.insert(err_idx, SystemMessage(content=error_hint))
 
         response = llm_with_tools.invoke(prepared_messages)
 
@@ -286,10 +240,61 @@ def create_llm_node(
 # ---------------------------------------------------------------------------
 
 
-def create_tool_node(tools: list | None = None) -> ToolNode:
+def create_tool_node(tools: list | None = None) -> Any:
     """创建用于执行工具调用的 ToolNode。"""
     tool_list = tools or get_tools()
-    return ToolNode(tool_list)
+    tool_node = ToolNode(tool_list)
+
+    def execute_tools(state: dict[str, Any]) -> dict[str, Any]:
+        messages = state.get("messages", [])
+        if not isinstance(messages, list) or not messages:
+            return tool_node.invoke(state)
+        last_message = messages[-1]
+        if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+            return tool_node.invoke(state)
+
+        failed_keys = {
+            (failure["tool"], failure["args_hash"])
+            for failure in detect_recent_tool_failures(messages[:-1])
+        }
+        if not failed_keys:
+            return tool_node.invoke(state)
+
+        allowed_calls: list[dict[str, Any]] = []
+        blocked_messages: list[ToolMessage] = []
+        for call in last_message.tool_calls:
+            tool_name = str(call.get("name") or "unknown")
+            args_hash = hash_tool_args(call.get("args"))
+            if (tool_name, args_hash) not in failed_keys:
+                allowed_calls.append(call)
+                continue
+            blocked_messages.append(
+                ToolMessage(
+                    content=(
+                        "Error: 该工具使用相同参数已失败，"
+                        "请向用户说明情况并提供替代建议。"
+                    ),
+                    name=tool_name,
+                    tool_call_id=str(call.get("id") or ""),
+                )
+            )
+
+        if len(allowed_calls) == len(last_message.tool_calls):
+            return tool_node.invoke(state)
+
+        updates: dict[str, Any] = {"messages": blocked_messages}
+        if allowed_calls:
+            allowed_message = AIMessage(
+                content=last_message.content,
+                tool_calls=allowed_calls,
+            )
+            allowed_state = {**state, "messages": [*messages[:-1], allowed_message]}
+            tool_updates = tool_node.invoke(allowed_state)
+            tool_messages = tool_updates.get("messages", []) if isinstance(tool_updates, dict) else []
+            updates["messages"] = [*tool_messages, *blocked_messages]
+        return updates
+
+    return execute_tools
 
 
 # ---------------------------------------------------------------------------

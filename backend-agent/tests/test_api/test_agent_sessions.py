@@ -75,6 +75,7 @@ def test_chat_stream_persists_session_index_and_turn_trace(tmp_path: Path) -> No
         assert "event: tool_result" in chunks
         assert "event: token" in chunks
         assert "event: done" in chunks
+        assert "records/a.pdf" not in chunks
 
         sessions_response = client.get("/api/v1/sessions?disease_profile_id=profile-1")
         sessions_payload = sessions_response.json()
@@ -96,6 +97,7 @@ def test_chat_stream_persists_session_index_and_turn_trace(tmp_path: Path) -> No
         assert detail_payload["turns"][0]["metadata"]["context_signature"] == "profile-1:record-1"
         assert detail_payload["turns"][0]["trace_events"][0]["event"] == "tool_call"
         assert detail_payload["turns"][0]["trace_events"][1]["event"] == "tool_result"
+        assert "records/a.pdf" not in str(detail_payload["turns"][0]["trace_events"])
         assert detail_payload["messages"][0]["role"] == "user"
         assert detail_payload["messages"][1]["content"] == "第一段回答。第二段回答。"
     finally:

@@ -101,6 +101,10 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "value": value,
             "unit": _opt(item.get("unit")),
             "reference_range": _opt(item.get("referenceRange")),
+            "result_state": _opt(item.get("resultState")),
+            "severity": _opt(item.get("severity")),
+            "alert_level": _opt(item.get("alertLevel")),
+            "is_abnormal": item.get("isAbnormal"),
         }
 
     def map_recent(item: dict[str, Any]) -> dict[str, Any]:

@@ -11,6 +11,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.prompts.provider import (
+    CATEGORY_CLASSIFICATION_SYSTEM_PROMPT,
+    GENERATE_SYSTEM_PROMPT,
+    MEDICATION_PLAN_TASK_PROMPT,
+    PARSE_JSON_ONLY_SUFFIX,
+    PARSE_SYSTEM_PROMPT,
+    REPORT_ANALYSIS_TASK_PROMPT,
+    SUMMARY_TASK_PROMPT,
+)
 from app.providers.document import DocumentParser
 from app.providers.storage import OSSStorageService
 from app.utils import normalize_openai_base_url, read_float_env, read_int_env, to_bool
@@ -222,33 +231,13 @@ class LLMService:
     ) -> dict[str, Any]:
         """生成报告摘要或分析内容。"""
         output_type = str(payload.get("type", "SUMMARY")).upper()
-        system_prompt = (
-            "You generate clinically cautious Chinese draft text. "
-            "Never claim diagnosis certainty and avoid medication decisions."
-        )
+        system_prompt = GENERATE_SYSTEM_PROMPT
         if output_type == "MED_PLAN":
-            task_prompt = (
-                "Generate a medication plan draft in Chinese, with clear steps, "
-                "missing information reminders, and a reconfirmation warning."
-            )
+            task_prompt = MEDICATION_PLAN_TASK_PROMPT
         elif output_type == "REPORT_ANALYSIS":
-            task_prompt = (
-                "You will receive structured lab/report fields. "
-                "Generate Chinese analysis and advice in at most 300 Chinese characters. "
-                "Focus on abnormalities, possible risk direction, and practical follow-up suggestions. "
-                "Treat `resultState=threshold` as an attention-needed threshold abnormality, never as normal. "
-                "If `combinationAnalysis` is present and non-empty, prioritize referencing the identified "
-                "combination patterns (e.g. liver damage patterns, thyroid dysfunction) in your analysis. "
-                "Use the rule summaries and suggestions as authoritative clinical signals — "
-                "your role is to translate them into natural, patient-friendly language. "
-                "Do not provide definitive diagnosis or medication decisions. "
-                "Must include a short disclaimer that this is for reference only."
-            )
+            task_prompt = REPORT_ANALYSIS_TASK_PROMPT
         else:
-            task_prompt = (
-                "Generate a concise medical report summary draft in Chinese. "
-                "Highlight key findings and explicitly mention unknown fields."
-            )
+            task_prompt = SUMMARY_TASK_PROMPT
 
         analysis_context = (
             payload.get("analysisContext")
@@ -304,10 +293,7 @@ class LLMService:
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "你是医疗报告分类助手。根据报告内容判断其所属分类。"
-                    "分类名必须≤5个汉字，简洁准确。"
-                ),
+                "content": CATEGORY_CLASSIFICATION_SYSTEM_PROMPT,
             },
             {
                 "role": "user",
@@ -352,18 +338,9 @@ class LLMService:
         attempt: int,
     ) -> str:
         structured = self._use_structured_output
-        system_content = (
-            "You extract key medical test fields from medical reports. "
-            "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
-            "as shown in the source for `value` and `referenceRange`. "
-            "If you recognize a standard lab indicator, include its `standardCode` (e.g. ALT, AST, GLU, HBA1C). "
-            "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range."
-        )
+        system_content = PARSE_SYSTEM_PROMPT
         if not structured:
-            system_content += (
-                " Return only a valid JSON object with a top-level `fields` array."
-                " Do not use markdown code fences."
-            )
+            system_content += PARSE_JSON_ONLY_SUFFIX
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content},

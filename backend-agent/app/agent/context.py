@@ -118,7 +118,9 @@ def build_context_system_message(
         key_fields = record_summary.get("key_fields")
         if isinstance(key_fields, list) and key_fields:
             rendered_fields: list[str] = []
-            for item in key_fields[:8]:
+            field_items = [item for item in key_fields if isinstance(item, Mapping)]
+            field_items.sort(key=_key_field_priority)
+            for item in field_items[:8]:
                 if not isinstance(item, Mapping):
                     continue
                 name = str(item.get("name") or "").strip()
@@ -375,3 +377,16 @@ def build_context_system_message(
     if guidance:
         result += "\n\n" + "\n".join(guidance)
     return result
+
+
+def _key_field_priority(item: Mapping[str, Any]) -> int:
+    state = str(item.get("result_state") or item.get("resultState") or "").strip().lower()
+    severity = str(item.get("severity") or item.get("alert_level") or item.get("alertLevel") or "").strip().lower()
+    is_abnormal = item.get("is_abnormal")
+    if state in {"critical", "panic"} or severity in {"critical", "high", "alert", "urgent"}:
+        return 0
+    if state in {"high", "low", "threshold", "abnormal"} or is_abnormal is True:
+        return 1
+    if severity in {"warning", "medium", "watch"}:
+        return 2
+    return 3

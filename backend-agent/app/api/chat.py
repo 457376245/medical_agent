@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from app.agent.context import context_signature_from_metadata
+from app.api.tool_events import sanitize_tool_input, sanitize_tool_output
 from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn, AgentTraceEvent
 from app.schemas.chat import ChatRequest
@@ -69,6 +70,23 @@ def _friendly_stream_error(exc: Exception) -> str:
     if "connecterror" in lowered or "connection" in lowered and "failed" in lowered:
         return "LLM 网络连接失败，请检查外网连通性、代理配置和 API Key。"
     return message
+
+
+def _public_turn_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """去除不应通过会话详情暴露的运行时字段。"""
+    public = dict(metadata)
+    public.pop("patient_id", None)
+    attachments = public.get("attachments")
+    if isinstance(attachments, list):
+        public["attachments"] = [
+            {
+                "file_type": item.get("file_type"),
+                "display_name": item.get("display_name"),
+            }
+            for item in attachments
+            if isinstance(item, dict)
+        ]
+    return public
 
 
 def _session_from_metadata(
@@ -128,7 +146,11 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     memory_store = getattr(request.app.state, "memory_store", None)
     thread_id = body.thread_id or new_ordered_id()
     config = {"configurable": {"thread_id": thread_id}}
-    turn_metadata: dict[str, Any] = dict(body.metadata)
+    turn_metadata: dict[str, Any] = body.metadata.to_graph_metadata()
+    if body.attachments:
+        turn_metadata["attachments"] = [
+            attachment.model_dump(exclude_none=True) for attachment in body.attachments
+        ]
 
     # 将患者范围从 HTTP 头转发到元数据供下游工具使用
     patient_id_header = request.headers.get("X-Patient-Id", "").strip()
@@ -200,34 +222,36 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                 elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = event.get("data", {}).get("input", {})
+                    public_input = sanitize_tool_input(str(tool_name), tool_input)
                     trace_events.append(
                         AgentTraceEvent(
                             event="tool_call",
                             tool=str(tool_name),
-                            data={"input": tool_input},
+                            data={"input": public_input},
                         )
                     )
                     yield _sse_event(
                         "tool_call",
-                        {"tool": tool_name, "input": tool_input},
+                        {"tool": tool_name, "input": public_input, **public_input},
                     )
 
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "unknown")
                     tool_output = event.get("data", {}).get("output", "")
-                    output_text = str(tool_output)[:2000]
+                    public_output = sanitize_tool_output(str(tool_name), tool_output)
                     trace_events.append(
                         AgentTraceEvent(
                             event="tool_result",
                             tool=str(tool_name),
-                            data={"output": output_text},
+                            data={"output": public_output},
                         )
                     )
                     yield _sse_event(
                         "tool_result",
                         {
                             "tool": tool_name,
-                            "output": output_text,
+                            "output": public_output,
+                            **public_output,
                         },
                     )
 
@@ -285,7 +309,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         user_message=body.message,
                         assistant_message=assistant_message,
                         trace_events=trace_events,
-                        metadata=turn_metadata,
+                        metadata=_public_turn_metadata(turn_metadata),
                         error_message=error_message,
                     )
                 )
