@@ -7,7 +7,8 @@ public record RecordDetail(
     String summary,
     String parseStatus,
     StructuredResultData structuredResult,
-    List<CombinationAnalysisItem> combinationAnalysis) {
+    List<CombinationAnalysisItem> combinationAnalysis,
+    UltrasoundFollowUpResult ultrasoundFollowUp) {
 
   public record CombinationAnalysisItem(
       String ruleId,

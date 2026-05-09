@@ -50,7 +50,7 @@ class RecordControllerTest {
     UUID recordId = UUID.randomUUID();
     StructuredResultData structured = new StructuredResultData("v1", 1, new ObjectMapper().createObjectNode());
     when(recordService.fetchRecord(recordId)).thenReturn(
-        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured, java.util.List.of()));
+        new RecordDetail(recordId.toString(), "test summary", "SUCCESS", structured, java.util.List.of(), null));
 
     ResponseEntity<ApiResponse<?>> response = controller.getRecord(recordId.toString());
 
@@ -58,6 +58,7 @@ class RecordControllerTest {
     assertEquals("OK", response.getBody().code());
     RecordViewResponseData data = (RecordViewResponseData) response.getBody().data();
     assertEquals("PARSED_RESULT", data.defaultView());
+    assertEquals(null, data.ultrasoundFollowUp());
     assertNotNull(response.getBody().requestId());
   }
 

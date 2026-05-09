@@ -162,7 +162,8 @@ public class ReportAnalysisService {
         context.diseaseName(),
         context.parseStatus(),
         compactStructured,
-        context.combinationAnalysis());
+        context.combinationAnalysis(),
+        context.ultrasoundFollowUp());
   }
 
   private boolean isParseResultReadyForAnalysis(RecordAnalysisContext context) {

@@ -63,6 +63,28 @@ def test_trend_summary_present_adds_trend_guidance() -> None:
     assert "变化方向" in result
 
 
+def test_ultrasound_follow_up_renders_evidence_and_guidance() -> None:
+    bundle = _bundle(
+        selected_record={"title": "甲状腺彩超", "parse_status": "completed"},
+        record_summary={
+            "analysis": None,
+            "key_fields": [],
+            "ultrasound_follow_up": {
+                "summary": "本次较上次提示结节增大",
+                "change_status": "WORSENED",
+                "action_level": "SEEK_CARE_SOON",
+                "action_suggestion": "建议尽快就医复诊",
+                "current_evidence": [{"label": "超声提示", "text": "甲状腺结节较前增大"}],
+            },
+        },
+    )
+    result = build_context_system_message(active_context_bundle=bundle, active_context_status="ready")
+    assert result is not None
+    assert "超声/彩超随访" in result
+    assert "超声/彩超原文依据" in result
+    assert "不要声称做了图像分析" in result
+
+
 def test_no_selected_record_adds_profile_guidance() -> None:
     bundle = _bundle(selected_record=None)
     result = build_context_system_message(active_context_bundle=bundle, active_context_status="ready")

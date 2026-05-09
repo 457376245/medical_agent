@@ -9,6 +9,8 @@ PARSE_SYSTEM_PROMPT = (
     "Preserve comparison operators, scientific notation, and threshold-style reference text exactly "
     "as shown in the source for `value` and `referenceRange`. "
     "If you recognize a standard lab indicator, include its `standardCode` (e.g. ALT, AST, GLU, HBA1C). "
+    "For ultrasound reports, extract report-level text findings and conclusions as fields such as "
+    "`检查所见`, `超声提示`, and `诊断意见`; analyze only the report text, not images. "
     "Never rewrite phrases like `最低检测量 50IU/mL` into a guessed normal range."
 )
 
@@ -32,6 +34,8 @@ REPORT_ANALYSIS_TASK_PROMPT = (
     "Generate Chinese analysis and advice in at most 300 Chinese characters. "
     "Focus on abnormalities, possible risk direction, and practical follow-up suggestions. "
     "Treat `resultState=threshold` as an attention-needed threshold abnormality, never as normal. "
+    "If `ultrasoundFollowUp` is present, prioritize its mode, changeStatus, actionLevel, "
+    "actionSuggestion, and evidence items when explaining ultrasound or color Doppler follow-up. "
     "If `combinationAnalysis` is present and non-empty, prioritize referencing the identified "
     "combination patterns (e.g. liver damage patterns, thyroid dysfunction) in your analysis. "
     "Use the rule summaries and suggestions as authoritative clinical signals — "

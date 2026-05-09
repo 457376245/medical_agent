@@ -10,4 +10,5 @@ public record RecordAnalysisContext(
     String diseaseName,
     String parseStatus,
     StructuredResultData structuredResult,
-    List<RecordDetail.CombinationAnalysisItem> combinationAnalysis) {}
+    List<RecordDetail.CombinationAnalysisItem> combinationAnalysis,
+    UltrasoundFollowUpResult ultrasoundFollowUp) {}

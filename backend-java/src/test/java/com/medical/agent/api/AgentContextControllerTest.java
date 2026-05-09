@@ -41,7 +41,7 @@ class AgentContextControllerTest {
         new AgentDiseaseProfileSummary("profile-1", "高血压", 2, "2026-03-01"),
         new AgentRecordContextSummary("record-1", "门诊检验", "2026-03-01", "LAB", "SUCCESS"),
         List.of(new AgentRecordContextSummary("record-1", "门诊检验", "2026-03-01", "LAB", "SUCCESS")),
-        new AgentRecordContextData("summary", "analysis", List.of()),
+        new AgentRecordContextData("summary", "analysis", List.of(), null),
         List.of(new AgentTrendSnapshotSummary("record-1", "2026-03-01", "门诊检验", "空腹血糖:6.5mmol/L")),
         new PatientCareProfileResponseData.BaselineSummary(List.of("高血压"), List.of("青霉素"), List.of("ALT长期偏高"), "按季度复查", List.of()),
         List.of(new PatientCareProfileResponseData.MedicationItem("缬沙坦", "80mg", "qd", "降压")),

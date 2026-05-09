@@ -78,6 +78,7 @@ def build_context_system_message(
     has_red_flags = False
     has_medications = False
     has_evidence_refs = False
+    has_ultrasound_follow_up = False
 
     if isinstance(disease_profile, Mapping):
         disease_name = str(disease_profile.get("name") or "").strip()
@@ -136,6 +137,29 @@ def build_context_system_message(
             if rendered_fields:
                 has_key_fields = True
                 lines.append(f"- 关键字段：{'；'.join(rendered_fields)}")
+
+        ultrasound_follow_up = record_summary.get("ultrasound_follow_up")
+        if isinstance(ultrasound_follow_up, Mapping):
+            follow_summary = str(ultrasound_follow_up.get("summary") or "").strip()
+            action_level = str(ultrasound_follow_up.get("action_level") or "").strip()
+            action_suggestion = str(ultrasound_follow_up.get("action_suggestion") or "").strip()
+            change_status = str(ultrasound_follow_up.get("change_status") or "").strip()
+            evidence_items = ultrasound_follow_up.get("current_evidence")
+            rendered_evidence: list[str] = []
+            if isinstance(evidence_items, list):
+                for item in evidence_items[:3]:
+                    if not isinstance(item, Mapping):
+                        continue
+                    label = str(item.get("label") or "").strip()
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        rendered_evidence.append(f"{label}:{text}" if label else text)
+            segments = [part for part in [follow_summary, change_status, action_level, action_suggestion] if part]
+            if segments:
+                has_ultrasound_follow_up = True
+                lines.append(f"- 超声/彩超随访：{'；'.join(segments)}")
+            if rendered_evidence:
+                lines.append(f"- 超声/彩超原文依据：{'；'.join(rendered_evidence)}")
 
     if isinstance(trend_summary, list) and trend_summary:
         rendered_trends: list[str] = []
@@ -353,6 +377,12 @@ def build_context_system_message(
         guidance.append(
             "[提示] 上方包含历史趋势数据，回答时请分析指标随时间的变化方向"
             "（升高/降低/稳定），并结合趋势讨论当前值的临床意义。"
+        )
+
+    if has_ultrasound_follow_up:
+        guidance.append(
+            "[提示] 当前上下文包含超声/彩超报告级随访结果。回答相关问题时，"
+            "优先引用变化状态、动作建议和原文依据；不要声称做了图像分析或病灶级精准追踪。"
         )
 
     if has_medications:

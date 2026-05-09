@@ -324,8 +324,6 @@ class LLMService:
         user_content: list[dict[str, Any]],
         attempt: int,
     ) -> str:
-        if attempt > 1:
-            return requested_model
         if self._document.contains_visual_parts(user_content):
             return self._openai_vision_model or requested_model
         return requested_model
@@ -377,6 +375,13 @@ class LLMService:
             attempt=attempt,
         )
         if status_code >= 400:
+            LOGGER.warning(
+                "LLM HTTP error response: model=%s attempt=%s status=%s body=%s",
+                model_name,
+                attempt,
+                status_code,
+                _summarize_http_error_body(body),
+            )
             raise self._to_http_error(status_code, body)
         content = _extract_message_content(body)
         if not content:
@@ -526,7 +531,7 @@ class LLMService:
 
     @staticmethod
     def _to_http_error(status_code: int, body: dict[str, Any]) -> LLMError:
-        message = _extract_error_message(body) or json.dumps(body, ensure_ascii=False)
+        message = _format_http_error_message(status_code, body)
         if status_code in {400, 404}:
             return LLMError(message, code="BIZ_LLM_REQUEST_INVALID")
         if status_code in {401, 403}:
@@ -572,6 +577,21 @@ def _extract_error_message(body: dict[str, Any]) -> str:
     if isinstance(message, str) and message.strip():
         return message.strip()
     return ""
+
+
+def _summarize_http_error_body(body: dict[str, Any]) -> str:
+    if not body:
+        return "{}"
+    return json.dumps(body, ensure_ascii=False)[:1000]
+
+
+def _format_http_error_message(status_code: int, body: dict[str, Any]) -> str:
+    detail = _extract_error_message(body)
+    if detail:
+        return f"HTTP {status_code}: {detail}"
+    if not body:
+        return f"HTTP {status_code}: empty error body"
+    return f"HTTP {status_code}: {_summarize_http_error_body(body)}"
 
 
 def _load_json_object(raw_output: str) -> dict[str, Any]:

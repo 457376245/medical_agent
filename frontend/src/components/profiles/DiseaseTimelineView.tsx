@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
 import { CombinationAnalysisPanel } from "../parse/CombinationAnalysisPanel";
 import { StructuredResultTable } from "../parse/StructuredResultTable";
+import { UltrasoundFollowUpPanel, type UltrasoundFollowUpResult } from "../parse/UltrasoundFollowUpPanel";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 import { DeleteRecordButton } from "./DeleteRecordButton";
 import { TrendComparisonPanel } from "./TrendComparisonPanel";
@@ -35,6 +36,7 @@ type TimelineRecordDetail = {
   parseStatus: string;
   payload: unknown;
   combinationAnalysis: CombinationAnalysisItem[];
+  ultrasoundFollowUp: UltrasoundFollowUpResult | null;
 };
 
 type RecordAnalysis = {
@@ -409,10 +411,14 @@ export function DiseaseTimelineView({
       const combinationAnalysis: CombinationAnalysisItem[] = Array.isArray(detail?.combinationAnalysis)
         ? detail.combinationAnalysis
         : [];
+      const ultrasoundFollowUp = typeof detail?.ultrasoundFollowUp === "object" && detail.ultrasoundFollowUp !== null
+        ? detail.ultrasoundFollowUp as UltrasoundFollowUpResult
+        : null;
       setSelectedDetail({
         parseStatus,
         payload: structuredPayload,
         combinationAnalysis,
+        ultrasoundFollowUp,
       });
       if (parseStatus === "SUCCESS" && hasStructuredFields(structuredPayload)) {
         void loadRecordAnalysis(target.record.id);
@@ -791,6 +797,7 @@ export function DiseaseTimelineView({
                   data={selectedRecord ? trendCache[selectedRecord.id] : undefined}
                 />
               ) : null}
+              <UltrasoundFollowUpPanel value={selectedDetail.ultrasoundFollowUp} />
               <div className="summary-block mt-10">
                 <h4 className="summary-heading">AI分析与建议（300字内）</h4>
                 {analysisLoading ? (

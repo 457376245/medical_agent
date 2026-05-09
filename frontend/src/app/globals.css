@@ -1500,6 +1500,136 @@ a {
   color: var(--muted);
 }
 
+/* --- 超声/彩超随访面板 --- */
+.ultrasound-follow-panel {
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius-sm);
+  background: var(--info-soft);
+  padding: 12px 14px;
+}
+
+.ultrasound-follow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ultrasound-follow-head .summary-heading {
+  margin-bottom: 0;
+}
+
+.ultrasound-follow-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ultrasound-follow-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--info-border);
+  background: var(--surface-strong);
+  color: var(--info);
+  padding: 2px 9px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.ultrasound-follow-tag.action-seek_care_soon,
+.ultrasound-follow-tag.action-immediate_care {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ultrasound-follow-tag.action-recheck_soon {
+  border-color: #fcd34d;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ultrasound-follow-summary {
+  margin: 10px 0 4px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.ultrasound-follow-meta,
+.ultrasound-follow-action,
+.ultrasound-follow-disclaimer {
+  margin: 5px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ultrasound-follow-disclaimer {
+  color: var(--muted);
+}
+
+.ultrasound-evidence {
+  margin-top: 10px;
+}
+
+.ultrasound-evidence-title {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.ultrasound-evidence ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.ultrasound-evidence li,
+.ultrasound-history-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.68);
+  padding: 8px 10px;
+}
+
+.ultrasound-evidence span,
+.ultrasound-history-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-bottom: 3px;
+}
+
+.ultrasound-evidence p,
+.ultrasound-history-item p {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 0.84rem;
+}
+
+.ultrasound-history {
+  margin-top: 10px;
+}
+
+.ultrasound-history-list {
+  display: grid;
+  gap: 6px;
+}
+
+.ultrasound-history-item strong {
+  display: block;
+  font-size: 0.86rem;
+  margin-bottom: 3px;
+}
+
 .muted {
   color: var(--muted);
 }

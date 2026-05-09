@@ -129,7 +129,11 @@ public class AgentDiseaseProfileContextService {
         partial = true;
       }
 
-      recordSummary = new AgentRecordContextData(TextUtils.trimToNull(detail.summary()), analysis, keyFields);
+      recordSummary = new AgentRecordContextData(
+          TextUtils.trimToNull(detail.summary()),
+          analysis,
+          keyFields,
+          detail.ultrasoundFollowUp());
     } else if (!profileRecords.isEmpty()) {
       // 无 recordId：聚合各分类下最近的报告数据
       List<AgentKeyFieldSummary> aggregatedKeyFields = aggregateKeyFieldsByCategory(profileRecords, warnings);
@@ -145,7 +149,7 @@ public class AgentDiseaseProfileContextService {
       }
 
       // 不设置 selectedRecord 和 analysis，因为用户没有聚焦特定报告
-      recordSummary = new AgentRecordContextData(null, null, aggregatedKeyFields);
+      recordSummary = new AgentRecordContextData(null, null, aggregatedKeyFields, null);
     }
     PatientCareRiskOverviewResponseData riskOverview = patientCareService.getRiskOverview(profileId, riskRecordId, careProfile);
 

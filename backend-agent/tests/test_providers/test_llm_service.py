@@ -87,6 +87,53 @@ def test_parse_uses_vision_model_for_visual_parts(monkeypatch: pytest.MonkeyPatc
     assert result["structuredResult"]["fields"][0]["name"] == "葡萄糖"
 
 
+def test_parse_retry_keeps_vision_model_for_visual_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    monkeypatch.setenv("OPENAI_PARSE_MODEL", "parse-primary")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "vision-primary")
+    monkeypatch.setenv("OPENAI_FALLBACK_MODEL", "fallback-model")
+
+    document = _StubDocument(
+        [
+            {"type": "text", "text": "prompt"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+        ]
+    )
+    service = LLMService(storage=_StubStorage(), document=document)
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send_chat_completion_request(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return (
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"fields":[{"name":"肝脏","value":"形态大小正常","confidence":0.95}]}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
+    result = service.parse(
+        {"assetRefs": [{"objectKey": "scan.png", "fileType": "IMAGE"}]},
+        "fallback-model",
+        2,
+    )
+
+    assert captured_payloads[0]["model"] == "vision-primary"
+    assert result["modelMeta"]["model"] == "vision-primary"
+
+
 def test_generate_returns_content_and_model_meta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
     monkeypatch.setenv("OPENAI_API_KEY", "secret")
@@ -143,6 +190,7 @@ def test_parse_prompt_requires_preserving_threshold_text_and_scientific_notation
 
     system_prompt = str(captured_payloads[0]["messages"][0]["content"])
     assert "Preserve comparison operators, scientific notation" in system_prompt
+    assert "For ultrasound reports, extract report-level text findings" in system_prompt
     assert "Never rewrite phrases like `最低检测量 50IU/mL`" in system_prompt
 
 
@@ -186,6 +234,43 @@ def test_report_analysis_prompt_marks_threshold_result_as_attention_needed(
     user_prompt = str(captured_payloads[0]["messages"][1]["content"])
     assert "Treat `resultState=threshold` as an attention-needed threshold abnormality" in user_prompt
     assert '"resultState": "threshold"' in user_prompt
+
+
+def test_report_analysis_prompt_prioritizes_ultrasound_follow_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    service = LLMService(storage=_StubStorage(), document=_StubDocument([]))
+    captured_payloads: list[dict[str, Any]] = []
+
+    def fake_send_chat_completion_request(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del attempt
+        captured_payloads.append(payload)
+        return 200, {"choices": [{"message": {"content": "生成完成"}}]}
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send_chat_completion_request)
+
+    service.generate(
+        {
+            "type": "REPORT_ANALYSIS",
+            "recordId": "r-1",
+            "analysisContext": {
+                "ultrasoundFollowUp": {
+                    "mode": "FOLLOW_UP",
+                    "changeStatus": "WORSENED",
+                    "actionLevel": "SEEK_CARE_SOON",
+                    "actionSuggestion": "建议尽快就医复诊",
+                }
+            },
+        },
+        "gpt-5.4",
+        1,
+    )
+
+    user_prompt = str(captured_payloads[0]["messages"][1]["content"])
+    assert "If `ultrasoundFollowUp` is present" in user_prompt
+    assert '"ultrasoundFollowUp"' in user_prompt
 
 
 def test_parse_invalid_json_raises_biz_invalid_output(
@@ -302,3 +387,34 @@ def test_parse_omits_response_format_when_structured_output_disabled(
     system_prompt = str(sent_payload["messages"][0]["content"])
     assert "Return only a valid JSON object" in system_prompt
     assert "Do not use markdown code fences" in system_prompt
+
+
+def test_invoke_text_logs_http_status_and_body(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    service = LLMService(storage=_StubStorage(), document=_StubDocument([]))
+
+    def fake_send(*, payload: dict[str, Any], attempt: int) -> tuple[int, dict[str, Any]]:
+        del payload, attempt
+        return 503, {"error": {"message": "upstream unavailable"}}
+
+    monkeypatch.setattr(service, "_send_chat_completion_request", fake_send)
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(LLMError) as exc_info:
+            service.generate({"type": "SUMMARY", "recordId": "r-1"}, "gpt-5.4", 1)
+
+    assert exc_info.value.code == "EXT_PROVIDER_UNAVAILABLE"
+    assert "HTTP 503: upstream unavailable" in str(exc_info.value)
+    assert "status=503" in caplog.text
+    assert "upstream unavailable" in caplog.text
+
+
+def test_to_http_error_formats_empty_body() -> None:
+    error = LLMService._to_http_error(502, {})
+
+    assert error.code == "EXT_PROVIDER_UNAVAILABLE"
+    assert str(error) == "HTTP 502: empty error body"

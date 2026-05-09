@@ -175,6 +175,30 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "nature": _opt(item.get("nature")),
         }
 
+    def map_ultrasound_evidence(item: dict[str, Any]) -> dict[str, Any] | None:
+        text = _opt(item.get("text"))
+        if not text:
+            return None
+        return {
+            "record_id": _opt(item.get("recordId")),
+            "record_date": _opt(item.get("recordDate")),
+            "label": _opt(item.get("label")),
+            "text": text,
+        }
+
+    def map_ultrasound_history(item: dict[str, Any]) -> dict[str, Any] | None:
+        record_id = _opt(item.get("recordId"))
+        if not record_id:
+            return None
+        return {
+            "record_id": record_id,
+            "record_date": _opt(item.get("recordDate")),
+            "title": _opt(item.get("title")),
+            "summary": _opt(item.get("summary")),
+        }
+
+    ultrasound_follow_up = _dict(summary.get("ultrasoundFollowUp"))
+
     return {
         "context_status": _status(payload.get("contextStatus")),
         "disease_profile": {
@@ -197,6 +221,30 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "summary": _opt(summary.get("summary")),
             "analysis": _opt(summary.get("analysis")),
             "key_fields": _map_slice(_dict_list(summary.get("keyFields")), limit=8, mapper=map_key_field),
+            "ultrasound_follow_up": None
+            if not ultrasound_follow_up
+            else {
+                "mode": _opt(ultrasound_follow_up.get("mode")),
+                "change_status": _opt(ultrasound_follow_up.get("changeStatus")),
+                "summary": _opt(ultrasound_follow_up.get("summary")),
+                "action_level": _opt(ultrasound_follow_up.get("actionLevel")),
+                "action_suggestion": _opt(ultrasound_follow_up.get("actionSuggestion")),
+                "current_evidence": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("currentEvidence")),
+                    limit=3,
+                    mapper=map_ultrasound_evidence,
+                ),
+                "previous_evidence": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("previousEvidence")),
+                    limit=3,
+                    mapper=map_ultrasound_evidence,
+                ),
+                "history": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("history")),
+                    limit=4,
+                    mapper=map_ultrasound_history,
+                ),
+            },
         },
         "trend_summary": _map_slice(_dict_list(payload.get("trendSummary")), limit=3, mapper=map_trend),
         "patient_baseline": {
@@ -225,7 +273,7 @@ def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict
         "disease_profile": {"id": profile_id, "name": None, "record_count": 0, "latest_record_at": None},
         "selected_record": None,
         "recent_records": [],
-        "record_summary": {"summary": None, "analysis": None, "key_fields": []},
+        "record_summary": {"summary": None, "analysis": None, "key_fields": [], "ultrasound_follow_up": None},
         "trend_summary": [],
         "patient_baseline": {
             "diagnosed_conditions": [],

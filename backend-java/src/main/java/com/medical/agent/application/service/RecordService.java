@@ -27,6 +27,7 @@ import com.medical.agent.domain.vo.RecordTrendData;
 import com.medical.agent.domain.vo.StructuredResultData;
 import com.medical.agent.domain.vo.TrendField;
 import com.medical.agent.domain.vo.TrendSnapshot;
+import com.medical.agent.domain.vo.UltrasoundFollowUpResult;
 import com.medical.agent.domain.vo.UpdateRecordSourceTypeResult;
 import com.medical.agent.application.context.TenantContextProvider;
 import com.medical.agent.infrastructure.persistence.entity.AssetEntity;
@@ -68,6 +69,7 @@ public class RecordService {
   private final StructuredFieldInterpreter structuredFieldInterpreter;
   private final IndicatorNormalizer indicatorNormalizer;
   private final CombinationRuleEngine combinationRuleEngine;
+  private final UltrasoundFollowUpAnalyzer ultrasoundFollowUpAnalyzer;
 
   public RecordService(
       RecordMapper recordMapper,
@@ -96,6 +98,7 @@ public class RecordService {
     this.indicatorNormalizer = new IndicatorNormalizer(catalog);
     this.structuredFieldInterpreter = new StructuredFieldInterpreter(objectMapper, indicatorNormalizer);
     this.combinationRuleEngine = new CombinationRuleEngine(objectMapper);
+    this.ultrasoundFollowUpAnalyzer = new UltrasoundFollowUpAnalyzer();
   }
 
   @Operation(summary = "按ID确保记录存在", description = "在最小参数场景下确保记录存在，不存在时按默认值创建")
@@ -225,7 +228,9 @@ public class RecordService {
     String parseStatus = queryLatestParseStatus(recordId);
     StructuredResultData structuredResult = queryLatestStructuredResult(recordId);
     List<RecordDetail.CombinationAnalysisItem> combinationAnalysis = runCombinationAnalysis(structuredResult.payload());
-    return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult, combinationAnalysis);
+    UltrasoundFollowUpResult ultrasoundFollowUp = runUltrasoundFollowUp(record, structuredResult);
+    return new RecordDetail(recordId.toString(), summary, parseStatus, structuredResult, combinationAnalysis,
+        ultrasoundFollowUp);
   }
 
   @Operation(summary = "获取单条记录趋势数据", description = "围绕当前记录构建同病种同来源的时间窗口趋势快照")
@@ -431,7 +436,8 @@ public class RecordService {
         diseaseName,
         parseStatus,
         structured,
-        runCombinationAnalysis(structured.payload())));
+        runCombinationAnalysis(structured.payload()),
+        runUltrasoundFollowUp(record, structured)));
   }
 
   @Transactional
@@ -504,6 +510,54 @@ public class RecordService {
         .set(RecordEntity::getRecordDate, extractedDate)
         .set(RecordEntity::getTitle, nextTitle)
         .set(RecordEntity::getUpdatedAt, LocalDateTime.now()));
+  }
+
+  private UltrasoundFollowUpResult runUltrasoundFollowUp(RecordEntity currentRecord, StructuredResultData currentStructured) {
+    LambdaQueryWrapper<RecordEntity> query = new LambdaQueryWrapper<RecordEntity>()
+        .eq(RecordEntity::getTenantId, tenantContextProvider.currentTenantId())
+        .eq(RecordEntity::getPatientId, tenantContextProvider.currentPatientId())
+        .orderByDesc(RecordEntity::getRecordDate)
+        .orderByDesc(RecordEntity::getUpdatedAt)
+        .orderByDesc(RecordEntity::getCreatedAt)
+        .last("limit 12");
+    if (currentRecord.getDiseaseProfileId() == null) {
+      query.isNull(RecordEntity::getDiseaseProfileId);
+    } else {
+      query.eq(RecordEntity::getDiseaseProfileId, currentRecord.getDiseaseProfileId());
+    }
+
+    List<RecordEntity> records = recordMapper.selectList(query);
+    if (records.isEmpty()) {
+      return null;
+    }
+
+    List<UUID> recordIds = records.stream().map(RecordEntity::getId).toList();
+    Map<UUID, JsonNode> payloadLookup = new HashMap<>();
+    if (!recordIds.isEmpty()) {
+      List<StructuredResultEntity> rows = structuredResultMapper.selectList(new LambdaQueryWrapper<StructuredResultEntity>()
+          .select(StructuredResultEntity::getRecordId, StructuredResultEntity::getPayloadJson,
+              StructuredResultEntity::getRevision)
+          .in(StructuredResultEntity::getRecordId, recordIds)
+          .orderByDesc(StructuredResultEntity::getRevision));
+      for (StructuredResultEntity row : rows) {
+        payloadLookup.putIfAbsent(row.getRecordId(), parsePayload(row.getPayloadJson()));
+      }
+    }
+    if (currentStructured != null && currentStructured.payload() != null) {
+      payloadLookup.put(currentRecord.getId(), currentStructured.payload());
+    }
+
+    List<UltrasoundFollowUpAnalyzer.ReportSnapshot> snapshots = new ArrayList<>();
+    for (RecordEntity record : records) {
+      JsonNode payload = payloadLookup.getOrDefault(record.getId(), objectMapper.createObjectNode());
+      snapshots.add(new UltrasoundFollowUpAnalyzer.ReportSnapshot(
+          record.getId().toString(),
+          record.getTitle() == null ? "未命名报告" : record.getTitle(),
+          String.valueOf(record.getRecordDate()),
+          String.valueOf(record.getSourceType()),
+          payload));
+    }
+    return ultrasoundFollowUpAnalyzer.analyze(currentRecord.getId().toString(), snapshots);
   }
 
   private List<RecordDetail.CombinationAnalysisItem> runCombinationAnalysis(JsonNode enrichedPayload) {
