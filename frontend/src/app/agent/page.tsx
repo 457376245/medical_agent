@@ -22,6 +22,19 @@ function scopedHref(path: string, profileId?: string) {
   return profileId ? `${path}?profileId=${encodeURIComponent(profileId)}` : path;
 }
 
+const ULTRASOUND_CHANGE_LABEL: Record<string, string> = {
+  NO_HISTORY: "暂无历史",
+  BASICALLY_STABLE: "基本稳定",
+  POSSIBLE_WORSENED: "可能恶化",
+  POSSIBLE_IMPROVED: "可能好转",
+  INSUFFICIENT_INFO: "信息不足",
+  LIMITED_QUALITY: "检查质量不足",
+  CANNOT_JUDGE: "无法判断",
+  WORSENED: "需关注变化",
+  STABLE: "基本稳定",
+  UNKNOWN: "无法判断",
+};
+
 function LoadingBlock() {
   return (
     <div className="agent-dashboard-loading" role="status">
@@ -74,6 +87,7 @@ export default function AgentDashboardPage() {
 
   const riskLevel = data.riskOverview.riskLevel;
   const latestRecord = data.latestRecord;
+  const latestUltrasound = data.latestUltrasoundFollowUp;
 
   return (
     <AgentPageFrame profiles={data.profiles} selectedProfile={data.selectedProfile}>
@@ -179,6 +193,40 @@ export default function AgentDashboardPage() {
               <p className="agent-overview-card-empty">上传同一疾病下的报告后，可以在这里跟踪变化和发起解读。</p>
             )}
           </article>
+
+          {latestUltrasound ? (
+            <article className="agent-overview-card agent-ultrasound-card">
+              <div className="agent-overview-card-head">
+                <div className="agent-overview-icon-wrap agent-overview-icon-trend">
+                  <TrendingUp className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <span className="agent-overview-kicker">彩超病程</span>
+                  <h3>{ULTRASOUND_CHANGE_LABEL[latestUltrasound.changeStatus] ?? latestUltrasound.changeStatus}</h3>
+                </div>
+              </div>
+              <p className="agent-overview-card-empty">
+                {latestUltrasound.patientSummary || latestUltrasound.summary}
+              </p>
+              {latestUltrasound.findingRows && latestUltrasound.findingRows.length > 0 ? (
+                <div className="agent-mini-list agent-ultrasound-findings">
+                  {latestUltrasound.findingRows.slice(0, 4).map((row) => (
+                    <span key={`${row.module}-${row.trendStatus}`}>
+                      {row.module}：{ULTRASOUND_CHANGE_LABEL[row.trendStatus] ?? row.trendStatus}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {latestUltrasound.missingInputs && latestUltrasound.missingInputs.length > 0 ? (
+                <p className="agent-ultrasound-missing">
+                  缺少：{latestUltrasound.missingInputs.slice(0, 6).map((item) => item.name).join("、")}
+                </p>
+              ) : null}
+              <Link className="agent-card-link" href={scopedHref("/agent/chat", selectedProfileId) as Route}>
+                围绕彩超追问 <ArrowRight className="w-4 h-4" />
+              </Link>
+            </article>
+          ) : null}
 
           {/* Risk signals */}
           <article className="agent-overview-card">

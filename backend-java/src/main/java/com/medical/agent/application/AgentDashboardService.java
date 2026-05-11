@@ -14,6 +14,7 @@ import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
 import com.medical.agent.domain.vo.RecordTrendData;
 import com.medical.agent.domain.vo.TrendField;
 import com.medical.agent.domain.vo.TrendSnapshot;
+import com.medical.agent.domain.vo.UltrasoundFollowUpResult;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,6 +51,7 @@ public class AgentDashboardService {
           profiles,
           null,
           null,
+          null,
           List.of(),
           patientCareService.getRiskOverview(null, null, careProfile),
           List.of(),
@@ -78,6 +80,7 @@ public class AgentDashboardService {
         profiles,
         selectedProfile,
         latestRecord,
+        latestUltrasoundFollowUp(latestRecord),
         records,
         riskOverview,
         tasks.tasks(),
@@ -191,6 +194,17 @@ public class AgentDashboardService {
       }
     }
     return highlights;
+  }
+
+  private UltrasoundFollowUpResult latestUltrasoundFollowUp(DiseaseProfileRecordSummary latestRecord) {
+    if (latestRecord == null || TextUtils.trimToNull(latestRecord.id()) == null) {
+      return null;
+    }
+    try {
+      return recordService.fetchRecord(UUID.fromString(latestRecord.id())).ultrasoundFollowUp();
+    } catch (Exception error) {
+      return null;
+    }
   }
 
   private String trendDirection(TrendField previous, TrendField current) {

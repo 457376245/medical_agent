@@ -2,12 +2,14 @@ package com.medical.agent.domain.dto.response;
 
 import com.medical.agent.domain.vo.DiseaseProfileOverview;
 import com.medical.agent.domain.vo.DiseaseProfileRecordSummary;
+import com.medical.agent.domain.vo.UltrasoundFollowUpResult;
 import java.util.List;
 
 public record AgentDashboardResponseData(
     List<DiseaseProfileOverview> profiles,
     DiseaseProfileOverview selectedProfile,
     DiseaseProfileRecordSummary latestRecord,
+    UltrasoundFollowUpResult latestUltrasoundFollowUp,
     List<DiseaseProfileRecordSummary> records,
     PatientCareRiskOverviewResponseData riskOverview,
     List<PatientCareFollowUpTaskListResponseData.TaskSummary> followUpTasks,

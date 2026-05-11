@@ -140,11 +140,20 @@ def build_context_system_message(
 
         ultrasound_follow_up = record_summary.get("ultrasound_follow_up")
         if isinstance(ultrasound_follow_up, Mapping):
-            follow_summary = str(ultrasound_follow_up.get("summary") or "").strip()
+            follow_summary = str(
+                ultrasound_follow_up.get("patient_summary")
+                or ultrasound_follow_up.get("summary")
+                or ""
+            ).strip()
             action_level = str(ultrasound_follow_up.get("action_level") or "").strip()
             action_suggestion = str(ultrasound_follow_up.get("action_suggestion") or "").strip()
             change_status = str(ultrasound_follow_up.get("change_status") or "").strip()
+            confidence_level = str(ultrasound_follow_up.get("confidence_level") or "").strip()
             evidence_items = ultrasound_follow_up.get("current_evidence")
+            finding_rows = ultrasound_follow_up.get("finding_rows")
+            risk_modules = ultrasound_follow_up.get("risk_modules")
+            missing_inputs = ultrasound_follow_up.get("missing_inputs")
+            doctor_questions = ultrasound_follow_up.get("next_questions_for_doctor")
             rendered_evidence: list[str] = []
             if isinstance(evidence_items, list):
                 for item in evidence_items[:3]:
@@ -154,10 +163,68 @@ def build_context_system_message(
                     text = str(item.get("text") or "").strip()
                     if text:
                         rendered_evidence.append(f"{label}:{text}" if label else text)
-            segments = [part for part in [follow_summary, change_status, action_level, action_suggestion] if part]
+            rendered_findings: list[str] = []
+            if isinstance(finding_rows, list):
+                for item in finding_rows[:6]:
+                    if not isinstance(item, Mapping):
+                        continue
+                    module = str(item.get("module") or "").strip()
+                    current_value = str(item.get("current_value") or "").strip()
+                    trend_status = str(item.get("trend_status") or "").strip()
+                    explanation = str(item.get("explanation") or "").strip()
+                    if not module:
+                        continue
+                    segment = f"{module}:{current_value or '未提取'}"
+                    if trend_status:
+                        segment = f"{segment}（{trend_status}）"
+                    if explanation:
+                        segment = f"{segment}-{explanation}"
+                    rendered_findings.append(segment)
+            rendered_risks: list[str] = []
+            if isinstance(risk_modules, list):
+                for item in risk_modules[:3]:
+                    if not isinstance(item, Mapping):
+                        continue
+                    name = str(item.get("name") or "").strip()
+                    level = str(item.get("level") or "").strip()
+                    risk_summary = str(item.get("summary") or "").strip()
+                    if not name:
+                        continue
+                    segment = name
+                    if level:
+                        segment = f"{segment}({level})"
+                    if risk_summary:
+                        segment = f"{segment}:{risk_summary}"
+                    rendered_risks.append(segment)
+            rendered_missing: list[str] = []
+            if isinstance(missing_inputs, list):
+                for item in missing_inputs[:10]:
+                    if not isinstance(item, Mapping):
+                        continue
+                    name = str(item.get("name") or "").strip()
+                    if name:
+                        rendered_missing.append(name)
+            rendered_questions = [
+                str(item).strip()
+                for item in doctor_questions[:5]
+                if isinstance(doctor_questions, list) and str(item).strip()
+            ] if isinstance(doctor_questions, list) else []
+            segments = [
+                part
+                for part in [follow_summary, change_status, action_level, action_suggestion, confidence_level]
+                if part
+            ]
             if segments:
                 has_ultrasound_follow_up = True
                 lines.append(f"- 超声/彩超随访：{'；'.join(segments)}")
+            if rendered_findings:
+                lines.append(f"- 超声/彩超结构化发现：{'；'.join(rendered_findings)}")
+            if rendered_risks:
+                lines.append(f"- 超声/彩超相关风险模块：{'；'.join(rendered_risks)}")
+            if rendered_missing:
+                lines.append(f"- 超声/彩超缺失信息：{'、'.join(rendered_missing)}")
+            if rendered_questions:
+                lines.append(f"- 超声/彩超复诊问题：{'；'.join(rendered_questions)}")
             if rendered_evidence:
                 lines.append(f"- 超声/彩超原文依据：{'；'.join(rendered_evidence)}")
 
@@ -381,8 +448,9 @@ def build_context_system_message(
 
     if has_ultrasound_follow_up:
         guidance.append(
-            "[提示] 当前上下文包含超声/彩超报告级随访结果。回答相关问题时，"
-            "优先引用变化状态、动作建议和原文依据；不要声称做了图像分析或病灶级精准追踪。"
+            "[提示] 当前上下文包含超声/彩超结构化随访结果。回答相关问题时，"
+            "先说明局部可判断趋势，再说明信息不足和需补充检查；"
+            "不要把未提及当作阴性，不要声称做了图像分析或病灶级精准追踪。"
         )
 
     if has_medications:

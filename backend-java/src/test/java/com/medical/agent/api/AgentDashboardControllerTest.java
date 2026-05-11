@@ -40,6 +40,7 @@ class AgentDashboardControllerTest {
         List.of(new DiseaseProfileOverview("profile-1", "高血压", 2, "2026-05-01", "record-1", "门诊检验", "SUCCESS")),
         new DiseaseProfileOverview("profile-1", "高血压", 2, "2026-05-01", "record-1", "门诊检验", "SUCCESS"),
         new DiseaseProfileRecordSummary("record-1", "门诊检验", "2026-05-01", "LAB"),
+        null,
         List.of(new DiseaseProfileRecordSummary("record-1", "门诊检验", "2026-05-01", "LAB")),
         new PatientCareRiskOverviewResponseData("watch", "持续观察", List.of(), List.of()),
         List.of(),

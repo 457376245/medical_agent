@@ -197,6 +197,43 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "summary": _opt(item.get("summary")),
         }
 
+    def map_ultrasound_finding(item: dict[str, Any]) -> dict[str, Any] | None:
+        module = _opt(item.get("module"))
+        if not module:
+            return None
+        return {
+            "module": module,
+            "current_value": _opt(item.get("currentValue")),
+            "previous_value": _opt(item.get("previousValue")),
+            "current_status": _opt(item.get("currentStatus")),
+            "previous_status": _opt(item.get("previousStatus")),
+            "trend_status": _opt(item.get("trendStatus")),
+            "evidence_level": _opt(item.get("evidenceLevel")),
+            "explanation": _opt(item.get("explanation")),
+        }
+
+    def map_ultrasound_risk(item: dict[str, Any]) -> dict[str, Any] | None:
+        name = _opt(item.get("name"))
+        if not name:
+            return None
+        return {
+            "name": name,
+            "level": _opt(item.get("level")),
+            "summary": _opt(item.get("summary")),
+            "evidence": [_txt(value) for value in item.get("evidence", []) if _txt(value)],
+            "missing_inputs": [_txt(value) for value in item.get("missingInputs", []) if _txt(value)],
+        }
+
+    def map_ultrasound_missing(item: dict[str, Any]) -> dict[str, Any] | None:
+        name = _opt(item.get("name"))
+        if not name:
+            return None
+        return {
+            "name": name,
+            "reason": _opt(item.get("reason")),
+            "category": _opt(item.get("category")),
+        }
+
     ultrasound_follow_up = _dict(summary.get("ultrasoundFollowUp"))
 
     return {
@@ -229,6 +266,29 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
                 "summary": _opt(ultrasound_follow_up.get("summary")),
                 "action_level": _opt(ultrasound_follow_up.get("actionLevel")),
                 "action_suggestion": _opt(ultrasound_follow_up.get("actionSuggestion")),
+                "patient_summary": _opt(ultrasound_follow_up.get("patientSummary")),
+                "clinical_summary": _opt(ultrasound_follow_up.get("clinicalSummary")),
+                "confidence_level": _opt(ultrasound_follow_up.get("confidenceLevel")),
+                "finding_rows": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("findingRows")),
+                    limit=8,
+                    mapper=map_ultrasound_finding,
+                ),
+                "risk_modules": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("riskModules")),
+                    limit=4,
+                    mapper=map_ultrasound_risk,
+                ),
+                "missing_inputs": _map_slice(
+                    _dict_list(ultrasound_follow_up.get("missingInputs")),
+                    limit=12,
+                    mapper=map_ultrasound_missing,
+                ),
+                "next_questions_for_doctor": [
+                    _txt(value)
+                    for value in ultrasound_follow_up.get("nextQuestionsForDoctor", [])
+                    if _txt(value)
+                ][:6],
                 "current_evidence": _map_slice(
                     _dict_list(ultrasound_follow_up.get("currentEvidence")),
                     limit=3,

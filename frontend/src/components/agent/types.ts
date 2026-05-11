@@ -1,4 +1,5 @@
 import type { ComparisonType, ResultState } from "../parse/structuredFieldInterpretation";
+import type { UltrasoundFollowUpResult } from "../parse/UltrasoundFollowUpPanel";
 
 export type AgentProfile = {
   profileId: string;
@@ -234,6 +235,7 @@ export type AgentDashboardData = {
   profiles: AgentProfile[];
   selectedProfile?: AgentProfile;
   latestRecord?: AgentRecord;
+  latestUltrasoundFollowUp?: UltrasoundFollowUpResult;
   records: AgentRecord[];
   riskOverview: RiskOverview;
   followUpTasks: FollowUpTask[];

@@ -1,6 +1,7 @@
 package com.medical.agent.application.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,6 +36,61 @@ class UltrasoundFollowUpAnalyzerTest {
     assertEquals("SEEK_CARE_SOON", result.actionLevel());
     assertEquals(2, result.history().size());
     assertEquals("previous", result.previousEvidence().get(0).recordId());
+  }
+
+  @Test
+  void liverUltrasoundProducesStructuredStablePortalVeinAndMissingInputs() throws Exception {
+    UltrasoundFollowUpResult result = analyzer.analyze("current", List.of(
+        snapshot("current", "肝胆胰脾彩超", "2026-05-08", payload("超声提示",
+            "肝硬化声像图表现；门静脉主干内径约10mm；肝内外胆管未见扩张；未见明确占位")),
+        snapshot("previous", "肝胆胰脾彩超", "2026-02-08", payload("超声提示",
+            "肝硬化声像图表现；门静脉主干内径约11mm；肝内外胆管未见扩张"))));
+
+    assertEquals("BASICALLY_STABLE", result.changeStatus());
+    assertTrue(result.summary().contains("未见明确恶化"));
+    UltrasoundFollowUpResult.FindingRow portal = result.findingRows().stream()
+        .filter(row -> row.module().equals("门静脉主干"))
+        .findFirst()
+        .orElseThrow();
+    assertEquals("10mm", portal.currentValue());
+    assertEquals("11mm", portal.previousValue());
+    assertEquals("BASICALLY_STABLE", portal.trendStatus());
+    assertTrue(result.missingInputs().stream().anyMatch(item -> item.name().equals("AFP")));
+    assertTrue(result.nextQuestionsForDoctor().stream().anyMatch(item -> item.contains("AFP")));
+  }
+
+  @Test
+  void priorUmbilicalVeinNotMentionedNowRequiresReview() throws Exception {
+    UltrasoundFollowUpResult result = analyzer.analyze("current", List.of(
+        snapshot("current", "肝胆胰脾彩超", "2026-05-08", payload("超声提示",
+            "肝硬化声像图表现；门静脉主干内径约10mm")),
+        snapshot("previous", "肝胆胰脾彩超", "2026-02-08", payload("超声提示",
+            "左肝前可见扩张的脐静脉，内径约7.6mm；门静脉主干内径约11mm"))));
+
+    UltrasoundFollowUpResult.FindingRow umbilical = result.findingRows().stream()
+        .filter(row -> row.module().equals("侧支循环/脐静脉"))
+        .findFirst()
+        .orElseThrow();
+    assertEquals("NOT_MENTIONED", umbilical.currentStatus());
+    assertEquals("PRESENT", umbilical.previousStatus());
+    assertEquals("INSUFFICIENT_INFO", umbilical.trendStatus());
+    assertTrue(umbilical.explanation().contains("不能理解为已经消失"));
+  }
+
+  @Test
+  void unclearPancreasMarksLimitedQuality() throws Exception {
+    UltrasoundFollowUpResult result = analyzer.analyze("current", List.of(
+        snapshot("current", "肝胆胰脾彩超", "2026-05-08", payload("超声提示",
+            "肝硬化声像图表现；胰腺部分显示不清")),
+        snapshot("previous", "肝胆胰脾彩超", "2026-02-08", payload("超声提示",
+            "肝硬化声像图表现；胰腺显示尚清"))));
+
+    UltrasoundFollowUpResult.FindingRow pancreas = result.findingRows().stream()
+        .filter(row -> row.module().equals("胰腺显示质量"))
+        .findFirst()
+        .orElseThrow();
+    assertEquals("UNCLEAR", pancreas.currentStatus());
+    assertEquals("LIMITED_QUALITY", pancreas.trendStatus());
   }
 
   @Test

@@ -70,10 +70,24 @@ def test_ultrasound_follow_up_renders_evidence_and_guidance() -> None:
             "analysis": None,
             "key_fields": [],
             "ultrasound_follow_up": {
-                "summary": "本次较上次提示结节增大",
+                "patient_summary": "本次较上次提示结节增大",
                 "change_status": "WORSENED",
                 "action_level": "SEEK_CARE_SOON",
                 "action_suggestion": "建议尽快就医复诊",
+                "confidence_level": "MEDIUM_LOW",
+                "finding_rows": [
+                    {
+                        "module": "门静脉主干",
+                        "current_value": "10mm",
+                        "trend_status": "BASICALLY_STABLE",
+                        "explanation": "较上次未见明确增宽",
+                    }
+                ],
+                "risk_modules": [
+                    {"name": "肝癌筛查完整性", "level": "watch", "summary": "需结合 AFP"}
+                ],
+                "missing_inputs": [{"name": "AFP"}, {"name": "血小板"}],
+                "next_questions_for_doctor": ["是否需要结合 AFP？"],
                 "current_evidence": [{"label": "超声提示", "text": "甲状腺结节较前增大"}],
             },
         },
@@ -81,8 +95,13 @@ def test_ultrasound_follow_up_renders_evidence_and_guidance() -> None:
     result = build_context_system_message(active_context_bundle=bundle, active_context_status="ready")
     assert result is not None
     assert "超声/彩超随访" in result
+    assert "超声/彩超结构化发现" in result
+    assert "超声/彩超相关风险模块" in result
+    assert "超声/彩超缺失信息" in result
+    assert "超声/彩超复诊问题" in result
     assert "超声/彩超原文依据" in result
     assert "不要声称做了图像分析" in result
+    assert "不要把未提及当作阴性" in result
 
 
 def test_no_selected_record_adds_profile_guidance() -> None:

@@ -177,12 +177,16 @@ function normalizeDashboard(raw: unknown): AgentDashboardData {
   const careGoals = asArray(payload.careGoals ?? payload.care_goals);
   const trendHighlights = asArray(payload.trendHighlights ?? payload.trend_highlights);
   const sourceTypes = asArray(payload.sourceTypes ?? payload.source_types);
+  const latestUltrasoundFollowUp = asObject(payload.latestUltrasoundFollowUp ?? payload.latest_ultrasound_follow_up);
   return {
     profiles: Array.isArray(payload.profiles)
       ? payload.profiles.map(normalizeProfile).filter((item): item is AgentProfile => Boolean(item))
       : [],
     selectedProfile,
     latestRecord,
+    latestUltrasoundFollowUp: Object.keys(latestUltrasoundFollowUp).length > 0
+      ? latestUltrasoundFollowUp as AgentDashboardData["latestUltrasoundFollowUp"]
+      : undefined,
     records: Array.isArray(payload.records)
       ? payload.records.map(normalizeRecord).filter((item): item is AgentRecord => Boolean(item))
       : [],
