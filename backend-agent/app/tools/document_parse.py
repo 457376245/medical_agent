@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from langchain_core.tools import tool
-
 from app.providers.gateway import ProviderGateway
 
 LOGGER = logging.getLogger(__name__)
@@ -23,7 +21,6 @@ def configure(gateway: ProviderGateway) -> None:
     _gateway = gateway
 
 
-@tool
 def parse_document(object_key: str, file_type: str = "PDF") -> str:
     """从 OSS 下载医疗文档并提取其文本内容。
 

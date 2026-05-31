@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
+from app.agent.messages import AgentMessage, AgentToolCall
 from app.agent.prompting import build_prompt_messages, detect_recent_tool_error_names
 
 
 def test_prompt_composer_includes_context_scenario_and_attachments() -> None:
     result = build_prompt_messages(
-        raw_messages=[HumanMessage(content="帮我看这份报告")],
+        raw_messages=[AgentMessage(role="user", content="帮我看这份报告")],
         state={
-            "messages": [HumanMessage(content="帮我看这份报告")],
+            "messages": [AgentMessage(role="user", content="帮我看这份报告")],
             "metadata": {
                 "workflow": "follow_up_prep",
                 "scenario": "abnormal_reasoning",
@@ -53,12 +52,18 @@ def test_prompt_composer_includes_context_scenario_and_attachments() -> None:
 
 def test_detect_recent_tool_error_names_includes_only_current_turn() -> None:
     messages = [
-        HumanMessage(content="第一轮"),
-        AIMessage(content="", tool_calls=[{"id": "old", "name": "parse_document", "args": {}}]),
-        ToolMessage(content="Error: 旧错误", name="parse_document", tool_call_id="old"),
-        HumanMessage(content="第二轮"),
-        AIMessage(content="", tool_calls=[{"id": "new", "name": "generate_medical_text", "args": {}}]),
-        ToolMessage(content="Error: 新错误", name="generate_medical_text", tool_call_id="new"),
+        AgentMessage(role="user", content="第一轮"),
+        AgentMessage(
+            role="assistant",
+            tool_calls=[AgentToolCall(id="old", name="parse_document", args={})],
+        ),
+        AgentMessage(role="tool", content="Error: 旧错误", name="parse_document", tool_call_id="old"),
+        AgentMessage(role="user", content="第二轮"),
+        AgentMessage(
+            role="assistant",
+            tool_calls=[AgentToolCall(id="new", name="generate_medical_text", args={})],
+        ),
+        AgentMessage(role="tool", content="Error: 新错误", name="generate_medical_text", tool_call_id="new"),
     ]
 
     assert detect_recent_tool_error_names(messages) == ["generate_medical_text"]

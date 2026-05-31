@@ -18,7 +18,7 @@ def test_chat_request_accepts_typed_metadata_and_extra_fields() -> None:
         },
     )
 
-    metadata = body.metadata.to_graph_metadata()
+    metadata = body.metadata.to_runtime_metadata()
 
     assert metadata["workflow"] == "report_interpretation"
     assert metadata["entry"] == "agent_page"

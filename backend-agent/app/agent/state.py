@@ -1,30 +1,44 @@
-"""Agent 状态定义。
+"""Agent runtime 状态定义。"""
 
-定义 LangGraph StateGraph 使用的 AgentState TypedDict。
-图中的所有节点读取和写入这个共享状态。
-"""
+from __future__ import annotations
 
-from typing import Annotated, Any
+from dataclasses import dataclass, field
+from typing import Any
 
-from typing_extensions import NotRequired, TypedDict
-
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage
+from app.agent.messages import AgentMessage
 
 
-class AgentState(TypedDict):
-    """Agent 图中流动的共享状态。
+@dataclass
+class AgentRuntimeState:
+    """每个 thread_id 持久化的轻量 Agent 状态。"""
 
-    Attributes:
-        messages: 对话消息历史（通过 add_messages reducer 自动累积）。
-        thread_id: 当前会话标识符。
-        metadata: 任意请求元数据（patient_id、scenario、workflow 等）。
-    """
-
-    messages: Annotated[list[BaseMessage], add_messages]
     thread_id: str
-    metadata: dict[str, Any]
-    active_context_signature: NotRequired[str | None]
-    active_context_bundle: NotRequired[dict[str, Any] | None]
-    active_context_status: NotRequired[str | None]
-    pending_context_signature: NotRequired[str | None]
+    messages: list[AgentMessage] = field(default_factory=list)
+    active_context_signature: str | None = None
+    active_context_bundle: dict[str, Any] | None = None
+    active_context_status: str | None = None
+
+    def model_dump(self) -> dict[str, Any]:
+        return {
+            "thread_id": self.thread_id,
+            "messages": [message.model_dump() for message in self.messages],
+            "active_context_signature": self.active_context_signature,
+            "active_context_bundle": self.active_context_bundle,
+            "active_context_status": self.active_context_status,
+        }
+
+    @classmethod
+    def model_validate(cls, value: dict[str, Any]) -> "AgentRuntimeState":
+        return cls(
+            thread_id=str(value.get("thread_id") or ""),
+            messages=[
+                AgentMessage.model_validate(item)
+                for item in value.get("messages", [])
+                if isinstance(item, dict)
+            ],
+            active_context_signature=value.get("active_context_signature"),
+            active_context_bundle=value.get("active_context_bundle")
+            if isinstance(value.get("active_context_bundle"), dict)
+            else None,
+            active_context_status=value.get("active_context_status"),
+        )

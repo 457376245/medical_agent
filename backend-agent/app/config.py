@@ -38,7 +38,6 @@ CONVERSATION_WINDOW_MAX_TOKENS: int = read_int_env(
 # 内存 / 持久化配置
 # ---------------------------------------------------------------------------
 DATA_DIR: str = os.getenv("DATA_DIR", "data")
-CHECKPOINT_DB_PATH: str = os.getenv("CHECKPOINT_DB_PATH", f"{DATA_DIR}/checkpoints.db")
 MEMORY_DB_PATH: str = os.getenv("MEMORY_DB_PATH", f"{DATA_DIR}/memory.db")
 CORS_ALLOW_ORIGINS: list[str] = [
     item.strip()
@@ -86,10 +85,3 @@ PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS: float = read_float_env(
 # LLM 网络/代理行为配置
 # ---------------------------------------------------------------------------
 LLM_PROXY_MODE: str = os.getenv("LLM_PROXY_MODE", "sanitize").strip().lower()
-
-# ---------------------------------------------------------------------------
-# LangSmith 可观测性配置
-# ---------------------------------------------------------------------------
-LANGCHAIN_TRACING_V2: bool = to_bool(os.getenv("LANGCHAIN_TRACING_V2", "false"))
-LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "").strip()
-LANGCHAIN_PROJECT: str = os.getenv("LANGCHAIN_PROJECT", "medical-agent").strip()

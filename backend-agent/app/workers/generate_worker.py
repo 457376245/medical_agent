@@ -29,7 +29,7 @@ class GenerateWorker:
                 "status": "FAILED",
                 "type": payload.get("type", "SUMMARY"),
                 "content": "",
-                "modelMeta": {"provider": "gateway", "framework": "langchain-v1"},
+                "modelMeta": {"provider": "gateway", "framework": "openai-sdk"},
                 "errors": [
                     {"code": "BIZ_MISSING_RECORD_ID", "message": "recordId is required"}
                 ],

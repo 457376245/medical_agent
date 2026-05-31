@@ -1,7 +1,7 @@
 """会话管理端点。
 
 对话会话的 CRUD 操作：创建、恢复、列表、删除。
-每个会话对应一个 LangGraph thread_id。
+每个会话对应一个 Agent runtime thread_id。
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ async def create_session(request: Request) -> dict[str, Any]:
 async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
     """获取会话元数据和消息历史。
 
-    从检查点存储读取 thread_id 的检查点来重建迄今为止的对话。
+    优先从会话索引读取；索引缺失时尝试读取轻量 runtime 状态。
     """
     memory_store = getattr(request.app.state, "memory_store", None)
     if memory_store is not None:
@@ -142,21 +142,18 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
                 "found": True,
             }
 
-    graph = request.app.state.agent_graph
-    config = {"configurable": {"thread_id": thread_id}}
-
     try:
-        state = await graph.aget_state(config)
-        if state is None or state.values is None:
+        runtime = getattr(request.app.state, "agent_runtime", None)
+        state = await runtime.get_state(thread_id) if runtime is not None else None
+        if state is None:
             return {"thread_id": thread_id, "messages": [], "found": False}
 
-        messages = state.values.get("messages", [])
         serialised = []
-        for msg in messages:
+        for msg in state.messages:
             serialised.append(
                 {
-                    "role": getattr(msg, "type", "unknown"),
-                    "content": str(getattr(msg, "content", "")),
+                    "role": msg.role,
+                    "content": msg.content,
                 }
             )
 
@@ -197,6 +194,4 @@ async def delete_session(thread_id: str, request: Request) -> dict[str, Any]:
             await memory_store.delete_agent_session(thread_id)
         except Exception as exc:
             LOGGER.warning("Failed to purge indexed session %s: %s", thread_id, exc)
-    # LangGraph 的检查点存储尚未暴露标准删除 API。
-    # 目前我们确认请求；实际清除可通过后台任务或直接数据库操作完成。
     return {"thread_id": thread_id, "deleted": True}

@@ -40,8 +40,8 @@ class AgentMetadata(BaseModel):
     context_signature: str | None = None
     context_status: str | None = None
 
-    def to_graph_metadata(self) -> dict[str, Any]:
-        """转换为 LangGraph 状态中使用的普通字典，保留未知字段。"""
+    def to_runtime_metadata(self) -> dict[str, Any]:
+        """转换为 Agent runtime 使用的普通字典，保留未知字段。"""
         return self.model_dump(exclude_none=True)
 
 

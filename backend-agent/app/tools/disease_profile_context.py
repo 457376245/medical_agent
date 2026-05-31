@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import logging
 
-from langchain_core.tools import tool
-
 from app.services.disease_profile_context import DiseaseProfileContextClient
 
 LOGGER = logging.getLogger(__name__)
@@ -20,7 +18,6 @@ def configure(client: DiseaseProfileContextClient) -> None:
     _client = client
 
 
-@tool
 def fetch_disease_profile_context(
     disease_profile_id: str,
     record_id: str | None = None,

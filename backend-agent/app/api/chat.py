@@ -15,9 +15,9 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from app.agent.context import context_signature_from_metadata
+from app.agent.events import AgentStreamEvent
 from app.api.tool_events import sanitize_tool_input, sanitize_tool_output
 from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn, AgentTraceEvent
@@ -142,11 +142,10 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
 
     如果提供了 thread_id，则恢复会话；否则创建新会话。
     """
-    graph = request.app.state.agent_graph
+    runtime = request.app.state.agent_runtime
     memory_store = getattr(request.app.state, "memory_store", None)
     thread_id = body.thread_id or new_ordered_id()
-    config = {"configurable": {"thread_id": thread_id}}
-    turn_metadata: dict[str, Any] = body.metadata.to_graph_metadata()
+    turn_metadata: dict[str, Any] = body.metadata.to_runtime_metadata()
     if body.attachments:
         turn_metadata["attachments"] = [
             attachment.model_dump(exclude_none=True) for attachment in body.attachments
@@ -156,12 +155,6 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     patient_id_header = request.headers.get("X-Patient-Id", "").strip()
     if patient_id_header and not turn_metadata.get("patient_id"):
         turn_metadata["patient_id"] = patient_id_header
-
-    input_msg = {
-        "messages": [HumanMessage(content=body.message)],
-        "thread_id": thread_id,
-        "metadata": turn_metadata,
-    }
 
     existing_session: AgentSessionRecord | None = None
     turn_index = 1
@@ -190,8 +183,10 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         pending_next: asyncio.Task[Any] | None = None
 
         try:
-            aiter = graph.astream_events(
-                input_msg, config=config, version="v2"
+            aiter = runtime.stream(
+                thread_id=thread_id,
+                user_message=body.message,
+                metadata=turn_metadata,
             ).__aiter__()
 
             while True:
@@ -210,18 +205,18 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                 if event is _STREAM_END:
                     break
 
-                kind = event.get("event", "")
+                if not isinstance(event, AgentStreamEvent):
+                    continue
 
-                if kind == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if isinstance(chunk, AIMessageChunk) and chunk.content:
-                        token = str(chunk.content)
+                if event.type == "token":
+                    token = str(event.content)
+                    if token:
                         full_content.append(token)
                         yield _sse_event("token", {"content": token})
 
-                elif kind == "on_tool_start":
-                    tool_name = event.get("name", "unknown")
-                    tool_input = event.get("data", {}).get("input", {})
+                elif event.type == "tool_call":
+                    tool_name = event.tool or "unknown"
+                    tool_input = event.data.get("input", {})
                     public_input = sanitize_tool_input(str(tool_name), tool_input)
                     trace_events.append(
                         AgentTraceEvent(
@@ -235,9 +230,9 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                         {"tool": tool_name, "input": public_input, **public_input},
                     )
 
-                elif kind == "on_tool_end":
-                    tool_name = event.get("name", "unknown")
-                    tool_output = event.get("data", {}).get("output", "")
+                elif event.type == "tool_result":
+                    tool_name = event.tool or "unknown"
+                    tool_output = event.data.get("output", "")
                     public_output = sanitize_tool_output(str(tool_name), tool_output)
                     trace_events.append(
                         AgentTraceEvent(
@@ -280,70 +275,69 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         finally:
             if pending_next is not None and not pending_next.done():
                 pending_next.cancel()
-            if memory_store is None:
-                return
             assistant_message = "".join(full_content)
-            if not body.message.strip() and not assistant_message and not trace_events:
-                return
-            try:
+            should_persist = (
+                memory_store is not None
+                and (body.message.strip() or assistant_message or trace_events)
+            )
+            if should_persist:
                 try:
-                    latest_state = await graph.aget_state(config)
-                    values = latest_state.values if latest_state is not None else {}
-                    if isinstance(values, dict):
-                        state_signature = values.get("active_context_signature")
-                        state_status = values.get("active_context_status")
-                        if state_signature is not None and str(state_signature).strip():
-                            turn_metadata["context_signature"] = str(state_signature).strip()
-                        elif context_signature_from_metadata(turn_metadata):
-                            turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
-                        if state_status is not None and str(state_status).strip():
-                            turn_metadata["context_status"] = str(state_status).strip().lower()
-                except Exception as exc:
-                    LOGGER.debug("Failed to read final graph state for %s: %s", thread_id, exc)
-
-                saved_existing = await memory_store.get_agent_session(thread_id)
-                saved_turn = await memory_store.save_agent_turn(
-                    AgentSessionTurn(
-                        thread_id=thread_id,
-                        turn_index=turn_index,
-                        user_message=body.message,
-                        assistant_message=assistant_message,
-                        trace_events=trace_events,
-                        metadata=_public_turn_metadata(turn_metadata),
-                        error_message=error_message,
-                    )
-                )
-                updated_session = _session_from_metadata(
-                    thread_id=thread_id,
-                    existing=saved_existing,
-                    user_message=saved_turn.user_message,
-                    assistant_message=saved_turn.assistant_message,
-                    metadata=turn_metadata,
-                )
-                updated_session.turn_count = turn_index
-                await memory_store.upsert_agent_session(updated_session)
-                patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
-                if patient_memory_extractor is not None and assistant_message.strip():
                     try:
-                        submitted_count = await asyncio.to_thread(
-                            patient_memory_extractor.extract_and_submit,
-                            thread_id=thread_id,
-                            turn_id=saved_turn.turn_id,
-                            user_message=saved_turn.user_message,
-                            assistant_message=saved_turn.assistant_message,
-                            metadata=turn_metadata,
-                        )
-                        if submitted_count:
-                            LOGGER.info(
-                                "Submitted %d patient memory candidates for thread %s",
-                                submitted_count,
-                                thread_id,
-                            )
+                        latest_state = await runtime.get_state(thread_id)
+                        if latest_state is not None:
+                            state_signature = latest_state.active_context_signature
+                            state_status = latest_state.active_context_status
+                            if state_signature is not None and str(state_signature).strip():
+                                turn_metadata["context_signature"] = str(state_signature).strip()
+                            elif context_signature_from_metadata(turn_metadata):
+                                turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
+                            if state_status is not None and str(state_status).strip():
+                                turn_metadata["context_status"] = str(state_status).strip().lower()
                     except Exception as exc:
-                        LOGGER.warning("Failed to extract patient memories for %s: %s", thread_id, exc)
-            except Exception as exc:
-                LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
+                        LOGGER.debug("Failed to read final agent state for %s: %s", thread_id, exc)
 
+                    saved_existing = await memory_store.get_agent_session(thread_id)
+                    saved_turn = await memory_store.save_agent_turn(
+                        AgentSessionTurn(
+                            thread_id=thread_id,
+                            turn_index=turn_index,
+                            user_message=body.message,
+                            assistant_message=assistant_message,
+                            trace_events=trace_events,
+                            metadata=_public_turn_metadata(turn_metadata),
+                            error_message=error_message,
+                        )
+                    )
+                    updated_session = _session_from_metadata(
+                        thread_id=thread_id,
+                        existing=saved_existing,
+                        user_message=saved_turn.user_message,
+                        assistant_message=saved_turn.assistant_message,
+                        metadata=turn_metadata,
+                    )
+                    updated_session.turn_count = turn_index
+                    await memory_store.upsert_agent_session(updated_session)
+                    patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
+                    if patient_memory_extractor is not None and assistant_message.strip():
+                        try:
+                            submitted_count = await asyncio.to_thread(
+                                patient_memory_extractor.extract_and_submit,
+                                thread_id=thread_id,
+                                turn_id=saved_turn.turn_id,
+                                user_message=saved_turn.user_message,
+                                assistant_message=saved_turn.assistant_message,
+                                metadata=turn_metadata,
+                            )
+                            if submitted_count:
+                                LOGGER.info(
+                                    "Submitted %d patient memory candidates for thread %s",
+                                    submitted_count,
+                                    thread_id,
+                                )
+                        except Exception as exc:
+                            LOGGER.warning("Failed to extract patient memories for %s: %s", thread_id, exc)
+                except Exception as exc:
+                    LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",

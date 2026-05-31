@@ -11,6 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 import aiosqlite
 
 from app.config import MEMORY_DB_PATH
+from app.agent.state import AgentRuntimeState
 from app.ids import new_ordered_id
 from app.memory.models import (
     AgentSessionRecord,
@@ -47,6 +48,10 @@ class MemoryStore(Protocol):
     async def delete_agent_session(self, thread_id: str) -> None: ...
 
     async def update_agent_session_title(self, thread_id: str, title: str) -> None: ...
+
+    async def get_agent_runtime_state(self, thread_id: str) -> AgentRuntimeState | None: ...
+
+    async def upsert_agent_runtime_state(self, state: AgentRuntimeState) -> None: ...
 
     async def close(self) -> None: ...
 
@@ -94,6 +99,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_turn_thread_index
 
 CREATE INDEX IF NOT EXISTS idx_agent_turn_thread_created
     ON agent_session_turns (thread_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS agent_runtime_states (
+    thread_id                TEXT PRIMARY KEY,
+    messages                 TEXT NOT NULL DEFAULT '[]',
+    active_context_signature TEXT,
+    active_context_bundle    TEXT,
+    active_context_status    TEXT,
+    updated_at               TEXT NOT NULL
+);
 """
 
 
@@ -328,6 +342,10 @@ class SqliteMemoryStore:
             (thread_id,),
         )
         await self._conn.execute(
+            "DELETE FROM agent_runtime_states WHERE thread_id = ?",
+            (thread_id,),
+        )
+        await self._conn.execute(
             "DELETE FROM agent_sessions WHERE thread_id = ?",
             (thread_id,),
         )
@@ -360,3 +378,53 @@ class SqliteMemoryStore:
             await self._conn.execute(
                 "ALTER TABLE agent_sessions ADD COLUMN context_status TEXT"
             )
+
+    async def get_agent_runtime_state(self, thread_id: str) -> AgentRuntimeState | None:
+        cursor = await self._conn.execute(
+            "SELECT thread_id, messages, active_context_signature, "
+            "active_context_bundle, active_context_status "
+            "FROM agent_runtime_states WHERE thread_id = ?",
+            (thread_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        try:
+            messages = json.loads(row[1])
+        except json.JSONDecodeError:
+            messages = []
+        try:
+            bundle = json.loads(row[3]) if row[3] else None
+        except json.JSONDecodeError:
+            bundle = None
+        return AgentRuntimeState.model_validate(
+            {
+                "thread_id": row[0],
+                "messages": messages,
+                "active_context_signature": row[2],
+                "active_context_bundle": bundle,
+                "active_context_status": row[4],
+            }
+        )
+
+    async def upsert_agent_runtime_state(self, state: AgentRuntimeState) -> None:
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO agent_runtime_states "
+            "(thread_id, messages, active_context_signature, active_context_bundle, "
+            "active_context_status, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                state.thread_id,
+                json.dumps(
+                    [message.model_dump() for message in state.messages],
+                    ensure_ascii=False,
+                ),
+                state.active_context_signature,
+                json.dumps(state.active_context_bundle, ensure_ascii=False)
+                if state.active_context_bundle is not None
+                else None,
+                state.active_context_status,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        await self._conn.commit()

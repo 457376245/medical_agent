@@ -3,12 +3,12 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from langchain_core.messages import ToolMessage
-
 from app.agent.context import context_signature_from_metadata, should_refresh_context
-from app.agent.nodes import create_context_preload_node, create_context_sync_node
+from app.agent.runtime import AgentRuntime
+from app.agent.state import AgentRuntimeState
 from app.services import disease_profile_context as context_client_module
 from app.services.disease_profile_context import DiseaseProfileContextClient
+from app.tools.registry import ToolSpec
 
 
 def test_context_signature_and_refresh_rules() -> None:
@@ -22,57 +22,75 @@ def test_context_signature_and_refresh_rules() -> None:
     ) is False
 
 
+async def _noop_create(**_kwargs: Any) -> None:
+    return None
+
+
+class _DummyClient:
+    chat = type("Chat", (), {"completions": type("Completions", (), {"create": _noop_create})()})()
+
+
 def test_context_preload_forces_tool_call_on_new_signature() -> None:
-    preload = create_context_preload_node()
-    state = {
-        "messages": [],
-        "metadata": {"disease_profile_id": "profile-1", "record_id": "record-1"},
-        "active_context_signature": None,
-    }
+    def context_tool(**_kwargs: Any) -> str:
+        return '{"context_status":"ready","disease_profile":{"id":"profile-1"}}'
 
-    updates = preload(state)
+    runtime = AgentRuntime(
+        client=_DummyClient(),  # type: ignore[arg-type]
+        all_tools=[
+            ToolSpec(
+                name="fetch_disease_profile_context",
+                description="context",
+                parameters={},
+                handler=context_tool,
+            )
+        ],
+        model_tools=[],
+    )
+    state = AgentRuntimeState(thread_id="thread-1")
 
-    assert updates["pending_context_signature"] == "profile-1:record-1"
-    tool_calls = updates["messages"][0].tool_calls
+    import asyncio
+
+    asyncio.run(
+        runtime._preload_context_if_needed(  # noqa: SLF001
+            state,
+            {"disease_profile_id": "profile-1", "record_id": "record-1"},
+        )
+    )
+
+    assert state.active_context_signature == "profile-1:record-1"
+    assert state.active_context_status == "ready"
+    assert state.active_context_bundle["disease_profile"]["id"] == "profile-1"
+    tool_calls = state.messages[0].tool_calls
     assert len(tool_calls) == 1
-    assert tool_calls[0]["name"] == "fetch_disease_profile_context"
-    assert tool_calls[0]["args"]["disease_profile_id"] == "profile-1"
-    assert tool_calls[0]["args"]["record_id"] == "record-1"
-    assert tool_calls[0]["id"].startswith("context-")
-    assert uuid.UUID(hex=tool_calls[0]["id"].removeprefix("context-")).version == 7
+    assert tool_calls[0].name == "fetch_disease_profile_context"
+    assert tool_calls[0].args["disease_profile_id"] == "profile-1"
+    assert tool_calls[0].args["record_id"] == "record-1"
+    assert tool_calls[0].id.startswith("context-")
+    assert uuid.UUID(hex=tool_calls[0].id.removeprefix("context-")).version == 7
 
 
 def test_context_preload_skips_when_signature_unchanged() -> None:
-    preload = create_context_preload_node()
-    state = {
-        "messages": [],
-        "metadata": {"disease_profile_id": "profile-1", "record_id": "record-1"},
-        "active_context_signature": "profile-1:record-1",
-    }
+    runtime = AgentRuntime(
+        client=_DummyClient(),  # type: ignore[arg-type]
+        all_tools=[],
+        model_tools=[],
+    )
+    state = AgentRuntimeState(
+        thread_id="thread-1",
+        active_context_signature="profile-1:record-1",
+    )
 
-    updates = preload(state)
+    import asyncio
 
-    assert updates == {"pending_context_signature": None}
+    asyncio.run(
+        runtime._preload_context_if_needed(  # noqa: SLF001
+            state,
+            {"disease_profile_id": "profile-1", "record_id": "record-1"},
+        )
+    )
 
-
-def test_context_sync_updates_cached_bundle_from_tool_result() -> None:
-    sync_context = create_context_sync_node()
-    state = {
-        "messages": [
-            ToolMessage(
-                content='{"context_status":"ready","disease_profile":{"id":"profile-1"}}',
-                tool_call_id="context-1",
-                name="fetch_disease_profile_context",
-            )
-        ],
-        "pending_context_signature": "profile-1:",
-    }
-
-    updates = sync_context(state)
-
-    assert updates["active_context_signature"] == "profile-1:"
-    assert updates["active_context_status"] == "ready"
-    assert updates["active_context_bundle"]["disease_profile"]["id"] == "profile-1"
+    assert state.messages == []
+    assert state.active_context_signature == "profile-1:record-1"
 
 
 def test_context_client_success_and_partial(monkeypatch: Any) -> None:

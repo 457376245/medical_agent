@@ -7,9 +7,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, trim_messages
-
 from app.agent.context import build_context_system_message
+from app.agent.messages import AgentMessage
 from app.prompts.system import SYSTEM_MEDICAL_ASSISTANT
 from app.prompts.templates import get_conversation_prompt
 
@@ -29,27 +28,27 @@ def detect_recent_tool_failures(messages: list[Any]) -> list[dict[str, str]]:
     """扫描最近一轮消息，返回工具错误及其参数摘要。"""
     calls_by_id: dict[str, tuple[str, str]] = {}
     for msg in messages:
-        if not isinstance(msg, AIMessage):
+        if not isinstance(msg, AgentMessage) or msg.role != "assistant":
             continue
         for call in msg.tool_calls or []:
-            call_id = str(call.get("id") or "").strip()
-            tool_name = str(call.get("name") or "unknown").strip() or "unknown"
-            args_hash = hash_tool_args(call.get("args"))
+            call_id = str(call.id or "").strip()
+            tool_name = str(call.name or "unknown").strip() or "unknown"
+            args_hash = hash_tool_args(call.args)
             if call_id:
                 calls_by_id[call_id] = (tool_name, args_hash)
 
     failures: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
+        if isinstance(msg, AgentMessage) and msg.role == "user":
             break
-        if not isinstance(msg, ToolMessage):
+        if not isinstance(msg, AgentMessage) or msg.role != "tool":
             continue
         content = str(msg.content or "").strip()
         if not content.startswith(_TOOL_ERROR_PREFIX):
             continue
-        call_id = str(getattr(msg, "tool_call_id", "") or "")
-        fallback_name = str(getattr(msg, "name", "unknown") or "unknown")
+        call_id = str(msg.tool_call_id or "")
+        fallback_name = str(msg.name or "unknown")
         tool_name, args_hash = calls_by_id.get(call_id, (fallback_name, ""))
         key = (tool_name, args_hash)
         if key in seen:
@@ -110,18 +109,16 @@ def build_prompt_messages(
             "请勿使用相同工具和参数重试，向用户说明情况并提供替代建议。"
         )
 
-    system_message = SystemMessage(content="\n\n".join(parts))
+    system_message = AgentMessage(role="system", content="\n\n".join(parts))
     conversation_messages = [
-        message for message in raw_messages if not isinstance(message, SystemMessage)
+        message
+        for message in raw_messages
+        if not (isinstance(message, AgentMessage) and message.role == "system")
     ]
     prepared = [system_message, *conversation_messages]
-    trimmed = trim_messages(
-        prepared,
+    trimmed = _trim_messages(
+        messages=prepared,
         max_tokens=max_tokens,
-        token_counter="approximate",
-        strategy="last",
-        include_system=True,
-        start_on="human",
     )
 
     diagnostics = {
@@ -136,6 +133,35 @@ def build_prompt_messages(
         "final_message_count": len(trimmed),
     }
     return PromptBuildResult(messages=list(trimmed), diagnostics=diagnostics)
+
+
+def _trim_messages(*, messages: list[Any], max_tokens: int) -> list[Any]:
+    """近似保留最新上下文。"""
+    if not messages:
+        return []
+    system_messages = [
+        msg
+        for msg in messages
+        if isinstance(msg, AgentMessage) and msg.role == "system"
+    ]
+    conversation = [
+        msg
+        for msg in messages
+        if not (isinstance(msg, AgentMessage) and msg.role == "system")
+    ]
+    budget = max(max_tokens, 1) * 4
+    kept: list[Any] = []
+    used = sum(len(str(getattr(msg, "content", "") or "")) for msg in system_messages)
+    for msg in reversed(conversation):
+        content_len = len(str(getattr(msg, "content", "") or ""))
+        if kept and used + content_len > budget:
+            break
+        kept.append(msg)
+        used += content_len
+    kept.reverse()
+    while kept and isinstance(kept[0], AgentMessage) and kept[0].role != "user":
+        kept.pop(0)
+    return [*system_messages[:1], *kept]
 
 
 def _build_attachment_hint(value: Any) -> str | None:

@@ -27,9 +27,6 @@ from app.config import (
     JAVA_AGENT_CONTEXT_PATH,
     JAVA_AGENT_CONTEXT_TIMEOUT_SECONDS,
     JAVA_API_BASE_URL,
-    LANGCHAIN_API_KEY,
-    LANGCHAIN_PROJECT,
-    LANGCHAIN_TRACING_V2,
     LLM_PROXY_MODE,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -151,21 +148,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MAX_CONCURRENT_TASKS,
     )
 
-    # --- Agent 内存与图初始化 ---
-    from app.memory.checkpointer import create_checkpointer
+    # --- Agent 内存与 runtime 初始化 ---
+    from app.agent.runtime import AgentRuntime
     from app.memory.store import SqliteMemoryStore
-    from app.agent.graph import build_graph
 
-    checkpointer, _checkpointer_cm = await create_checkpointer()
     memory_store = SqliteMemoryStore()
     await memory_store.initialize()
 
-    agent_graph = build_graph(checkpointer=checkpointer)
+    agent_runtime = AgentRuntime(state_store=memory_store)
 
     # 暴露到 app.state 以便 api/ 路由可以访问
-    app.state.agent_graph = agent_graph
+    app.state.agent_runtime = agent_runtime
     app.state.memory_store = memory_store
-    app.state.checkpointer = checkpointer
     app.state.patient_memory_extractor = PatientMemoryExtractionService(
         enabled=PATIENT_MEMORY_EXTRACTION_ENABLED,
         openai_base_url=OPENAI_BASE_URL,
@@ -178,19 +172,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         java_api_key_header=JAVA_AGENT_API_KEY_HEADER,
     )
 
-    LOGGER.info("Agent graph and memory stores initialised")
-
-    # --- LangSmith 可观测性 ---
-    if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
-        LOGGER.info(
-            "LangSmith tracing ENABLED: project=%s", LANGCHAIN_PROJECT
-        )
-    elif LANGCHAIN_TRACING_V2:
-        LOGGER.warning(
-            "LANGCHAIN_TRACING_V2=true 但 LANGCHAIN_API_KEY 为空 —— 追踪将无法工作"
-        )
-    else:
-        LOGGER.info("LangSmith tracing disabled")
+    LOGGER.info("Agent runtime and memory stores initialised")
 
     # --- MQ 消费者启动 ---
     LOGGER.info(
@@ -222,11 +204,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         LOGGER.exception("Failed to close MQ consumer")
 
     await memory_store.close()
-
-    try:
-        await _checkpointer_cm.__aexit__(None, None, None)
-    except Exception:
-        LOGGER.exception("Failed to close checkpoint store")
 
     executor.shutdown(wait=False)
     LOGGER.info("Shutdown complete")
@@ -330,7 +307,6 @@ if __name__ == "__main__":
     if reload_enabled:
         runtime_paths = {
             "DATA_DIR": "data",
-            "CHECKPOINT_DB_PATH": "data/checkpoints.db",
             "MEMORY_DB_PATH": "data/memory.db",
             "LOG_FILE": "logs/backend-agent.log",
         }

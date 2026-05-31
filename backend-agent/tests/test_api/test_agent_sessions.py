@@ -6,37 +6,41 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessageChunk
 
+from app.agent.events import AgentStreamEvent
 from app.api.chat import router as chat_router
 from app.api.sessions import router as sessions_router
+from app.agent.state import AgentRuntimeState
 from app.memory.store import SqliteMemoryStore
 
 
-class _StubGraph:
-    async def astream_events(self, _input_msg, *, config, version):  # noqa: ANN001
-        del version
-        yield {
-            "event": "on_tool_start",
-            "name": "parse_document",
-            "data": {"input": {"object_key": "records/a.pdf"}},
-        }
-        yield {
-            "event": "on_tool_end",
-            "name": "parse_document",
-            "data": {"output": "提取到 3 项关键指标"},
-        }
-        yield {
-            "event": "on_chat_model_stream",
-            "data": {"chunk": AIMessageChunk(content="第一段回答。")},
-        }
-        yield {
-            "event": "on_chat_model_stream",
-            "data": {"chunk": AIMessageChunk(content="第二段回答。")},
-        }
-        self.last_thread_id = config["configurable"]["thread_id"]
+class _StubRuntime:
+    async def stream(self, *, thread_id, user_message, metadata):  # noqa: ANN001
+        del user_message
+        self.last_thread_id = thread_id
+        self.last_state = AgentRuntimeState(
+            thread_id=thread_id,
+            active_context_signature="profile-1:record-1"
+            if metadata.get("disease_profile_id") == "profile-1"
+            else metadata.get("disease_profile_id"),
+            active_context_status="ready",
+        )
+        yield AgentStreamEvent(
+            type="tool_call",
+            tool="parse_document",
+            data={"input": {"object_key": "records/a.pdf"}},
+        )
+        yield AgentStreamEvent(
+            type="tool_result",
+            tool="parse_document",
+            data={"output": "提取到 3 项关键指标"},
+        )
+        yield AgentStreamEvent(type="token", content="第一段回答。")
+        yield AgentStreamEvent(type="token", content="第二段回答。")
 
-    async def aget_state(self, _config):  # noqa: ANN001
+    async def get_state(self, thread_id):  # noqa: ANN001
+        if getattr(self, "last_thread_id", None) == thread_id:
+            return self.last_state
         return None
 
 
@@ -45,7 +49,7 @@ def _create_client(db_path: Path) -> tuple[TestClient, SqliteMemoryStore]:
     memory_store = SqliteMemoryStore(str(db_path))
     asyncio.run(memory_store.initialize())
     app.state.memory_store = memory_store
-    app.state.agent_graph = _StubGraph()
+    app.state.agent_runtime = _StubRuntime()
     app.include_router(chat_router)
     app.include_router(sessions_router)
     return TestClient(app), memory_store
