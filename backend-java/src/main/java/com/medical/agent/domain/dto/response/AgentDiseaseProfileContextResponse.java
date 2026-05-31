@@ -11,9 +11,11 @@ public record AgentDiseaseProfileContextResponse(
     PatientCareProfileResponseData.BaselineSummary patientBaseline,
     List<PatientCareProfileResponseData.MedicationItem> currentMedications,
     List<String> careGoals,
+    List<String> personalContext,
     List<PatientCareFollowUpTaskListResponseData.TaskSummary> followUpTasks,
     List<PatientCareRiskOverviewResponseData.RiskSignal> redFlagSignals,
     List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs,
+    List<PatientMemoryEntryResponseData> pendingMemories,
     String contextStatus,
     List<String> warnings) {}
 

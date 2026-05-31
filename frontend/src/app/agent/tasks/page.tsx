@@ -68,7 +68,13 @@ export default function AgentTasksPage() {
             />
           </div>
 
-          <CareProfilePanel careProfile={care.careProfile} onSave={care.saveCareProfile} />
+          <CareProfilePanel
+            careProfile={care.careProfile}
+            pendingMemories={care.pendingMemories}
+            onSave={care.saveCareProfile}
+            onConfirmMemory={care.confirmMemory}
+            onRejectMemory={care.rejectMemory}
+          />
         </section>
       )}
     </AgentPageFrame>

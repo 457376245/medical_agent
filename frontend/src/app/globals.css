@@ -3610,6 +3610,21 @@ a {
   color: var(--danger);
 }
 
+.badge-risk-low {
+  background: #eef6f3;
+  color: var(--ok);
+}
+
+.badge-risk-medium {
+  background: #f6e3cf;
+  color: #c05621;
+}
+
+.badge-risk-high {
+  background: #fdf0ef;
+  color: var(--danger);
+}
+
 .agent-care-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -3681,6 +3696,43 @@ a {
   border-color: #efd7b1;
   background: #fff8ed;
   color: #8a4b12;
+}
+
+.agent-care-memory-review {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.agent-memory-review-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fbfdfe;
+  padding: 10px;
+}
+
+.agent-memory-review-item p {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.agent-memory-review-item small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.agent-memory-review-actions {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .agent-risk-badge {

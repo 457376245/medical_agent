@@ -9,7 +9,8 @@ public record UpdatePatientCareProfileRequest(
     List<String> abnormalBaseline,
     String doctorInstructions,
     List<String> careGoals,
-    List<String> redFlagNotes) {
+    List<String> redFlagNotes,
+    List<String> personalContext) {
 
   public record MedicationItemInput(
       String name,

@@ -56,6 +56,7 @@ public class AgentDiseaseProfileContextService {
   private final RecordService recordService;
   private final ReportAnalysisService reportAnalysisService;
   private final PatientCareService patientCareService;
+  private final PatientMemoryService patientMemoryService;
   private final TenantContextProvider tenantContextProvider;
   private final ObjectMapper objectMapper;
 
@@ -67,6 +68,7 @@ public class AgentDiseaseProfileContextService {
       RecordService recordService,
       ReportAnalysisService reportAnalysisService,
       PatientCareService patientCareService,
+      PatientMemoryService patientMemoryService,
       TenantContextProvider tenantContextProvider,
       ObjectMapper objectMapper) {
     this.diseaseProfileMapper = diseaseProfileMapper;
@@ -76,6 +78,7 @@ public class AgentDiseaseProfileContextService {
     this.recordService = recordService;
     this.reportAnalysisService = reportAnalysisService;
     this.patientCareService = patientCareService;
+    this.patientMemoryService = patientMemoryService;
     this.tenantContextProvider = tenantContextProvider;
     this.objectMapper = objectMapper;
   }
@@ -152,6 +155,7 @@ public class AgentDiseaseProfileContextService {
       recordSummary = new AgentRecordContextData(null, null, aggregatedKeyFields, null);
     }
     PatientCareRiskOverviewResponseData riskOverview = patientCareService.getRiskOverview(profileId, riskRecordId, careProfile);
+    var pendingMemories = patientMemoryService.listPendingForAgent(profileId, riskRecordId, 5);
 
     return new AgentDiseaseProfileContextResponse(
         profileSummary,
@@ -162,9 +166,11 @@ public class AgentDiseaseProfileContextService {
         careProfile.patientBaseline(),
         careProfile.currentMedications(),
         careProfile.careGoals(),
+        careProfile.personalContext(),
         followUpTasks.tasks(),
         riskOverview.signals(),
         riskOverview.evidenceRefs(),
+        pendingMemories,
         partial ? "PARTIAL" : "READY",
         warnings);
   }

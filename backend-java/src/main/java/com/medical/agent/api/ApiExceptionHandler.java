@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.response.EmptyData;
@@ -34,6 +35,21 @@ public class ApiExceptionHandler {
         .body(new ApiResponse<>(
             ex.getCode(),
             ex.getMessage(),
+            RequestIdUtil.newRequestId(),
+        new EmptyData()));
+  }
+
+  @ExceptionHandler(ResponseStatusException.class)
+  public ResponseEntity<ApiResponse<EmptyData>> handleResponseStatusException(ResponseStatusException ex) {
+    LOGGER.warn("Response status exception", ex);
+    HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+    if (status == null) {
+      status = HttpStatus.BAD_REQUEST;
+    }
+    return ResponseEntity.status(status)
+        .body(new ApiResponse<>(
+            status == HttpStatus.UNAUTHORIZED ? "UNAUTHORIZED" : "REQUEST_FAILED",
+            ex.getReason() == null ? status.getReasonPhrase() : ex.getReason(),
             RequestIdUtil.newRequestId(),
             new EmptyData()));
   }

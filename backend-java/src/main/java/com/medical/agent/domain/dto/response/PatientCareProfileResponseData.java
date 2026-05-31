@@ -7,6 +7,7 @@ public record PatientCareProfileResponseData(
     List<MedicationItem> currentMedications,
     List<String> careGoals,
     List<String> redFlagNotes,
+    List<String> personalContext,
     String updatedAt) {
 
   public record BaselineSummary(

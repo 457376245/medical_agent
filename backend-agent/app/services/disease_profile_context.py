@@ -236,6 +236,21 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
 
     ultrasound_follow_up = _dict(summary.get("ultrasoundFollowUp"))
 
+    def map_pending_memory(item: dict[str, Any]) -> dict[str, Any] | None:
+        field_path = _opt(item.get("fieldPath"))
+        value_text = _opt(item.get("valueText"))
+        if not field_path or not value_text:
+            return None
+        return {
+            "id": _opt(item.get("id")),
+            "memory_type": _opt(item.get("memoryType")),
+            "field_path": field_path,
+            "value_text": value_text,
+            "evidence_text": _opt(item.get("evidenceText")),
+            "risk_level": _opt(item.get("riskLevel")),
+            "confidence": item.get("confidence"),
+        }
+
     return {
         "context_status": _status(payload.get("contextStatus")),
         "disease_profile": {
@@ -320,9 +335,11 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
         },
         "current_medications": _map_slice(_dict_list(payload.get("currentMedications")), limit=8, mapper=map_medication),
         "care_goals": [_txt(item) for item in payload.get("careGoals", []) if _txt(item)],
+        "personal_context": [_txt(item) for item in payload.get("personalContext", []) if _txt(item)],
         "follow_up_tasks": _map_slice(_dict_list(payload.get("followUpTasks")), limit=5, mapper=map_task),
         "red_flag_signals": _map_slice(_dict_list(payload.get("redFlagSignals")), limit=4, mapper=map_risk_signal),
         "evidence_refs": _map_slice(_dict_list(payload.get("evidenceRefs")), limit=6, mapper=map_evidence),
+        "pending_memories": _map_slice(_dict_list(payload.get("pendingMemories")), limit=5, mapper=map_pending_memory),
         "warnings": [_txt(item) for item in payload.get("warnings", []) if _txt(item)],
     }
 
@@ -344,9 +361,11 @@ def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict
         },
         "current_medications": [],
         "care_goals": [],
+        "personal_context": [],
         "follow_up_tasks": [],
         "red_flag_signals": [],
         "evidence_refs": [],
+        "pending_memories": [],
         "warnings": [message],
         "error": {"code": code, "message": message},
     }

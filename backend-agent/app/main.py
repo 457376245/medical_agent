@@ -33,6 +33,9 @@ from app.config import (
     LLM_PROXY_MODE,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
+    PATIENT_MEMORY_EXTRACTION_ENABLED,
+    PATIENT_MEMORY_EXTRACTION_MODEL,
+    PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS,
 )
 from app.mq.consumer import AgentMqConsumer
 from app.providers.document import DocumentParser
@@ -40,6 +43,7 @@ from app.providers.gateway import ProviderGateway
 from app.providers.llm import LLMService
 from app.providers.storage import OSSStorageService
 from app.services.disease_profile_context import DiseaseProfileContextClient
+from app.services.patient_memory import PatientMemoryExtractionService
 from app.utils import configure_llm_proxy_env, extract_error_codes, read_int_env, to_bool
 from app.workers.generate_worker import GenerateWorker
 from app.workers.parse_worker import ParseWorker
@@ -162,6 +166,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_graph = agent_graph
     app.state.memory_store = memory_store
     app.state.checkpointer = checkpointer
+    app.state.patient_memory_extractor = PatientMemoryExtractionService(
+        enabled=PATIENT_MEMORY_EXTRACTION_ENABLED,
+        openai_base_url=OPENAI_BASE_URL,
+        openai_api_key=OPENAI_API_KEY,
+        model=PATIENT_MEMORY_EXTRACTION_MODEL,
+        java_base_url=JAVA_API_BASE_URL,
+        java_context_path=JAVA_AGENT_CONTEXT_PATH,
+        timeout_seconds=PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS,
+        java_api_key=JAVA_AGENT_API_KEY,
+        java_api_key_header=JAVA_AGENT_API_KEY_HEADER,
+    )
 
     LOGGER.info("Agent graph and memory stores initialised")
 

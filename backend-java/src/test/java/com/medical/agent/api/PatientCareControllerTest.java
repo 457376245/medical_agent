@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.medical.agent.application.PatientCareService;
+import com.medical.agent.application.PatientMemoryService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.CreateFollowUpTaskRequest;
 import com.medical.agent.domain.dto.request.UpdateFollowUpTaskRequest;
@@ -15,6 +16,8 @@ import com.medical.agent.domain.dto.response.PatientCareFollowUpTaskListResponse
 import com.medical.agent.domain.dto.response.PatientCareProfileResponseData;
 import com.medical.agent.domain.dto.response.PatientCareRiskOverviewResponseData;
 import com.medical.agent.domain.dto.response.PatientCareSymptomLogListResponseData;
+import com.medical.agent.domain.dto.response.PatientMemoryEntryListResponseData;
+import com.medical.agent.domain.dto.response.PatientMemoryEntryResponseData;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,11 +31,14 @@ class PatientCareControllerTest {
   @Mock
   private PatientCareService patientCareService;
 
+  @Mock
+  private PatientMemoryService patientMemoryService;
+
   private PatientCareController controller;
 
   @BeforeEach
   void setUp() {
-    controller = new PatientCareController(patientCareService);
+    controller = new PatientCareController(patientCareService, patientMemoryService);
   }
 
   @Test
@@ -47,6 +53,7 @@ class PatientCareControllerTest {
         List.of(new PatientCareProfileResponseData.MedicationItem("二甲双胍", "0.5g", "bid", "控糖")),
         List.of("3个月内控制空腹血糖"),
         List.of("胸痛持续需立即就医"),
+        List.of("家属协助记录血糖"),
         "2026-04-19T10:00:00");
     when(patientCareService.getProfile()).thenReturn(payload);
 
@@ -66,9 +73,11 @@ class PatientCareControllerTest {
         List.of("ALT长期偏高"),
         "按季度复查",
         List.of("控制血压"),
-        List.of("胸闷加重立即就医"));
+        List.of("胸闷加重立即就医"),
+        List.of("偏好清单式回答"));
     when(patientCareService.upsertProfile(request)).thenReturn(new PatientCareProfileResponseData(
         new PatientCareProfileResponseData.BaselineSummary(List.of("高血压"), List.of(), List.of(), "按季度复查", List.of()),
+        List.of(),
         List.of(),
         List.of(),
         List.of(),
@@ -143,5 +152,33 @@ class PatientCareControllerTest {
 
     assertEquals(1, response.data().evidenceRefs().size());
     assertEquals("rule_engine", response.data().evidenceRefs().get(0).type());
+  }
+
+  @Test
+  void listMemoriesReturnsPendingProfileUpdates() {
+    PatientMemoryEntryResponseData memory = new PatientMemoryEntryResponseData(
+        "memory-1", "MEDICATION", "currentMedications", "二甲双胍", null,
+        "用户说一直服用二甲双胍", "CONVERSATION", null, 0.9, "HIGH", "PROPOSED",
+        "profile-1", null, "thread-1", "turn-1", null, null, "2026-05-16T10:00:00", "2026-05-16T10:00:00");
+    when(patientMemoryService.listMemories("PROPOSED", 10)).thenReturn(new PatientMemoryEntryListResponseData(List.of(memory)));
+
+    ApiResponse<PatientMemoryEntryListResponseData> response = controller.listMemories("PROPOSED", 10);
+
+    assertEquals(1, response.data().memories().size());
+    assertEquals("currentMedications", response.data().memories().get(0).fieldPath());
+  }
+
+  @Test
+  void confirmMemoryDelegatesToMemoryService() {
+    PatientMemoryEntryResponseData memory = new PatientMemoryEntryResponseData(
+        "memory-1", "CARE_PROFILE", "careGoals", "每周运动三次", null,
+        "用户确认目标", "CONVERSATION", null, 0.8, "LOW", "CONFIRMED",
+        null, null, "thread-1", "turn-1", null, "2026-05-16T10:00:00", "2026-05-16T10:00:00", "2026-05-16T10:00:00");
+    when(patientMemoryService.confirmMemory("memory-1")).thenReturn(memory);
+
+    ApiResponse<PatientMemoryEntryResponseData> response = controller.confirmMemory("memory-1");
+
+    assertEquals("CONFIRMED", response.data().status());
+    verify(patientMemoryService).confirmMemory("memory-1");
   }
 }

@@ -19,6 +19,7 @@ public class PatientCareProfileEntity {
   private String doctorInstructions;
   private String careGoalsJson;
   private String redFlagNotesJson;
+  private String personalContextJson;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -44,6 +45,8 @@ public class PatientCareProfileEntity {
   public void setCareGoalsJson(String careGoalsJson) { this.careGoalsJson = careGoalsJson; }
   public String getRedFlagNotesJson() { return redFlagNotesJson; }
   public void setRedFlagNotesJson(String redFlagNotesJson) { this.redFlagNotesJson = redFlagNotesJson; }
+  public String getPersonalContextJson() { return personalContextJson; }
+  public void setPersonalContextJson(String personalContextJson) { this.personalContextJson = personalContextJson; }
   public LocalDateTime getCreatedAt() { return createdAt; }
   public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
   public LocalDateTime getUpdatedAt() { return updatedAt; }

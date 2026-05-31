@@ -67,6 +67,22 @@ JAVA_AGENT_API_KEY_HEADER: str = os.getenv(
 ).strip()
 
 # ---------------------------------------------------------------------------
+# 患者长期画像记忆抽取
+# ---------------------------------------------------------------------------
+PATIENT_MEMORY_EXTRACTION_ENABLED: bool = to_bool(
+    os.getenv("PATIENT_MEMORY_EXTRACTION_ENABLED", "true")
+)
+PATIENT_MEMORY_EXTRACTION_MODEL: str = os.getenv(
+    "PATIENT_MEMORY_EXTRACTION_MODEL",
+    OPENAI_AGENT_MODEL,
+).strip()
+PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS: float = read_float_env(
+    "PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS",
+    20.0,
+    1.0,
+)
+
+# ---------------------------------------------------------------------------
 # LLM 网络/代理行为配置
 # ---------------------------------------------------------------------------
 LLM_PROXY_MODE: str = os.getenv("LLM_PROXY_MODE", "sanitize").strip().lower()

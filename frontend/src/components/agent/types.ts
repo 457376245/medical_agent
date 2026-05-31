@@ -182,6 +182,7 @@ export type CareProfile = {
   currentMedications: CareMedication[];
   careGoals: string[];
   redFlagNotes: string[];
+  personalContext: string[];
   updatedAt?: string;
 };
 
@@ -218,6 +219,28 @@ export type RiskOverview = {
   summary: string;
   signals: RiskSignal[];
   evidenceRefs: EvidenceRef[];
+};
+
+export type PatientMemoryEntry = {
+  id: string;
+  memoryType?: string;
+  fieldPath: string;
+  valueText?: string;
+  valueJson?: string;
+  evidenceText?: string;
+  sourceType?: string;
+  sourceRef?: string;
+  confidence?: number;
+  riskLevel?: string;
+  status?: string;
+  diseaseProfileId?: string;
+  recordId?: string;
+  conversationThreadId?: string;
+  turnId?: string;
+  rejectionReason?: string;
+  confirmedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AgentTrendHighlight = {

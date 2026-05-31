@@ -80,6 +80,7 @@ export type UseAgentWorkbenchResult = {
   careProfile: ReturnType<typeof useCareSupport>["careProfile"];
   followUpTasks: ReturnType<typeof useCareSupport>["followUpTasks"];
   symptoms: ReturnType<typeof useCareSupport>["symptoms"];
+  pendingMemories: ReturnType<typeof useCareSupport>["pendingMemories"];
   riskOverview: ReturnType<typeof useCareSupport>["riskOverview"];
   loadingCare: boolean;
   loadingRisk: boolean;
@@ -88,6 +89,8 @@ export type UseAgentWorkbenchResult = {
   createFollowUpTask: ReturnType<typeof useCareSupport>["createFollowUpTask"];
   updateFollowUpTask: ReturnType<typeof useCareSupport>["updateFollowUpTask"];
   createSymptomLog: ReturnType<typeof useCareSupport>["createSymptomLog"];
+  confirmMemory: ReturnType<typeof useCareSupport>["confirmMemory"];
+  rejectMemory: ReturnType<typeof useCareSupport>["rejectMemory"];
 };
 
 export function useAgentWorkbench({
@@ -401,7 +404,7 @@ export function useAgentWorkbench({
     } finally {
       abortRef.current = null;
       setIsStreaming(false);
-      await sessionMgr.reloadSessions();
+      await Promise.all([sessionMgr.reloadSessions(), careSupport.reloadCareSupport()]);
     }
   };
 
@@ -468,6 +471,7 @@ export function useAgentWorkbench({
     careProfile: careSupport.careProfile,
     followUpTasks: careSupport.followUpTasks,
     symptoms: careSupport.symptoms,
+    pendingMemories: careSupport.pendingMemories,
     riskOverview: careSupport.riskOverview,
     loadingCare: careSupport.loadingCare,
     loadingRisk: careSupport.loadingRisk,
@@ -476,5 +480,7 @@ export function useAgentWorkbench({
     createFollowUpTask: careSupport.createFollowUpTask,
     updateFollowUpTask: careSupport.updateFollowUpTask,
     createSymptomLog: careSupport.createSymptomLog,
+    confirmMemory: careSupport.confirmMemory,
+    rejectMemory: careSupport.rejectMemory,
   };
 }

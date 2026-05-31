@@ -65,9 +65,11 @@ def build_context_system_message(
     patient_baseline = active_context_bundle.get("patient_baseline")
     current_medications = active_context_bundle.get("current_medications")
     care_goals = active_context_bundle.get("care_goals")
+    personal_context = active_context_bundle.get("personal_context")
     follow_up_tasks = active_context_bundle.get("follow_up_tasks")
     red_flag_signals = active_context_bundle.get("red_flag_signals")
     evidence_refs = active_context_bundle.get("evidence_refs")
+    pending_memories = active_context_bundle.get("pending_memories")
     warnings = active_context_bundle.get("warnings")
 
     lines: list[str] = []
@@ -316,6 +318,11 @@ def build_context_system_message(
         if rendered_goals:
             lines.append(f"- 当前健康目标：{'；'.join(rendered_goals)}")
 
+    if isinstance(personal_context, list):
+        rendered_context = [str(item).strip() for item in personal_context[:4] if str(item).strip()]
+        if rendered_context:
+            lines.append(f"- 患者个人背景/偏好：{'；'.join(rendered_context)}")
+
     if isinstance(follow_up_tasks, list):
         rendered_tasks: list[str] = []
         for item in follow_up_tasks[:4]:
@@ -378,6 +385,27 @@ def build_context_system_message(
         if rendered_evidence:
             has_evidence_refs = True
             lines.append(f"- 证据来源：{'；'.join(rendered_evidence)}")
+
+    if isinstance(pending_memories, list):
+        rendered_memories: list[str] = []
+        for item in pending_memories[:3]:
+            if not isinstance(item, Mapping):
+                continue
+            field_path = str(item.get("field_path") or "").strip()
+            value_text = str(item.get("value_text") or "").strip()
+            risk_level = str(item.get("risk_level") or "").strip()
+            if not field_path or not value_text:
+                continue
+            segment = f"{field_path}: {value_text}"
+            if risk_level:
+                segment = f"{segment}（{risk_level}）"
+            rendered_memories.append(segment)
+        if rendered_memories:
+            lines.append(
+                "- 待确认画像更新："
+                + "；".join(rendered_memories)
+                + "。这些内容尚未确认，不能当作已确认事实，只能提示用户确认。"
+            )
 
     warning_list: list[str] = []
     if isinstance(warnings, list):

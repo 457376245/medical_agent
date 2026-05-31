@@ -2,6 +2,7 @@ package com.medical.agent.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.medical.agent.application.AgentDiseaseProfileContextService;
@@ -14,6 +15,7 @@ import com.medical.agent.domain.dto.response.PatientCareFollowUpTaskListResponse
 import com.medical.agent.domain.dto.response.PatientCareProfileResponseData;
 import com.medical.agent.domain.dto.response.PatientCareRiskOverviewResponseData;
 import java.util.List;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,11 +30,17 @@ class AgentContextControllerTest {
   @Mock
   private AgentDiseaseProfileContextService contextService;
 
+  @Mock
+  private InternalAgentApiGuard internalAgentApiGuard;
+
+  @Mock
+  private HttpServletRequest request;
+
   private AgentContextController controller;
 
   @BeforeEach
   void setUp() {
-    controller = new AgentContextController(contextService);
+    controller = new AgentContextController(contextService, internalAgentApiGuard);
   }
 
   @Test
@@ -46,17 +54,20 @@ class AgentContextControllerTest {
         new PatientCareProfileResponseData.BaselineSummary(List.of("高血压"), List.of("青霉素"), List.of("ALT长期偏高"), "按季度复查", List.of()),
         List.of(new PatientCareProfileResponseData.MedicationItem("缬沙坦", "80mg", "qd", "降压")),
         List.of("血压稳定 < 130/80"),
+        List.of("家属协助记录血压"),
         List.of(new PatientCareFollowUpTaskListResponseData.TaskSummary("task-1", "两周后复查血压", "2026-03-15", "HIGH", "OPEN", null, "profile-1", null, "2026-03-01T09:00:00")),
         List.of(new PatientCareRiskOverviewResponseData.RiskSignal("watch", "血压波动", "建议持续监测", "如头晕加重请提前就医")),
         List.of(new PatientCareRiskOverviewResponseData.EvidenceItem("rule_engine", "高血压随访", "近期存在波动", "门诊检验", "medium", "RULE_CONCLUSION")),
+        List.of(),
         "READY",
         List.of());
     when(contextService.fetchProfileContext("profile-1", "record-1")).thenReturn(payload);
 
-    ResponseEntity<?> response = controller.fetchProfileContext("profile-1", "record-1");
+    ResponseEntity<?> response = controller.fetchProfileContext("profile-1", "record-1", request);
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
     assertEquals("READY", ((AgentDiseaseProfileContextResponse) response.getBody()).contextStatus());
+    verify(internalAgentApiGuard).verify(request);
   }
 
   @Test
@@ -64,7 +75,7 @@ class AgentContextControllerTest {
     when(contextService.fetchProfileContext("profile-1", "bad-record")).thenThrow(
         new AgentDiseaseProfileContextService.ContextException(400, "INVALID_RECORD_ID", "recordId is invalid"));
 
-    ResponseEntity<?> response = controller.fetchProfileContext("profile-1", "bad-record");
+    ResponseEntity<?> response = controller.fetchProfileContext("profile-1", "bad-record", request);
 
     assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
     assertNotNull(response.getBody());
@@ -75,7 +86,7 @@ class AgentContextControllerTest {
     when(contextService.fetchProfileContext("profile-missing", null)).thenThrow(
         new AgentDiseaseProfileContextService.ContextException(404, "PROFILE_NOT_FOUND", "disease profile not found"));
 
-    ResponseEntity<?> response = controller.fetchProfileContext("profile-missing", null);
+    ResponseEntity<?> response = controller.fetchProfileContext("profile-missing", null, request);
 
     assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     assertNotNull(response.getBody());

@@ -5,6 +5,7 @@ import com.medical.agent.domain.dto.response.AgentDiseaseProfileContextResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Agent 内部上下文接口", description = "提供给 backend-agent 的疾病档案聚合查询能力")
 public class AgentContextController {
   private final AgentDiseaseProfileContextService profileContextService;
+  private final InternalAgentApiGuard internalAgentApiGuard;
 
-  public AgentContextController(AgentDiseaseProfileContextService profileContextService) {
+  public AgentContextController(
+      AgentDiseaseProfileContextService profileContextService,
+      InternalAgentApiGuard internalAgentApiGuard) {
     this.profileContextService = profileContextService;
+    this.internalAgentApiGuard = internalAgentApiGuard;
   }
 
   @GetMapping("/{profileId}/context")
@@ -29,7 +34,9 @@ public class AgentContextController {
       @Parameter(description = "疾病档案 ID（UUID）")
       @PathVariable("profileId") String profileId,
       @Parameter(description = "可选报告 ID（UUID）")
-      @RequestParam(name = "recordId", required = false) String recordId) {
+      @RequestParam(name = "recordId", required = false) String recordId,
+      HttpServletRequest request) {
+    internalAgentApiGuard.verify(request);
     try {
       AgentDiseaseProfileContextResponse response = profileContextService.fetchProfileContext(profileId, recordId);
       return ResponseEntity.ok(response);

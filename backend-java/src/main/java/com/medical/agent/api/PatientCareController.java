@@ -1,8 +1,10 @@
 package com.medical.agent.api;
 
 import com.medical.agent.application.PatientCareService;
+import com.medical.agent.application.PatientMemoryService;
 import com.medical.agent.domain.dto.ApiResponse;
 import com.medical.agent.domain.dto.request.CreateFollowUpTaskRequest;
+import com.medical.agent.domain.dto.request.PatientMemoryReviewRequest;
 import com.medical.agent.domain.dto.request.CreateSymptomLogRequest;
 import com.medical.agent.domain.dto.request.UpdateFollowUpTaskRequest;
 import com.medical.agent.domain.dto.request.UpdatePatientCareProfileRequest;
@@ -11,6 +13,8 @@ import com.medical.agent.domain.dto.response.PatientCareFollowUpTaskListResponse
 import com.medical.agent.domain.dto.response.PatientCareProfileResponseData;
 import com.medical.agent.domain.dto.response.PatientCareRiskOverviewResponseData;
 import com.medical.agent.domain.dto.response.PatientCareSymptomLogListResponseData;
+import com.medical.agent.domain.dto.response.PatientMemoryEntryListResponseData;
+import com.medical.agent.domain.dto.response.PatientMemoryEntryResponseData;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,9 +32,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "慢病随访支持", description = "患者长期画像、随访任务、症状记录和风险证据接口")
 public class PatientCareController {
   private final PatientCareService patientCareService;
+  private final PatientMemoryService patientMemoryService;
 
-  public PatientCareController(PatientCareService patientCareService) {
+  public PatientCareController(
+      PatientCareService patientCareService,
+      PatientMemoryService patientMemoryService) {
     this.patientCareService = patientCareService;
+    this.patientMemoryService = patientMemoryService;
   }
 
   @GetMapping("/profile")
@@ -98,5 +106,32 @@ public class PatientCareController {
       @RequestParam(name = "profileId", required = false) String profileId,
       @RequestParam(name = "recordId", required = false) String recordId) {
     return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientCareService.getEvidenceRefs(profileId, recordId));
+  }
+
+  @GetMapping("/memories")
+  @Operation(summary = "查询画像候选记忆", description = "按状态查询当前患者的长期画像记忆账本")
+  public ApiResponse<PatientMemoryEntryListResponseData> listMemories(
+      @RequestParam(name = "status", required = false) String status,
+      @RequestParam(name = "limit", required = false) Integer limit) {
+    return new ApiResponse<>("OK", "success", RequestIdUtil.newRequestId(), patientMemoryService.listMemories(status, limit));
+  }
+
+  @PostMapping("/memories/{memoryId}/confirm")
+  @Operation(summary = "确认画像候选记忆", description = "确认后将候选记忆合并进当前患者长期画像")
+  public ApiResponse<PatientMemoryEntryResponseData> confirmMemory(
+      @PathVariable("memoryId") String memoryId) {
+    return new ApiResponse<>("OK", "updated", RequestIdUtil.newRequestId(), patientMemoryService.confirmMemory(memoryId));
+  }
+
+  @PostMapping("/memories/{memoryId}/reject")
+  @Operation(summary = "拒绝画像候选记忆", description = "拒绝错误或不应进入长期画像的候选记忆")
+  public ApiResponse<PatientMemoryEntryResponseData> rejectMemory(
+      @PathVariable("memoryId") String memoryId,
+      @RequestBody(required = false) PatientMemoryReviewRequest request) {
+    return new ApiResponse<>(
+        "OK",
+        "updated",
+        RequestIdUtil.newRequestId(),
+        patientMemoryService.rejectMemory(memoryId, request == null ? null : request.reason()));
   }
 }

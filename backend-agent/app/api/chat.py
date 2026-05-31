@@ -322,6 +322,25 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                 )
                 updated_session.turn_count = turn_index
                 await memory_store.upsert_agent_session(updated_session)
+                patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
+                if patient_memory_extractor is not None and assistant_message.strip():
+                    try:
+                        submitted_count = await asyncio.to_thread(
+                            patient_memory_extractor.extract_and_submit,
+                            thread_id=thread_id,
+                            turn_id=saved_turn.turn_id,
+                            user_message=saved_turn.user_message,
+                            assistant_message=saved_turn.assistant_message,
+                            metadata=turn_metadata,
+                        )
+                        if submitted_count:
+                            LOGGER.info(
+                                "Submitted %d patient memory candidates for thread %s",
+                                submitted_count,
+                                thread_id,
+                            )
+                    except Exception as exc:
+                        LOGGER.warning("Failed to extract patient memories for %s: %s", thread_id, exc)
             except Exception as exc:
                 LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
 

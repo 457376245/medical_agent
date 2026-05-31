@@ -103,6 +103,7 @@ public class PatientCareService {
     entity.setDoctorInstructions(TextUtils.trimToNull(request == null ? null : request.doctorInstructions()));
     entity.setCareGoalsJson(writeJson(cleanStringList(request == null ? null : request.careGoals())));
     entity.setRedFlagNotesJson(writeJson(cleanStringList(request == null ? null : request.redFlagNotes())));
+    entity.setPersonalContextJson(writeJson(cleanStringList(request == null ? null : request.personalContext())));
     entity.setUpdatedAt(now);
 
     if (isNew) {
@@ -495,6 +496,7 @@ public class PatientCareService {
     List<PatientCareProfileResponseData.MedicationItem> medications = readMedicationItems(entity == null ? null : entity.getCurrentMedicationsJson());
     List<String> careGoals = readStringList(entity == null ? null : entity.getCareGoalsJson());
     List<String> redFlagNotes = readStringList(entity == null ? null : entity.getRedFlagNotesJson());
+    List<String> personalContext = readStringList(entity == null ? null : entity.getPersonalContextJson());
     return new PatientCareProfileResponseData(
         new PatientCareProfileResponseData.BaselineSummary(
             diagnosedConditions,
@@ -505,6 +507,7 @@ public class PatientCareService {
         medications,
         careGoals,
         redFlagNotes,
+        personalContext,
         entity == null || entity.getUpdatedAt() == null ? null : String.valueOf(entity.getUpdatedAt()));
   }
 

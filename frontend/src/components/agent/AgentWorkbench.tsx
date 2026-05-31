@@ -479,7 +479,10 @@ export function AgentWorkbench(props: AgentWorkbenchProps) {
 
           <CareProfilePanel
             careProfile={workbench.careProfile}
+            pendingMemories={workbench.pendingMemories}
             onSave={workbench.saveCareProfile}
+            onConfirmMemory={workbench.confirmMemory}
+            onRejectMemory={workbench.rejectMemory}
           />
 
           <FollowUpTasksPanel

@@ -10,6 +10,7 @@ import type {
   CareSymptomItem,
   EvidenceRef,
   FollowUpTask,
+  PatientMemoryEntry,
   RiskOverview,
   RiskSignal,
 } from "./types";
@@ -22,6 +23,7 @@ type SaveCareProfileInput = {
   doctorInstructions?: string;
   careGoals: string[];
   redFlagNotes: string[];
+  personalContext: string[];
 };
 
 type CreateTaskInput = {
@@ -62,6 +64,7 @@ const EMPTY_PROFILE: CareProfile = {
   currentMedications: [],
   careGoals: [],
   redFlagNotes: [],
+  personalContext: [],
   updatedAt: undefined,
 };
 
@@ -145,6 +148,35 @@ function normalizeEvidence(raw: unknown): EvidenceRef | null {
   };
 }
 
+function normalizeMemory(raw: unknown): PatientMemoryEntry | null {
+  const payload = asObject(raw);
+  const id = toOptionalText(payload.id);
+  const fieldPath = toOptionalText(payload.fieldPath ?? payload.field_path);
+  if (!id || !fieldPath) return null;
+  const confidenceRaw = payload.confidence;
+  return {
+    id,
+    memoryType: toOptionalText(payload.memoryType ?? payload.memory_type),
+    fieldPath,
+    valueText: toOptionalText(payload.valueText ?? payload.value_text),
+    valueJson: toOptionalText(payload.valueJson ?? payload.value_json),
+    evidenceText: toOptionalText(payload.evidenceText ?? payload.evidence_text),
+    sourceType: toOptionalText(payload.sourceType ?? payload.source_type),
+    sourceRef: toOptionalText(payload.sourceRef ?? payload.source_ref),
+    confidence: typeof confidenceRaw === "number" ? confidenceRaw : undefined,
+    riskLevel: toOptionalText(payload.riskLevel ?? payload.risk_level),
+    status: toOptionalText(payload.status),
+    diseaseProfileId: toOptionalText(payload.diseaseProfileId ?? payload.disease_profile_id),
+    recordId: toOptionalText(payload.recordId ?? payload.record_id),
+    conversationThreadId: toOptionalText(payload.conversationThreadId ?? payload.conversation_thread_id),
+    turnId: toOptionalText(payload.turnId ?? payload.turn_id),
+    rejectionReason: toOptionalText(payload.rejectionReason ?? payload.rejection_reason),
+    confirmedAt: toOptionalText(payload.confirmedAt ?? payload.confirmed_at),
+    createdAt: toOptionalText(payload.createdAt ?? payload.created_at),
+    updatedAt: toOptionalText(payload.updatedAt ?? payload.updated_at),
+  };
+}
+
 function normalizeUrgency(value: unknown): AgentUrgencyLevel {
   const normalized = toText(value).trim().toLowerCase();
   if (normalized === "watch" || normalized === "warning" || normalized === "alert") {
@@ -162,6 +194,7 @@ function normalizeCareProfile(raw: unknown): CareProfile {
   const medicationsRaw = payload.currentMedications ?? payload.current_medications;
   const careGoalsRaw = payload.careGoals ?? payload.care_goals;
   const redFlagNotesRaw = payload.redFlagNotes ?? payload.red_flag_notes;
+  const personalContextRaw = payload.personalContext ?? payload.personal_context;
   const recentSymptoms = Array.isArray(recentSymptomsRaw)
     ? recentSymptomsRaw.map(normalizeSymptom).filter((item): item is CareSymptomItem => Boolean(item))
     : [];
@@ -188,6 +221,9 @@ function normalizeCareProfile(raw: unknown): CareProfile {
       : [],
     redFlagNotes: Array.isArray(redFlagNotesRaw)
       ? redFlagNotesRaw.map((item: unknown) => toText(item).trim()).filter(Boolean)
+      : [],
+    personalContext: Array.isArray(personalContextRaw)
+      ? personalContextRaw.map((item: unknown) => toText(item).trim()).filter(Boolean)
       : [],
     updatedAt: toOptionalText(payload.updatedAt ?? payload.updated_at),
   };
@@ -221,6 +257,7 @@ export type UseCareSupportResult = {
   careProfile: CareProfile;
   followUpTasks: FollowUpTask[];
   symptoms: CareSymptomItem[];
+  pendingMemories: PatientMemoryEntry[];
   riskOverview: RiskOverview;
   loadingCare: boolean;
   loadingRisk: boolean;
@@ -229,6 +266,8 @@ export type UseCareSupportResult = {
   createFollowUpTask: (input: CreateTaskInput) => Promise<void>;
   updateFollowUpTask: (taskId: string, input: UpdateTaskInput) => Promise<void>;
   createSymptomLog: (input: CreateSymptomInput) => Promise<void>;
+  confirmMemory: (memoryId: string) => Promise<void>;
+  rejectMemory: (memoryId: string) => Promise<void>;
   reloadCareSupport: () => Promise<void>;
 };
 
@@ -240,10 +279,24 @@ export function useCareSupport(
   const [careProfile, setCareProfile] = useState<CareProfile>(EMPTY_PROFILE);
   const [followUpTasks, setFollowUpTasks] = useState<FollowUpTask[]>([]);
   const [symptoms, setSymptoms] = useState<CareSymptomItem[]>([]);
+  const [pendingMemories, setPendingMemories] = useState<PatientMemoryEntry[]>([]);
   const [riskOverview, setRiskOverview] = useState<RiskOverview>(EMPTY_RISK);
   const [loadingCare, setLoadingCare] = useState(false);
   const [loadingRisk, setLoadingRisk] = useState(false);
   const [careError, setCareError] = useState("");
+
+  const loadMemories = useCallback(async () => {
+    try {
+      const data = await readApiData("/patient-care/memories?status=PROPOSED&limit=20");
+      setPendingMemories(
+        Array.isArray(data.memories)
+          ? data.memories.map(normalizeMemory).filter((item): item is PatientMemoryEntry => Boolean(item))
+          : [],
+      );
+    } catch {
+      setPendingMemories([]);
+    }
+  }, []);
 
   const loadCare = useCallback(async () => {
     setLoadingCare(true);
@@ -266,15 +319,17 @@ export function useCareSupport(
           ? symptomData.logs.map(normalizeSymptom).filter((item): item is CareSymptomItem => Boolean(item))
           : [],
       );
+      await loadMemories();
     } catch (error) {
       setCareError(error instanceof Error ? error.message : "加载慢病驾驶舱失败，请稍后重试。");
       setCareProfile(EMPTY_PROFILE);
       setFollowUpTasks([]);
       setSymptoms([]);
+      setPendingMemories([]);
     } finally {
       setLoadingCare(false);
     }
-  }, [profileId]);
+  }, [loadMemories, profileId]);
 
   const loadRisk = useCallback(async () => {
     setLoadingRisk(true);
@@ -320,8 +375,8 @@ export function useCareSupport(
   }, [profileId]);
 
   const reloadCareSupport = useCallback(async () => {
-    await Promise.all([loadCare(), loadRisk()]);
-  }, [loadCare, loadRisk]);
+    await Promise.all([loadCare(), loadRisk(), loadMemories()]);
+  }, [loadCare, loadRisk, loadMemories]);
 
   useEffect(() => {
     void loadCare();
@@ -344,6 +399,7 @@ export function useCareSupport(
         doctorInstructions: input.doctorInstructions,
         careGoals: input.careGoals,
         redFlagNotes: input.redFlagNotes,
+        personalContext: input.personalContext,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -393,10 +449,35 @@ export function useCareSupport(
     await Promise.all([loadSymptoms(), loadRisk()]);
   }, [loadSymptoms, loadRisk]);
 
+  const confirmMemory = useCallback(async (memoryId: string) => {
+    const response = await authFetch(`/patient-care/memories/${encodeURIComponent(memoryId)}/confirm`, {
+      method: "POST",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(toText(payload.message || "确认画像更新失败。"));
+    }
+    await reloadCareSupport();
+  }, [reloadCareSupport]);
+
+  const rejectMemory = useCallback(async (memoryId: string) => {
+    const response = await authFetch(`/patient-care/memories/${encodeURIComponent(memoryId)}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "用户拒绝" }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(toText(payload.message || "拒绝画像更新失败。"));
+    }
+    await loadMemories();
+  }, [loadMemories]);
+
   return {
     careProfile,
     followUpTasks,
     symptoms,
+    pendingMemories,
     riskOverview,
     loadingCare,
     loadingRisk,
@@ -405,6 +486,8 @@ export function useCareSupport(
     createFollowUpTask,
     updateFollowUpTask,
     createSymptomLog,
+    confirmMemory,
+    rejectMemory,
     reloadCareSupport,
   };
 }
