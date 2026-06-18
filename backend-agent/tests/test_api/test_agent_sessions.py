@@ -15,6 +15,9 @@ from app.memory.store import SqliteMemoryStore
 
 
 class _StubRuntime:
+    def __init__(self) -> None:
+        self.cleared_thread_id = None
+
     async def stream(self, *, thread_id, user_message, metadata):  # noqa: ANN001
         del user_message
         self.last_thread_id = thread_id
@@ -42,6 +45,13 @@ class _StubRuntime:
         if getattr(self, "last_thread_id", None) == thread_id:
             return self.last_state
         return None
+
+    async def get_session_items(self, thread_id):  # noqa: ANN001
+        del thread_id
+        return []
+
+    async def clear_session(self, thread_id):  # noqa: ANN001
+        self.cleared_thread_id = thread_id
 
 
 def _create_client(db_path: Path) -> tuple[TestClient, SqliteMemoryStore]:
@@ -132,6 +142,7 @@ def test_delete_session_removes_indexed_data(tmp_path: Path) -> None:
 
         list_response = client.get("/api/v1/sessions?disease_profile_id=profile-2")
         assert list_response.json()["count"] == 0
+        assert client.app.state.agent_runtime.cleared_thread_id == thread_id
     finally:
         client.close()
         asyncio.run(memory_store.close())
@@ -144,6 +155,42 @@ def test_create_session_returns_uuid7_thread_id(tmp_path: Path) -> None:
 
         assert response.status_code == 200
         assert uuid.UUID(hex=response.json()["thread_id"]).version == 7
+    finally:
+        client.close()
+        asyncio.run(memory_store.close())
+
+
+def test_session_detail_falls_back_to_sdk_session_items(tmp_path: Path) -> None:
+    app = FastAPI()
+    memory_store = SqliteMemoryStore(str(tmp_path / "fallback-memory.db"))
+    asyncio.run(memory_store.initialize())
+
+    class RuntimeWithItems:
+        async def get_session_items(self, thread_id):  # noqa: ANN001
+            assert thread_id == "thread-1"
+            return [
+                {"role": "user", "content": "你好"},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "请问哪里不舒服？"}],
+                },
+                {"role": "tool", "content": "hidden"},
+            ]
+
+    app.state.memory_store = memory_store
+    app.state.agent_runtime = RuntimeWithItems()
+    app.include_router(sessions_router)
+    client = TestClient(app)
+    try:
+        response = client.get("/api/v1/sessions/thread-1")
+
+        payload = response.json()
+        assert payload["found"] is True
+        assert payload["message_count"] == 2
+        assert payload["messages"] == [
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "请问哪里不舒服？"},
+        ]
     finally:
         client.close()
         asyncio.run(memory_store.close())

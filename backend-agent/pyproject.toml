@@ -4,17 +4,18 @@ version = "0.1.0"
 description = "FastAPI backend service for the medical agent project."
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    "fastapi==0.115.2",
+    "fastapi==0.136.1",
     "uvicorn[standard]==0.31.1",
     "pydantic==2.12.4",
     "aiosqlite==0.20.0",
     "aio-pika==9.4.3",
-    "openai==2.26.0",
+    "openai==2.42.0",
     "oss2==2.19.1",
     "pypdf==5.1.0",
     "pymupdf==1.24.14",
     "opentelemetry-sdk==1.27.0",
     "opentelemetry-instrumentation-fastapi==0.48b0",
+    "openai-agents==0.17.5",
 ]
 
 [dependency-groups]

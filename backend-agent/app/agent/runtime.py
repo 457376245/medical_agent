@@ -1,35 +1,32 @@
-"""轻量 Agent runtime。"""
+"""OpenAI Agents SDK runtime adapter."""
 
 from __future__ import annotations
 
 import json
 import logging
-import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
-from openai import AsyncOpenAI
+from agents import Agent, ModelSettings, Runner
+from agents.extensions.memory.async_sqlite_session import AsyncSQLiteSession
 
 from app.agent.context import context_signature_from_metadata, parse_context_bundle
 from app.agent.events import AgentStreamEvent
 from app.agent.messages import AgentMessage, AgentToolCall
-from app.agent.prompting import build_prompt_messages
+from app.agent.prompting import build_agent_instructions
 from app.agent.state import AgentRuntimeState
-from app.agent.tool_runner import execute_tool_call, split_allowed_tool_calls, tool_map
+from app.agent.tool_runner import execute_tool_call, tool_map
 from app.config import (
-    CONVERSATION_WINDOW_MAX_TOKENS,
+    AGENT_SESSION_DB_PATH,
     DEFAULT_AGENT_MAX_TOKENS,
     DEFAULT_AGENT_MODEL,
     DEFAULT_AGENT_TEMPERATURE,
     MAX_TOOL_ROUNDS,
-    OPENAI_API_KEY,
-    OPENAI_BASE_URL,
-    OPENAI_REQUEST_TIMEOUT_SECONDS,
-    OPENAI_SDK_RETRIES,
 )
 from app.ids import new_prefixed_ordered_id
-from app.tools.registry import ToolSpec, get_model_tools, get_tools
-from app.utils import normalize_openai_base_url
+from app.tools.registry import ToolSpec, get_model_tools, get_tools, to_agents_tools
 
 LOGGER = logging.getLogger(__name__)
 CONTEXT_TOOL_NAME = "fetch_disease_profile_context"
@@ -41,41 +38,55 @@ class AgentRuntimeStore(Protocol):
     async def upsert_agent_runtime_state(self, state: AgentRuntimeState) -> None: ...
 
 
+@dataclass
+class AgentRunContext:
+    """Per-run state passed to Agents SDK tools."""
+
+    failed_tool_keys: set[tuple[str, str]] = field(default_factory=set)
+
+
 class AgentRuntime:
-    """显式 Agent 运行循环。"""
+    """Agent runtime backed by OpenAI Agents SDK."""
 
     def __init__(
         self,
         *,
         state_store: AgentRuntimeStore | None = None,
-        client: AsyncOpenAI | None = None,
         model_tools: list[ToolSpec] | None = None,
         all_tools: list[ToolSpec] | None = None,
+        runner: Any = Runner,
+        session_factory: Callable[[str], Any] | None = None,
     ) -> None:
-        api_key = os.getenv("OPENAI_API_KEY", "").strip() or OPENAI_API_KEY
-        base_url = normalize_openai_base_url(
-            os.getenv("OPENAI_BASE_URL", "").strip() or OPENAI_BASE_URL
-        )
-        if client is None:
-            if not api_key:
-                raise RuntimeError("OPENAI_API_KEY 未配置")
-            if not base_url:
-                raise RuntimeError("OPENAI_BASE_URL 未配置")
-            client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url,
-                timeout=OPENAI_REQUEST_TIMEOUT_SECONDS,
-                max_retries=OPENAI_SDK_RETRIES,
-            )
-        self._client = client
         self._state_store = state_store
+        self._runner = runner
         self._model_tools = model_tools if model_tools is not None else get_model_tools()
+        self._agent_tools = to_agents_tools(self._model_tools)
         self._tools_by_name = tool_map(all_tools if all_tools is not None else get_tools())
+        self._session_factory = session_factory or self._create_session
 
     async def get_state(self, thread_id: str) -> AgentRuntimeState | None:
         if self._state_store is None:
             return None
         return await self._state_store.get_agent_runtime_state(thread_id)
+
+    async def get_session_items(self, thread_id: str) -> list[dict[str, Any]]:
+        session = self._session_factory(thread_id)
+        try:
+            items = await session.get_items()
+            return [item for item in items if isinstance(item, dict)]
+        finally:
+            close = getattr(session, "close", None)
+            if close is not None:
+                await close()
+
+    async def clear_session(self, thread_id: str) -> None:
+        session = self._session_factory(thread_id)
+        try:
+            await session.clear_session()
+        finally:
+            close = getattr(session, "close", None)
+            if close is not None:
+                await close()
 
     async def stream(
         self,
@@ -86,52 +97,48 @@ class AgentRuntime:
     ) -> AsyncGenerator[AgentStreamEvent, None]:
         state = await self._load_state(thread_id)
         await self._preload_context_if_needed(state, metadata)
-        state.messages.append(AgentMessage(role="user", content=user_message))
 
-        tool_rounds = 0
-        while True:
-            assistant, token_parts = await self._stream_model_response(state, metadata)
-            for token in token_parts:
-                yield AgentStreamEvent(type="token", content=token)
-            state.messages.append(assistant)
+        instructions = build_agent_instructions(
+            state={
+                "metadata": metadata,
+                "active_context_bundle": state.active_context_bundle,
+                "active_context_status": state.active_context_status,
+            }
+        )
+        agent = Agent[AgentRunContext](
+            name="medical-agent",
+            instructions=instructions,
+            model=DEFAULT_AGENT_MODEL,
+            model_settings=ModelSettings(
+                temperature=DEFAULT_AGENT_TEMPERATURE,
+                max_tokens=DEFAULT_AGENT_MAX_TOKENS,
+                truncation="auto",
+            ),
+            tools=self._agent_tools,
+        )
 
-            if not assistant.tool_calls:
-                break
-            tool_rounds += 1
-            if tool_rounds > MAX_TOOL_ROUNDS:
-                LOGGER.warning("工具调用轮数已达上限 (%d)，强制结束", MAX_TOOL_ROUNDS)
-                break
+        session = self._session_factory(thread_id)
+        result = self._runner.run_streamed(
+            agent,
+            input=user_message,
+            context=AgentRunContext(),
+            max_turns=MAX_TOOL_ROUNDS,
+            session=session,
+        )
 
-            allowed_calls, blocked_messages = split_allowed_tool_calls(
-                state.messages[:-1],
-                assistant.tool_calls,
-            )
-            for call in allowed_calls:
-                yield AgentStreamEvent(
-                    type="tool_call",
-                    tool=call.name,
-                    data={"input": call.args},
-                )
-                tool_message = await execute_tool_call(
-                    call,
-                    tools_by_name=self._tools_by_name,
-                )
-                state.messages.append(tool_message)
-                yield AgentStreamEvent(
-                    type="tool_result",
-                    tool=call.name,
-                    data={"output": tool_message.content},
-                )
-
-            for tool_message in blocked_messages:
-                state.messages.append(tool_message)
-                yield AgentStreamEvent(
-                    type="tool_result",
-                    tool=tool_message.name,
-                    data={"output": tool_message.content},
-                )
-
-        await self._save_state(state)
+        try:
+            async for event in result.stream_events():
+                mapped = _map_stream_event(event)
+                if mapped is not None:
+                    yield mapped
+            run_exception = getattr(result, "run_loop_exception", None)
+            if run_exception is not None:
+                raise run_exception
+            await self._save_state(state)
+        finally:
+            close = getattr(session, "close", None)
+            if close is not None:
+                await close()
 
     async def _load_state(self, thread_id: str) -> AgentRuntimeState:
         if self._state_store is not None:
@@ -186,80 +193,62 @@ class AgentRuntime:
         state.active_context_status = status
         state.active_context_bundle = bundle if status != "unavailable" else None
 
-    async def _stream_model_response(
-        self,
-        state: AgentRuntimeState,
-        metadata: dict[str, Any],
-    ) -> tuple[AgentMessage, list[str]]:
-        prepared = build_prompt_messages(
-            raw_messages=state.messages,
-            state={
-                "metadata": metadata,
-                "active_context_bundle": state.active_context_bundle,
-                "active_context_status": state.active_context_status,
-            },
-            max_tokens=CONVERSATION_WINDOW_MAX_TOKENS,
-        ).messages
-
-        request_payload: dict[str, Any] = {
-            "model": DEFAULT_AGENT_MODEL,
-            "messages": [message.to_openai() for message in prepared],
-            "temperature": DEFAULT_AGENT_TEMPERATURE,
-            "max_tokens": DEFAULT_AGENT_MAX_TOKENS,
-            "stream": True,
-        }
-        if self._model_tools:
-            request_payload["tools"] = [
-                tool.to_openai_tool() for tool in self._model_tools
-            ]
-        response = await self._client.chat.completions.create(**request_payload)
-
-        content_parts: list[str] = []
-        tool_parts: dict[int, dict[str, Any]] = {}
-        async for chunk in response:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            content = getattr(delta, "content", None)
-            if content:
-                content_parts.append(str(content))
-            for tool_call in getattr(delta, "tool_calls", None) or []:
-                index = int(getattr(tool_call, "index", 0) or 0)
-                item = tool_parts.setdefault(
-                    index,
-                    {"id": "", "name": "", "arguments": ""},
-                )
-                call_id = getattr(tool_call, "id", None)
-                if call_id:
-                    item["id"] = str(call_id)
-                function = getattr(tool_call, "function", None)
-                if function is None:
-                    continue
-                name = getattr(function, "name", None)
-                if name:
-                    item["name"] = str(name)
-                arguments = getattr(function, "arguments", None)
-                if arguments:
-                    item["arguments"] += str(arguments)
-
-        tool_calls = [
-            AgentToolCall(
-                id=item["id"] or new_prefixed_ordered_id("tool"),
-                name=item["name"],
-                args=_loads_tool_args(item["arguments"]),
-            )
-            for _, item in sorted(tool_parts.items())
-            if item["name"]
-        ]
-        content = "".join(content_parts)
-        if not content.strip() and not tool_calls:
-            LOGGER.warning("LLM 返回空内容且无工具调用")
-        return AgentMessage(role="assistant", content=content, tool_calls=tool_calls), content_parts
+    def _create_session(self, thread_id: str) -> AsyncSQLiteSession:
+        db_path = Path(AGENT_SESSION_DB_PATH)
+        if not db_path.is_absolute():
+            db_path = Path.cwd() / db_path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return AsyncSQLiteSession(thread_id, db_path=db_path)
 
 
-def _loads_tool_args(value: str) -> dict[str, Any]:
+def _map_stream_event(event: Any) -> AgentStreamEvent | None:
+    event_type = getattr(event, "type", "")
+    if event_type == "raw_response_event":
+        return _map_raw_response_event(getattr(event, "data", None))
+    if event_type == "run_item_stream_event":
+        return _map_run_item_event(event)
+    return None
+
+
+def _map_raw_response_event(data: Any) -> AgentStreamEvent | None:
+    if getattr(data, "type", "") != "response.output_text.delta":
+        return None
+    delta = getattr(data, "delta", "")
+    if not delta:
+        return None
+    return AgentStreamEvent(type="token", content=str(delta))
+
+
+def _map_run_item_event(event: Any) -> AgentStreamEvent | None:
+    name = str(getattr(event, "name", "") or "")
+    item = getattr(event, "item", None)
+    if name == "tool_called":
+        tool_name, tool_input = _tool_call_payload(getattr(item, "raw_item", None))
+        return AgentStreamEvent(
+            type="tool_call",
+            tool=tool_name or "unknown",
+            data={"input": tool_input},
+        )
+    if name == "tool_output":
+        tool_name, _ = _tool_call_payload(getattr(item, "raw_item", None))
+        return AgentStreamEvent(
+            type="tool_result",
+            tool=tool_name or "unknown",
+            data={"output": str(getattr(item, "output", "") or "")},
+        )
+    return None
+
+
+def _tool_call_payload(raw_item: Any) -> tuple[str, dict[str, Any]]:
+    name = str(getattr(raw_item, "name", "") or "")
+    arguments = getattr(raw_item, "arguments", None)
+    if arguments is None and isinstance(raw_item, dict):
+        name = str(raw_item.get("name") or "")
+        arguments = raw_item.get("arguments")
+    if isinstance(arguments, dict):
+        return name, arguments
     try:
-        parsed = json.loads(value or "{}")
+        parsed = json.loads(str(arguments or "{}"))
     except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+        parsed = {}
+    return name, parsed if isinstance(parsed, dict) else {}

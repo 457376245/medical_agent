@@ -22,20 +22,11 @@ def test_context_signature_and_refresh_rules() -> None:
     ) is False
 
 
-async def _noop_create(**_kwargs: Any) -> None:
-    return None
-
-
-class _DummyClient:
-    chat = type("Chat", (), {"completions": type("Completions", (), {"create": _noop_create})()})()
-
-
 def test_context_preload_forces_tool_call_on_new_signature() -> None:
     def context_tool(**_kwargs: Any) -> str:
         return '{"context_status":"ready","disease_profile":{"id":"profile-1"}}'
 
     runtime = AgentRuntime(
-        client=_DummyClient(),  # type: ignore[arg-type]
         all_tools=[
             ToolSpec(
                 name="fetch_disease_profile_context",
@@ -71,7 +62,6 @@ def test_context_preload_forces_tool_call_on_new_signature() -> None:
 
 def test_context_preload_skips_when_signature_unchanged() -> None:
     runtime = AgentRuntime(
-        client=_DummyClient(),  # type: ignore[arg-type]
         all_tools=[],
         model_tools=[],
     )

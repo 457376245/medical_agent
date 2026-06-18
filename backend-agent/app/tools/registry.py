@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+from agents import FunctionTool
+from agents.tool_context import ToolContext
 
 from app.tools.disease_profile_context import fetch_disease_profile_context
 from app.tools.document_parse import parse_document
@@ -19,16 +24,6 @@ class ToolSpec:
     description: str
     parameters: dict[str, Any]
     handler: Callable[..., str]
-
-    def to_openai_tool(self) -> dict[str, Any]:
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
-            },
-        }
 
 
 PRELOAD_TOOLS: list[ToolSpec] = [
@@ -105,3 +100,57 @@ def get_model_tools(metadata: dict | None = None) -> list[ToolSpec]:
     """返回模型可主动调用的工具。"""
     _ = metadata
     return list(MODEL_TOOLS)
+
+
+def to_agents_tools(tools: list[ToolSpec]) -> list[FunctionTool]:
+    """将项目工具定义转换为 OpenAI Agents SDK function tools。"""
+    return [_to_agents_tool(tool) for tool in tools]
+
+
+def _to_agents_tool(tool: ToolSpec) -> FunctionTool:
+    async def invoke(context: ToolContext[Any], raw_args: str) -> str:
+        args = _loads_tool_args(raw_args)
+        run_context = getattr(context, "context", None)
+        failed_keys = getattr(run_context, "failed_tool_keys", None)
+        args_hash = _hash_tool_args(args)
+        key = (tool.name, args_hash)
+        if isinstance(failed_keys, set) and key in failed_keys:
+            return "Error: 该工具使用相同参数已失败，请向用户说明情况并提供替代建议。"
+
+        try:
+            result = await asyncio.to_thread(tool.handler, **args)
+        except TypeError as exc:
+            result = f"Error: 工具参数错误 — {exc}"
+        except Exception as exc:
+            result = f"Error: 工具执行失败 — {exc}"
+
+        content = str(result)
+        if content.strip().startswith("Error:") and isinstance(failed_keys, set):
+            failed_keys.add(key)
+        return content
+
+    return FunctionTool(
+        name=tool.name,
+        description=tool.description,
+        params_json_schema=tool.parameters,
+        on_invoke_tool=invoke,
+        strict_json_schema=False,
+    )
+
+
+def _loads_tool_args(value: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _hash_tool_args(value: dict[str, Any]) -> str:
+    try:
+        rendered = json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        rendered = str(value or {})
+    import hashlib
+
+    return hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]

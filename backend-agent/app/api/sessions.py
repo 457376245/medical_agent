@@ -125,7 +125,7 @@ async def create_session(request: Request) -> dict[str, Any]:
 async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
     """获取会话元数据和消息历史。
 
-    优先从会话索引读取；索引缺失时尝试读取轻量 runtime 状态。
+    优先从会话索引读取；索引缺失时尝试读取 SDK session 状态。
     """
     memory_store = getattr(request.app.state, "memory_store", None)
     if memory_store is not None:
@@ -144,18 +144,18 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
 
     try:
         runtime = getattr(request.app.state, "agent_runtime", None)
-        state = await runtime.get_state(thread_id) if runtime is not None else None
-        if state is None:
+        items = await runtime.get_session_items(thread_id) if runtime is not None else []
+        if not items:
             return {"thread_id": thread_id, "messages": [], "found": False}
 
         serialised = []
-        for msg in state.messages:
-            serialised.append(
-                {
-                    "role": msg.role,
-                    "content": msg.content,
-                }
-            )
+        for item in items:
+            role = str(item.get("role") or "").strip()
+            if role not in {"user", "assistant"}:
+                continue
+            content = _session_item_content(item.get("content"))
+            if content:
+                serialised.append({"role": role, "content": content})
 
         return {
             "thread_id": thread_id,
@@ -194,4 +194,26 @@ async def delete_session(thread_id: str, request: Request) -> dict[str, Any]:
             await memory_store.delete_agent_session(thread_id)
         except Exception as exc:
             LOGGER.warning("Failed to purge indexed session %s: %s", thread_id, exc)
+    runtime = getattr(request.app.state, "agent_runtime", None)
+    if runtime is not None:
+        try:
+            await runtime.clear_session(thread_id)
+        except Exception as exc:
+            LOGGER.warning("Failed to purge SDK session %s: %s", thread_id, exc)
     return {"thread_id": thread_id, "deleted": True}
+
+
+def _session_item_content(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for part in value:
+        if isinstance(part, dict):
+            text = part.get("text") or part.get("content")
+            if text:
+                parts.append(str(text))
+        elif isinstance(part, str):
+            parts.append(part)
+    return "".join(parts)

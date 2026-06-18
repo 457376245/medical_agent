@@ -135,6 +135,37 @@ def build_prompt_messages(
     return PromptBuildResult(messages=list(trimmed), diagnostics=diagnostics)
 
 
+def build_agent_instructions(*, state: dict[str, Any]) -> str:
+    """构造 OpenAI Agents SDK 本轮 instructions。"""
+    metadata = state.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    parts: list[str] = [SYSTEM_MEDICAL_ASSISTANT]
+
+    attachment_hint = _build_attachment_hint(metadata.get("attachments"))
+    if attachment_hint:
+        parts.append(attachment_hint)
+
+    context_message = build_context_system_message(
+        active_context_bundle=state.get("active_context_bundle"),
+        active_context_status=str(state.get("active_context_status") or "").strip() or None,
+    )
+    if context_message:
+        parts.append(context_message)
+
+    scenario_prompt = get_conversation_prompt(
+        workflow=metadata.get("workflow"),
+        scenario=metadata.get("scenario"),
+        audience=metadata.get("audience"),
+        urgency_level=metadata.get("urgency_level"),
+    )
+    if scenario_prompt:
+        parts.append(scenario_prompt)
+
+    return "\n\n".join(parts)
+
+
 def _trim_messages(*, messages: list[Any], max_tokens: int) -> list[Any]:
     """近似保留最新上下文。"""
     if not messages:

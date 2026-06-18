@@ -39,6 +39,10 @@ CONVERSATION_WINDOW_MAX_TOKENS: int = read_int_env(
 # ---------------------------------------------------------------------------
 DATA_DIR: str = os.getenv("DATA_DIR", "data")
 MEMORY_DB_PATH: str = os.getenv("MEMORY_DB_PATH", f"{DATA_DIR}/memory.db")
+AGENT_SESSION_DB_PATH: str = os.getenv(
+    "AGENT_SESSION_DB_PATH",
+    f"{DATA_DIR}/agent_sessions.db",
+)
 CORS_ALLOW_ORIGINS: list[str] = [
     item.strip()
     for item in os.getenv(

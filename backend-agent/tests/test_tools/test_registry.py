@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.tools.registry import get_model_tools, get_preload_tools, get_tools
+import asyncio
+from types import SimpleNamespace
+
+from agents.tool_context import ToolContext
+
+from app.tools.registry import ToolSpec, get_model_tools, get_preload_tools, get_tools, to_agents_tools
 
 
 def _names(tools: list) -> set[str]:
@@ -23,3 +28,40 @@ def test_get_tools_returns_execution_superset() -> None:
     names = _names(get_tools())
 
     assert {"fetch_disease_profile_context", "parse_document", "generate_medical_text"} <= names
+
+
+def test_agents_tool_invokes_handler_and_tracks_repeated_failures() -> None:
+    calls = {"count": 0}
+
+    def retry_me(value: str) -> str:
+        calls["count"] += 1
+        return "Error: failed" if value == "bad" else value
+
+    tool = to_agents_tools(
+        [
+            ToolSpec(
+                name="retry_me",
+                description="测试工具",
+                parameters={
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+                handler=retry_me,
+            )
+        ]
+    )[0]
+    context = ToolContext(
+        context=SimpleNamespace(failed_tool_keys=set()),
+        tool_name="retry_me",
+        tool_call_id="call-1",
+        tool_arguments='{"value":"bad"}',
+    )
+
+    first = asyncio.run(tool.on_invoke_tool(context, '{"value":"bad"}'))
+    second = asyncio.run(tool.on_invoke_tool(context, '{"value":"bad"}'))
+
+    assert first == "Error: failed"
+    assert second.startswith("Error:")
+    assert "相同参数已失败" in second
+    assert calls["count"] == 1

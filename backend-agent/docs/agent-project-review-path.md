@@ -1,23 +1,24 @@
 # backend-agent 项目 Review 路径
 
-> 更新日期：2026-05-31
-> 适用范围：`backend-agent` 当前 Python FastAPI + 轻量 AgentRuntime 服务
+> 更新日期：2026-06-17
+> 适用范围：`backend-agent` 当前 Python FastAPI + OpenAI Agents SDK 服务
 
 ## Review 前提
 
 - 当前重点是 Python 后端 `backend-agent`。
 - 需要掌握的主线是：服务启动、Agent 对话、会话记忆、工具调用、Provider 调用、MQ 任务处理、测试验证。
-- 当前 Agent 编排已迁移为项目内轻量 runtime，不再依赖外部重型 Agent 框架。
+- 当前 Agent 编排使用 OpenAI Agents SDK，`app.agent.runtime.AgentRuntime` 只作为项目内适配层。
 
 ## 技术地图
 
 | 方向 | 当前实现 |
 | --- | --- |
 | Web 服务 | FastAPI + Uvicorn |
-| Agent 编排 | `app.agent.runtime.AgentRuntime` |
-| LLM 接入 | OpenAI 官方 Python SDK 与 OpenAI 兼容 Chat Completions |
+| Agent 编排 | OpenAI Agents SDK + `app.agent.runtime.AgentRuntime` |
+| Agent LLM 接入 | OpenAI Responses API |
+| Provider LLM 接入 | OpenAI 兼容 Chat Completions |
 | 流式输出 | Server-Sent Events |
-| 会话与运行态 | `SqliteMemoryStore` + `agent_runtime_states` |
+| 会话与运行态 | `SqliteMemoryStore` + `agent_runtime_states` + Agents SDK `AsyncSQLiteSession` |
 | 异步任务 | RabbitMQ + `aio-pika` |
 | 文件存储 | 阿里云 OSS |
 | 文档解析 | `pypdf` 文本提取 + PyMuPDF 图片渲染 + Vision LLM |
@@ -29,10 +30,10 @@
 2. `.env.example`：确认运行需要的外部配置。
 3. `app/main.py`：理解启动、依赖注入、memory store 和 runtime 初始化。
 4. `app/api/chat.py`：理解 SSE 对话入口、事件转换、turn 持久化。
-5. `app/agent/runtime.py`：理解上下文预加载、模型流式调用、工具循环和轮数上限。
-6. `app/agent/messages.py`、`app/agent/events.py`、`app/agent/state.py`：理解框架无关的内部模型。
-7. `app/agent/prompting.py`、`app/agent/context.py`：理解系统 prompt、附件提示、上下文消息和消息裁剪。
-8. `app/tools/registry.py`：确认模型可见工具和系统预加载工具。
+5. `app/agent/runtime.py`：理解上下文预加载、Agents SDK 流式调用、SDK session 和轮数上限。
+6. `app/agent/events.py`、`app/agent/state.py`：理解对外事件和疾病档案上下文运行态。
+7. `app/agent/prompting.py`、`app/agent/context.py`：理解系统 instructions、附件提示和上下文消息。
+8. `app/tools/registry.py`：确认模型可见工具、系统预加载工具和 Agents SDK FunctionTool 转换。
 9. `app/tools/*.py`：理解工具如何桥接 Provider 或 Java 上下文 API。
 10. `app/providers/gateway.py`、`app/providers/llm.py`、`app/providers/document.py`、`app/providers/storage.py`：理解解析/生成任务链路。
 11. `app/memory/store.py`：理解会话、turn、trace、runtime state 的 SQLite 存储。
@@ -46,13 +47,13 @@
 Client
   -> app/api/chat.py
   -> AgentRuntime.stream(thread_id, user_message, metadata)
-  -> load agent_runtime_states
+  -> load agent_runtime_states for active disease-profile context
   -> fetch_disease_profile_context when metadata context signature changed
-  -> build_prompt_messages
-  -> OpenAI SDK chat.completions stream
-  -> execute model tool calls through tool_runner
+  -> build_agent_instructions
+  -> OpenAI Agents SDK Runner.run_streamed with AsyncSQLiteSession
+  -> execute model-visible tools through Agents SDK FunctionTool
   -> emit token/tool_call/tool_result events
-  -> save turn + trace + session summary + runtime state
+  -> save turn + trace + session summary + context runtime state
 ```
 
 ## 工具边界
@@ -63,7 +64,7 @@ Client
 | `parse_document` | 用户明确要求读取、分析或解读附件/文档 | `ProviderGateway.execute_with_resilience("parse")` |
 | `generate_medical_text` | 用户要求生成摘要、用药方案、报告分析草稿 | `ProviderGateway.execute_with_resilience("generate")` |
 
-工具注册在 `app/tools/registry.py`，每个工具由 `ToolSpec` 描述，并转换为 OpenAI tool schema。
+工具注册在 `app/tools/registry.py`，每个工具由 `ToolSpec` 描述，并转换为 OpenAI Agents SDK `FunctionTool`。
 
 ## 存储边界
 
@@ -71,9 +72,10 @@ Client
 | --- | --- | --- |
 | 会话索引 | `agent_sessions` | 会话列表、标题、疾病档案元数据、最后消息预览 |
 | 对话轮次 | `agent_session_turns` | 用户/助手消息、脱敏 trace、公开 metadata |
-| Agent 运行态 | `agent_runtime_states` | 消息历史和当前疾病档案上下文缓存 |
+| Agent 上下文运行态 | `agent_runtime_states` | 当前疾病档案上下文缓存 |
+| Agents SDK Session | `AGENT_SESSION_DB_PATH` 指向的 SQLite | 模型多轮对话历史 |
 
-删除会话时会同时删除 indexed session、turn 和 runtime state。
+删除会话时会同时删除 indexed session、turn、runtime state 和 Agents SDK session。
 
 ## 修改后验证矩阵
 

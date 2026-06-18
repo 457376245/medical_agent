@@ -1,56 +1,42 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from app.agent.runtime import AgentRuntime
 
 
-class _Delta:
-    def __init__(self, *, content: str | None = None, tool_calls: list[Any] | None = None) -> None:
-        self.content = content
-        self.tool_calls = tool_calls
-
-
-class _Choice:
-    def __init__(self, delta: _Delta) -> None:
-        self.delta = delta
-
-
-class _Chunk:
-    def __init__(self, delta: _Delta) -> None:
-        self.choices = [_Choice(delta)]
-
-
-class _Response:
-    def __init__(self, chunks: list[_Chunk]) -> None:
-        self._chunks = chunks
-
-    def __aiter__(self) -> "_Response":
-        return self
-
-    async def __anext__(self) -> _Chunk:
-        if not self._chunks:
-            raise StopAsyncIteration
-        return self._chunks.pop(0)
-
-
-class _Completions:
+class _Session:
     def __init__(self) -> None:
-        self.kwargs: dict[str, Any] = {}
+        self.closed = False
 
-    async def create(self, **kwargs: Any) -> _Response:
-        self.kwargs = kwargs
-        return _Response([_Chunk(_Delta(content="ok"))])
+    async def get_items(self) -> list[dict[str, Any]]:
+        return []
+
+    async def clear_session(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        self.closed = True
 
 
-class _Chat:
-    def __init__(self) -> None:
-        self.completions = _Completions()
+class _RunResult:
+    run_loop_exception = None
+
+    async def stream_events(self):  # noqa: ANN201
+        yield SimpleNamespace(
+            type="raw_response_event",
+            data=SimpleNamespace(type="response.output_text.delta", delta="ok"),
+        )
 
 
-class _Client:
-    def __init__(self) -> None:
-        self.chat = _Chat()
+class _Runner:
+    kwargs: dict[str, Any] = {}
+
+    @classmethod
+    def run_streamed(cls, *args: Any, **kwargs: Any) -> _RunResult:
+        cls.kwargs = {"args": args, **kwargs}
+        return _RunResult()
 
 
 async def _collect(runtime: AgentRuntime) -> list[str]:
@@ -65,14 +51,23 @@ async def _collect(runtime: AgentRuntime) -> list[str]:
     return result
 
 
-def test_agent_runtime_streams_openai_tokens() -> None:
+def test_agent_runtime_streams_agents_sdk_tokens() -> None:
     import asyncio
 
-    client = _Client()
-    runtime = AgentRuntime(client=client, model_tools=[], all_tools=[])  # type: ignore[arg-type]
+    session = _Session()
+    runtime = AgentRuntime(
+        runner=_Runner,
+        session_factory=lambda _thread_id: session,
+        model_tools=[],
+        all_tools=[],
+    )
 
     tokens = asyncio.run(_collect(runtime))
 
+    agent = _Runner.kwargs["args"][0]
     assert tokens == ["ok"]
-    assert client.chat.completions.kwargs["model"]
-    assert client.chat.completions.kwargs["messages"][0]["role"] == "system"
+    assert agent.name == "medical-agent"
+    assert agent.model
+    assert _Runner.kwargs["input"] == "你好"
+    assert _Runner.kwargs["session"] is session
+    assert session.closed is True
