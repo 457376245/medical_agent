@@ -12,7 +12,6 @@ import {
   getToken,
   setToken,
   clearAll,
-  getStoredUser,
   setStoredUser,
   setCurrentPatientId,
   type AuthUser,
@@ -36,14 +35,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      const storedUser = getStoredUser();
-      if (storedUser) {
-        setUser(storedUser);
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const token = getToken();
+      if (!token) {
+        clearAll();
+        if (!cancelled) {
+          setUser(null);
+          setIsLoading(false);
+        }
+        return;
       }
-    }
-    setIsLoading(false);
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const body = await res.json().catch(() => null);
+
+        if (!res.ok || !body || body.code !== "OK" || !body.data) {
+          clearAll();
+          if (!cancelled) {
+            setUser(null);
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        const { userId, displayName, defaultPatientId } = body.data as AuthUser;
+        const authUser: AuthUser = { userId, displayName, defaultPatientId };
+        setStoredUser(authUser);
+        if (!cancelled) {
+          setUser(authUser);
+          if (defaultPatientId) {
+            setCurrentPatientId(defaultPatientId);
+          }
+          setIsLoading(false);
+        }
+      } catch {
+        clearAll();
+        if (!cancelled) {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

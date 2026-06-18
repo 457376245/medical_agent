@@ -1,5 +1,6 @@
 package com.medical.agent.application;
 
+import com.medical.agent.domain.dto.response.AuthUserResponseData;
 import com.medical.agent.domain.dto.response.LoginResponseData;
 import com.medical.agent.infrastructure.persistence.ScopeConstants;
 import com.medical.agent.infrastructure.persistence.entity.PatientEntity;
@@ -7,10 +8,13 @@ import com.medical.agent.infrastructure.persistence.entity.UserEntity;
 import com.medical.agent.infrastructure.persistence.mapper.PatientMapper;
 import com.medical.agent.infrastructure.persistence.mapper.UserMapper;
 import com.medical.agent.infrastructure.security.JwtUtil;
+import com.medical.agent.infrastructure.security.RequestScopeHolder;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -91,6 +95,28 @@ public class AuthService {
     return new LoginResponseData(
         token,
         "Bearer",
+        user.getId().toString(),
+        user.getDisplayName(),
+        defaultPatient != null ? defaultPatient.getId().toString() : null);
+  }
+
+  public AuthUserResponseData getCurrentUser() {
+    UUID userId = RequestScopeHolder.getUserId();
+    if (userId == null) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录或登录已过期");
+    }
+
+    UserEntity user = userMapper.selectById(userId);
+    if (user == null) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户不存在");
+    }
+
+    PatientEntity defaultPatient = patientMapper.selectOne(
+        new LambdaQueryWrapper<PatientEntity>()
+            .eq(PatientEntity::getUserId, user.getId())
+            .eq(PatientEntity::getIsDefault, true));
+
+    return new AuthUserResponseData(
         user.getId().toString(),
         user.getDisplayName(),
         defaultPatient != null ? defaultPatient.getId().toString() : null);

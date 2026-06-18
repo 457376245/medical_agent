@@ -68,9 +68,12 @@ export function PatientProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isAuthenticated) {
       fetchPatients();
-    } else {
-      setIsLoading(false);
+      return;
     }
+
+    setPatients([]);
+    setCurrentPatient(null);
+    setIsLoading(false);
   }, [isAuthenticated, fetchPatients]);
 
   const switchPatient = useCallback(
