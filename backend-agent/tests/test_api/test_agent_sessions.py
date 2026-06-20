@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from pathlib import Path
 
@@ -194,3 +195,136 @@ def test_session_detail_falls_back_to_sdk_session_items(tmp_path: Path) -> None:
     finally:
         client.close()
         asyncio.run(memory_store.close())
+
+def test_public_turn_metadata_uses_allowlist() -> None:
+    from app.api.chat import _public_turn_metadata
+
+    metadata = {
+        "disease_profile_id": "profile-1",
+        "disease_name": "糖尿病",
+        "entry": "agent_page",
+        "context_signature": "profile-1:record-1",
+        "patient_id": "patient-secret",
+        "id_card": "secret-id",
+        "raw_record_text": "secret text",
+        "unknown_field": "should-not-appear",
+        "attachments": [
+            {
+                "file_type": "pdf",
+                "display_name": "化验单.pdf",
+                "object_key": "records/a.pdf",
+            }
+        ],
+    }
+
+    public = _public_turn_metadata(metadata)
+
+    assert public["disease_profile_id"] == "profile-1"
+    assert public["entry"] == "agent_page"
+    assert "patient_id" not in public
+    assert "id_card" not in public
+    assert "raw_record_text" not in public
+    assert "unknown_field" not in public
+    assert public["attachments"] == [
+        {"file_type": "pdf", "display_name": "化验单.pdf"}
+    ]
+
+
+def test_public_turn_metadata_skips_non_list_attachments() -> None:
+    from app.api.chat import _public_turn_metadata
+
+    public = _public_turn_metadata(
+        {
+            "entry": "agent_page",
+            "attachments": {"object_key": "secret"},
+        }
+    )
+
+    assert public["entry"] == "agent_page"
+    assert "attachments" not in public
+
+
+def test_thread_stream_lock_acquire_cancel_does_not_leak_ref_count() -> None:
+    from app.api.chat import _ThreadStreamLockRegistry
+
+    async def run() -> None:
+        registry = _ThreadStreamLockRegistry()
+        holder = await registry.acquire("thread-cancel")
+        assert registry._entries["thread-cancel"].ref_count == 1
+
+        waiter = asyncio.create_task(registry.acquire("thread-cancel"))
+        await asyncio.sleep(0.05)
+        assert registry._entries["thread-cancel"].ref_count == 2
+
+        waiter.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await waiter
+
+        assert registry._entries["thread-cancel"].ref_count == 1
+
+        await registry.release("thread-cancel", holder)
+        assert registry._entries == {}
+
+    asyncio.run(run())
+
+
+def test_cleanup_stream_tasks_awaits_pending_and_closes_iterator() -> None:
+    from app.api.chat import _cleanup_stream_tasks
+
+    class _ClosingIterator:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    async def run() -> None:
+        async def slow_next() -> None:
+            await asyncio.sleep(10)
+
+        pending = asyncio.create_task(slow_next())
+        await asyncio.sleep(0.05)
+        iterator = _ClosingIterator()
+
+        await _cleanup_stream_tasks(pending, iterator)
+
+        assert pending.cancelled() or pending.done()
+        assert iterator.closed is True
+
+    asyncio.run(run())
+
+
+def test_thread_stream_lock_serializes_same_thread() -> None:
+    from app.api.chat import _get_thread_stream_lock_registry
+
+    class _AppState:
+        pass
+
+    class _App:
+        def __init__(self) -> None:
+            self.state = _AppState()
+
+    class _Request:
+        def __init__(self) -> None:
+            self.app = _App()
+
+    async def run() -> None:
+        request = _Request()
+        registry = _get_thread_stream_lock_registry(request)
+        order: list[str] = []
+
+        async def worker(label: str) -> None:
+            entry = await registry.acquire("thread-1")
+            try:
+                order.append(f"{label}-start")
+                await asyncio.sleep(0.05)
+                order.append(f"{label}-end")
+            finally:
+                await registry.release("thread-1", entry)
+
+        await asyncio.gather(worker("a"), worker("b"))
+
+        assert order == ["a-start", "a-end", "b-start", "b-end"]
+
+    asyncio.run(run())
+

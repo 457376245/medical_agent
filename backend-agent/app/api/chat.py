@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,6 +30,81 @@ LOGGER = logging.getLogger(__name__)
 _SSE_KEEPALIVE_INTERVAL = 15.0
 
 _STREAM_END = object()
+
+_THREAD_STREAM_LOCKS_ATTR = "_chat_thread_stream_locks"
+
+_PUBLIC_TURN_METADATA_KEYS = frozenset(
+    {
+        "disease_profile_id",
+        "disease_name",
+        "record_id",
+        "record_title",
+        "record_date",
+        "source_type",
+        "workflow",
+        "scenario",
+        "audience",
+        "urgency_level",
+        "entry",
+        "context_signature",
+        "context_status",
+        "attachments",
+    }
+)
+
+
+@dataclass
+class _ThreadStreamLockEntry:
+    lock: asyncio.Lock
+    ref_count: int = 0
+
+
+class _ThreadStreamLockRegistry:
+    def __init__(self) -> None:
+        self._entries: dict[str, _ThreadStreamLockEntry] = {}
+        self._guard = asyncio.Lock()
+
+    async def acquire(self, thread_id: str) -> _ThreadStreamLockEntry:
+        async with self._guard:
+            entry = self._entries.get(thread_id)
+            if entry is None:
+                entry = _ThreadStreamLockEntry(lock=asyncio.Lock())
+                self._entries[thread_id] = entry
+            entry.ref_count += 1
+        try:
+            await entry.lock.acquire()
+        except BaseException:
+            async with self._guard:
+                entry.ref_count -= 1
+                if entry.ref_count <= 0:
+                    self._entries.pop(thread_id, None)
+            raise
+        return entry
+
+    async def release(self, thread_id: str, entry: _ThreadStreamLockEntry) -> None:
+        entry.lock.release()
+        async with self._guard:
+            entry.ref_count -= 1
+            if entry.ref_count <= 0:
+                self._entries.pop(thread_id, None)
+
+
+def _get_thread_stream_lock_registry(request: Request) -> _ThreadStreamLockRegistry:
+    registry = getattr(request.app.state, _THREAD_STREAM_LOCKS_ATTR, None)
+    if registry is None:
+        registry = _ThreadStreamLockRegistry()
+        setattr(request.app.state, _THREAD_STREAM_LOCKS_ATTR, registry)
+    return registry
+
+
+@contextlib.asynccontextmanager
+async def _thread_stream_lock(request: Request, thread_id: str) -> AsyncGenerator[None, None]:
+    registry = _get_thread_stream_lock_registry(request)
+    entry = await registry.acquire(thread_id)
+    try:
+        yield
+    finally:
+        await registry.release(thread_id, entry)
 
 
 async def _next_event(aiter: Any) -> Any:
@@ -73,19 +150,24 @@ def _friendly_stream_error(exc: Exception) -> str:
 
 
 def _public_turn_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    """去除不应通过会话详情暴露的运行时字段。"""
-    public = dict(metadata)
-    public.pop("patient_id", None)
-    attachments = public.get("attachments")
-    if isinstance(attachments, list):
-        public["attachments"] = [
-            {
-                "file_type": item.get("file_type"),
-                "display_name": item.get("display_name"),
-            }
-            for item in attachments
-            if isinstance(item, dict)
-        ]
+    """仅保留明确允许通过会话详情展示的字段。"""
+    public: dict[str, Any] = {}
+    for key in _PUBLIC_TURN_METADATA_KEYS:
+        if key not in metadata:
+            continue
+        value = metadata[key]
+        if key == "attachments":
+            if isinstance(value, list):
+                public["attachments"] = [
+                    {
+                        "file_type": item.get("file_type"),
+                        "display_name": item.get("display_name"),
+                    }
+                    for item in value
+                    if isinstance(item, dict)
+                ]
+            continue
+        public[key] = value
     return public
 
 
@@ -136,22 +218,35 @@ def _session_from_metadata(
     )
 
 
-@router.post("")
-async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
-    """将 Agent 响应以 Server-Sent Events 流式返回。
+@dataclass
+class ChatTurnContext:
+    thread_id: str
+    turn_metadata: dict[str, Any]
+    turn_index: int
 
-    如果提供了 thread_id，则恢复会话；否则创建新会话。
-    """
-    runtime = request.app.state.agent_runtime
-    memory_store = getattr(request.app.state, "memory_store", None)
-    thread_id = body.thread_id or new_ordered_id()
+
+@dataclass
+class ChatStreamState:
+    full_content: list[str] = field(default_factory=list)
+    trace_events: list[AgentTraceEvent] = field(default_factory=list)
+    error_message: str | None = None
+    pending_next: asyncio.Task[Any] | None = None
+    stream_aiter: AsyncIterator[Any] | None = None
+
+
+async def _prepare_chat_context(
+    *,
+    body: ChatRequest,
+    request: Request,
+    memory_store: Any,
+    thread_id: str,
+) -> ChatTurnContext:
     turn_metadata: dict[str, Any] = body.metadata.to_runtime_metadata()
     if body.attachments:
         turn_metadata["attachments"] = [
             attachment.model_dump(exclude_none=True) for attachment in body.attachments
         ]
 
-    # 将患者范围从 HTTP 头转发到元数据供下游工具使用
     patient_id_header = request.headers.get("X-Patient-Id", "").strip()
     if patient_id_header and not turn_metadata.get("patient_id"):
         turn_metadata["patient_id"] = patient_id_header
@@ -174,170 +269,284 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         except Exception as exc:
             LOGGER.warning("Failed to initialise session index for %s: %s", thread_id, exc)
 
-    async def event_stream() -> AsyncGenerator[str, None]:
-        yield _sse_event("session", {"thread_id": thread_id})
+    return ChatTurnContext(
+        thread_id=thread_id,
+        turn_metadata=turn_metadata,
+        turn_index=turn_index,
+    )
 
-        full_content: list[str] = []
-        trace_events: list[AgentTraceEvent] = []
-        error_message: str | None = None
-        pending_next: asyncio.Task[Any] | None = None
 
-        try:
-            aiter = runtime.stream(
-                thread_id=thread_id,
-                user_message=body.message,
-                metadata=turn_metadata,
-            ).__aiter__()
+async def _enrich_metadata_from_runtime_state(
+    *,
+    runtime: Any,
+    thread_id: str,
+    turn_metadata: dict[str, Any],
+) -> None:
+    try:
+        latest_state = await runtime.get_state(thread_id)
+        if latest_state is None:
+            return
+        state_signature = latest_state.active_context_signature
+        state_status = latest_state.active_context_status
+        if state_signature is not None and str(state_signature).strip():
+            turn_metadata["context_signature"] = str(state_signature).strip()
+        elif context_signature_from_metadata(turn_metadata):
+            turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
+        if state_status is not None and str(state_status).strip():
+            turn_metadata["context_status"] = str(state_status).strip().lower()
+    except Exception as exc:
+        LOGGER.debug("Failed to read final agent state for %s: %s", thread_id, exc)
 
-            while True:
-                if pending_next is None:
-                    pending_next = asyncio.ensure_future(_next_event(aiter))
 
-                done, _ = await asyncio.wait(
-                    {pending_next}, timeout=_SSE_KEEPALIVE_INTERVAL
-                )
-                if not done:
-                    yield ": keepalive\n\n"
-                    continue
-
-                event = pending_next.result()
-                pending_next = None
-                if event is _STREAM_END:
-                    break
-
-                if not isinstance(event, AgentStreamEvent):
-                    continue
-
-                if event.type == "token":
-                    token = str(event.content)
-                    if token:
-                        full_content.append(token)
-                        yield _sse_event("token", {"content": token})
-
-                elif event.type == "tool_call":
-                    tool_name = event.tool or "unknown"
-                    tool_input = event.data.get("input", {})
-                    public_input = sanitize_tool_input(str(tool_name), tool_input)
-                    trace_events.append(
-                        AgentTraceEvent(
-                            event="tool_call",
-                            tool=str(tool_name),
-                            data={"input": public_input},
-                        )
-                    )
-                    yield _sse_event(
-                        "tool_call",
-                        {"tool": tool_name, "input": public_input, **public_input},
-                    )
-
-                elif event.type == "tool_result":
-                    tool_name = event.tool or "unknown"
-                    tool_output = event.data.get("output", "")
-                    public_output = sanitize_tool_output(str(tool_name), tool_output)
-                    trace_events.append(
-                        AgentTraceEvent(
-                            event="tool_result",
-                            tool=str(tool_name),
-                            data={"output": public_output},
-                        )
-                    )
-                    yield _sse_event(
-                        "tool_result",
-                        {
-                            "tool": tool_name,
-                            "output": public_output,
-                            **public_output,
-                        },
-                    )
-
-            yield _sse_event(
-                "done",
+def _handle_stream_event(
+    event: AgentStreamEvent,
+    *,
+    full_content: list[str],
+    trace_events: list[AgentTraceEvent],
+) -> list[str]:
+    sse_chunks: list[str] = []
+    if event.type == "token":
+        token = str(event.content)
+        if token:
+            full_content.append(token)
+            sse_chunks.append(_sse_event("token", {"content": token}))
+    elif event.type == "tool_call":
+        tool_name = event.tool or "unknown"
+        tool_input = event.data.get("input", {})
+        public_input = sanitize_tool_input(str(tool_name), tool_input)
+        trace_events.append(
+            AgentTraceEvent(
+                event="tool_call",
+                tool=str(tool_name),
+                data={"input": public_input},
+            )
+        )
+        sse_chunks.append(
+            _sse_event(
+                "tool_call",
+                {"tool": tool_name, "input": public_input, **public_input},
+            )
+        )
+    elif event.type == "tool_result":
+        tool_name = event.tool or "unknown"
+        tool_output = event.data.get("output", "")
+        public_output = sanitize_tool_output(str(tool_name), tool_output)
+        trace_events.append(
+            AgentTraceEvent(
+                event="tool_result",
+                tool=str(tool_name),
+                data={"output": public_output},
+            )
+        )
+        sse_chunks.append(
+            _sse_event(
+                "tool_result",
                 {
-                    "thread_id": thread_id,
-                    "content": "".join(full_content),
+                    "tool": tool_name,
+                    "output": public_output,
+                    **public_output,
                 },
             )
+        )
+    return sse_chunks
 
-        except asyncio.CancelledError:
-            error_message = "client disconnected"
-            LOGGER.info("SSE stream cancelled for thread %s", thread_id)
-            raise
-        except Exception as exc:
-            error_message = _friendly_stream_error(exc)
-            trace_events.append(
-                AgentTraceEvent(
-                    event="error",
-                    data={"message": error_message},
-                )
-            )
-            LOGGER.exception("SSE stream error for thread %s", thread_id)
-            yield _sse_event("error", {"message": error_message})
-        finally:
-            if pending_next is not None and not pending_next.done():
-                pending_next.cancel()
-            assistant_message = "".join(full_content)
-            should_persist = (
-                memory_store is not None
-                and (body.message.strip() or assistant_message or trace_events)
-            )
-            if should_persist:
-                try:
-                    try:
-                        latest_state = await runtime.get_state(thread_id)
-                        if latest_state is not None:
-                            state_signature = latest_state.active_context_signature
-                            state_status = latest_state.active_context_status
-                            if state_signature is not None and str(state_signature).strip():
-                                turn_metadata["context_signature"] = str(state_signature).strip()
-                            elif context_signature_from_metadata(turn_metadata):
-                                turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
-                            if state_status is not None and str(state_status).strip():
-                                turn_metadata["context_status"] = str(state_status).strip().lower()
-                    except Exception as exc:
-                        LOGGER.debug("Failed to read final agent state for %s: %s", thread_id, exc)
 
-                    saved_existing = await memory_store.get_agent_session(thread_id)
-                    saved_turn = await memory_store.save_agent_turn(
-                        AgentSessionTurn(
-                            thread_id=thread_id,
-                            turn_index=turn_index,
-                            user_message=body.message,
-                            assistant_message=assistant_message,
-                            trace_events=trace_events,
-                            metadata=_public_turn_metadata(turn_metadata),
-                            error_message=error_message,
+async def _submit_patient_memory_extraction(
+    *,
+    request: Request,
+    thread_id: str,
+    saved_turn: AgentSessionTurn,
+    turn_metadata: dict[str, Any],
+) -> None:
+    patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
+    if patient_memory_extractor is None or not saved_turn.assistant_message.strip():
+        return
+    try:
+        submitted_count = await asyncio.to_thread(
+            patient_memory_extractor.extract_and_submit,
+            thread_id=thread_id,
+            turn_id=saved_turn.turn_id,
+            user_message=saved_turn.user_message,
+            assistant_message=saved_turn.assistant_message,
+            metadata=turn_metadata,
+        )
+        if submitted_count:
+            LOGGER.info(
+                "Submitted %d patient memory candidates for thread %s",
+                submitted_count,
+                thread_id,
+            )
+    except Exception as exc:
+        LOGGER.warning("Failed to extract patient memories for %s: %s", thread_id, exc)
+
+
+async def _persist_stream_result(
+    *,
+    runtime: Any,
+    memory_store: Any,
+    request: Request,
+    thread_id: str,
+    turn_index: int,
+    user_message: str,
+    stream_state: ChatStreamState,
+    turn_metadata: dict[str, Any],
+) -> None:
+    assistant_message = "".join(stream_state.full_content)
+    should_persist = memory_store is not None and (
+        user_message.strip() or assistant_message or stream_state.trace_events
+    )
+    if not should_persist:
+        return
+    try:
+        await _enrich_metadata_from_runtime_state(
+            runtime=runtime,
+            thread_id=thread_id,
+            turn_metadata=turn_metadata,
+        )
+        saved_existing = await memory_store.get_agent_session(thread_id)
+        saved_turn = await memory_store.save_agent_turn(
+            AgentSessionTurn(
+                thread_id=thread_id,
+                turn_index=turn_index,
+                user_message=user_message,
+                assistant_message=assistant_message,
+                trace_events=stream_state.trace_events,
+                metadata=_public_turn_metadata(turn_metadata),
+                error_message=stream_state.error_message,
+            )
+        )
+        updated_session = _session_from_metadata(
+            thread_id=thread_id,
+            existing=saved_existing,
+            user_message=saved_turn.user_message,
+            assistant_message=saved_turn.assistant_message,
+            metadata=turn_metadata,
+        )
+        updated_session.turn_count = turn_index
+        await memory_store.upsert_agent_session(updated_session)
+        await _submit_patient_memory_extraction(
+            request=request,
+            thread_id=thread_id,
+            saved_turn=saved_turn,
+            turn_metadata=turn_metadata,
+        )
+    except Exception as exc:
+        LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
+
+
+async def _cleanup_stream_tasks(
+    pending_next: asyncio.Task[Any] | None,
+    stream_aiter: AsyncIterator[Any] | None,
+) -> None:
+    if pending_next is not None and not pending_next.done():
+        pending_next.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await pending_next
+    if stream_aiter is not None:
+        aclose = getattr(stream_aiter, "aclose", None)
+        if callable(aclose):
+            with contextlib.suppress(Exception):
+                await aclose()
+
+
+@router.post("")
+async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
+    """将 Agent 响应以 Server-Sent Events 流式返回。
+
+    如果提供了 thread_id，则恢复会话；否则创建新会话。
+    """
+    runtime = request.app.state.agent_runtime
+    memory_store = getattr(request.app.state, "memory_store", None)
+    thread_id = body.thread_id or new_ordered_id()
+
+    async def event_stream() -> AsyncGenerator[str, None]:
+        async with _thread_stream_lock(request, thread_id):
+            turn_context = await _prepare_chat_context(
+                body=body,
+                request=request,
+                memory_store=memory_store,
+                thread_id=thread_id,
+            )
+            turn_metadata = turn_context.turn_metadata
+            turn_index = turn_context.turn_index
+
+            yield _sse_event("session", {"thread_id": thread_id})
+
+            stream_state = ChatStreamState()
+
+            try:
+                stream_state.stream_aiter = runtime.stream(
+                    thread_id=thread_id,
+                    user_message=body.message,
+                    metadata=turn_metadata,
+                ).__aiter__()
+
+                while True:
+                    if stream_state.pending_next is None:
+                        stream_state.pending_next = asyncio.ensure_future(
+                            _next_event(stream_state.stream_aiter)
                         )
+
+                    done, _ = await asyncio.wait(
+                        {stream_state.pending_next}, timeout=_SSE_KEEPALIVE_INTERVAL
                     )
-                    updated_session = _session_from_metadata(
-                        thread_id=thread_id,
-                        existing=saved_existing,
-                        user_message=saved_turn.user_message,
-                        assistant_message=saved_turn.assistant_message,
-                        metadata=turn_metadata,
+                    if not done:
+                        yield ": keepalive\n\n"
+                        continue
+
+                    event = stream_state.pending_next.result()
+                    stream_state.pending_next = None
+                    if event is _STREAM_END:
+                        break
+
+                    if not isinstance(event, AgentStreamEvent):
+                        continue
+
+                    for chunk in _handle_stream_event(
+                        event,
+                        full_content=stream_state.full_content,
+                        trace_events=stream_state.trace_events,
+                    ):
+                        yield chunk
+
+                yield _sse_event(
+                    "done",
+                    {
+                        "thread_id": thread_id,
+                        "content": "".join(stream_state.full_content),
+                    },
+                )
+
+            except asyncio.CancelledError:
+                stream_state.error_message = "client disconnected"
+                LOGGER.info("SSE stream cancelled for thread %s", thread_id)
+                raise
+            except Exception as exc:
+                stream_state.error_message = _friendly_stream_error(exc)
+                stream_state.trace_events.append(
+                    AgentTraceEvent(
+                        event="error",
+                        data={"message": stream_state.error_message},
                     )
-                    updated_session.turn_count = turn_index
-                    await memory_store.upsert_agent_session(updated_session)
-                    patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
-                    if patient_memory_extractor is not None and assistant_message.strip():
-                        try:
-                            submitted_count = await asyncio.to_thread(
-                                patient_memory_extractor.extract_and_submit,
-                                thread_id=thread_id,
-                                turn_id=saved_turn.turn_id,
-                                user_message=saved_turn.user_message,
-                                assistant_message=saved_turn.assistant_message,
-                                metadata=turn_metadata,
-                            )
-                            if submitted_count:
-                                LOGGER.info(
-                                    "Submitted %d patient memory candidates for thread %s",
-                                    submitted_count,
-                                    thread_id,
-                                )
-                        except Exception as exc:
-                            LOGGER.warning("Failed to extract patient memories for %s: %s", thread_id, exc)
-                except Exception as exc:
-                    LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
+                )
+                LOGGER.exception("SSE stream error for thread %s", thread_id)
+                yield _sse_event("error", {"message": stream_state.error_message})
+            finally:
+                await _cleanup_stream_tasks(
+                    stream_state.pending_next,
+                    stream_state.stream_aiter,
+                )
+                await _persist_stream_result(
+                    runtime=runtime,
+                    memory_store=memory_store,
+                    request=request,
+                    thread_id=thread_id,
+                    turn_index=turn_index,
+                    user_message=body.message,
+                    stream_state=stream_state,
+                    turn_metadata=turn_metadata,
+                )
+
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
