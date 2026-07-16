@@ -11,7 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 class InternalAgentApiGuardTest {
   @Test
   void verifyAllowsRequestsWhenApiKeyIsNotConfigured() {
-    InternalAgentApiGuard guard = new InternalAgentApiGuard("", "X-Internal-Api-Key");
+    InternalAgentApiGuard guard = new InternalAgentApiGuard("", "X-Internal-Api-Key", false);
     HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
 
     assertDoesNotThrow(() -> guard.verify(request));
@@ -19,9 +19,17 @@ class InternalAgentApiGuardTest {
 
   @Test
   void verifyRejectsRequestsWithWrongApiKey() {
-    InternalAgentApiGuard guard = new InternalAgentApiGuard("secret", "X-Internal-Api-Key");
+    InternalAgentApiGuard guard = new InternalAgentApiGuard("secret", "X-Internal-Api-Key", true);
     HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
     when(request.getHeader("X-Internal-Api-Key")).thenReturn("wrong");
+
+    assertThrows(ResponseStatusException.class, () -> guard.verify(request));
+  }
+
+  @Test
+  void verifyFailsClosedWhenSecurityEnabledWithoutApiKey() {
+    InternalAgentApiGuard guard = new InternalAgentApiGuard("", "X-Internal-Api-Key", true);
+    HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
 
     assertThrows(ResponseStatusException.class, () -> guard.verify(request));
   }

@@ -7,6 +7,7 @@ import type {
   AgentSessionTurn,
   AgentSseEvent,
   AgentStructuredField,
+  AgentAnswerEvaluation,
   AgentTraceEvent,
   AgentUrgencyLevel,
   AgentWorkflow,
@@ -56,11 +57,59 @@ const WORKFLOW_SCENARIO_MAP: Record<AgentWorkflow, string> = {
   abnormal_reasoning: "abnormal_reasoning",
 };
 
+export function normalizeAnswerEvaluation(raw: unknown): AgentAnswerEvaluation {
+  const payload = asObject(raw);
+  const status = payload.status === "available" ? "available" : "unavailable";
+  if (status === "unavailable") {
+    return { status, error: toOptionalText(payload.error) ?? "复核暂不可用" };
+  }
+  const score = Number(payload.overall_score ?? payload.overallScore);
+  const risk = toOptionalText(payload.risk_level ?? payload.riskLevel);
+  const issuesRaw = payload.issues;
+  const issues = Array.isArray(issuesRaw)
+    ? issuesRaw
+        .map((item) => {
+          const issue = asObject(item);
+          const severity = toOptionalText(issue.severity);
+          const message = toOptionalText(issue.message);
+          if (!message) return null;
+          return {
+            severity:
+              severity === "high" || severity === "medium" || severity === "low" ? severity : "low",
+            message,
+          };
+        })
+        .filter((item): item is { severity: "low" | "medium" | "high"; message: string } => item !== null)
+    : [];
+  const suggestionsRaw = payload.suggestions;
+  const suggestions = Array.isArray(suggestionsRaw)
+    ? suggestionsRaw.map((item) => toOptionalText(item)).filter((item): item is string => Boolean(item))
+    : [];
+  return {
+    status,
+    overall_score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : undefined,
+    risk_level:
+      risk === "low" || risk === "medium" || risk === "high" ? risk : undefined,
+    summary: toOptionalText(payload.summary),
+    issues,
+    suggestions,
+  };
+}
+
 function normalizeTraceEvent(raw: unknown): AgentTraceEvent {
   const payload = asObject(raw);
   const event = payload.event;
   return {
-    event: event === "tool_call" || event === "tool_result" || event === "error" ? event : "error",
+    event:
+      event === "tool_call"
+        ? "tool_call"
+        : event === "tool_result"
+          ? "tool_result"
+          : event === "evaluation"
+            ? "evaluation"
+            : event === "error"
+              ? "error"
+              : "error",
     tool: toOptionalText(payload.tool),
     data: asObject(payload.data),
     createdAt: toOptionalText(payload.created_at ?? payload.createdAt),
@@ -279,6 +328,13 @@ export function getSessionDisplayTitle(session: Pick<AgentSessionSummary, "title
 export function tracePreview(event: AgentTraceEvent): string {
   if (event.event === "tool_call") {
     return `${event.tool ?? "工具"} 已开始执行`;
+  }
+  if (event.event === "evaluation") {
+    const evaluation = normalizeAnswerEvaluation(event.data);
+    if (evaluation.status === "unavailable") {
+      return evaluation.error ?? "复核暂不可用";
+    }
+    return `质量复核 ${evaluation.overall_score ?? "--"} 分 · 风险 ${evaluation.risk_level ?? "unknown"}`;
   }
   if (event.event === "tool_result") {
     return `${event.tool ?? "工具"} 已返回结果`;

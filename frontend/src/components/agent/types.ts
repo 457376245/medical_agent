@@ -73,8 +73,18 @@ export type AgentRequestMetadata = {
   entry: "agent_page";
 };
 
+export type AgentAnswerEvaluation = {
+  status: "available" | "unavailable";
+  overall_score?: number;
+  risk_level?: "low" | "medium" | "high";
+  summary?: string;
+  issues?: Array<{ severity: "low" | "medium" | "high"; message: string }>;
+  suggestions?: string[];
+  error?: string;
+};
+
 export type AgentTraceEvent = {
-  event: "tool_call" | "tool_result" | "error";
+  event: "tool_call" | "tool_result" | "error" | "evaluation";
   tool?: string;
   data: Record<string, unknown>;
   createdAt?: string;

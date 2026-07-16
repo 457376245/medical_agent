@@ -29,6 +29,9 @@ public class PatientMemoryEntryEntity {
   private String rejectionReason;
   private LocalDateTime confirmedAt;
   private UUID supersedesMemoryId;
+  private LocalDateTime validFrom;
+  private LocalDateTime validTo;
+  private Boolean isCurrent;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -74,6 +77,12 @@ public class PatientMemoryEntryEntity {
   public void setConfirmedAt(LocalDateTime confirmedAt) { this.confirmedAt = confirmedAt; }
   public UUID getSupersedesMemoryId() { return supersedesMemoryId; }
   public void setSupersedesMemoryId(UUID supersedesMemoryId) { this.supersedesMemoryId = supersedesMemoryId; }
+  public LocalDateTime getValidFrom() { return validFrom; }
+  public void setValidFrom(LocalDateTime validFrom) { this.validFrom = validFrom; }
+  public LocalDateTime getValidTo() { return validTo; }
+  public void setValidTo(LocalDateTime validTo) { this.validTo = validTo; }
+  public Boolean getIsCurrent() { return isCurrent; }
+  public void setIsCurrent(Boolean isCurrent) { this.isCurrent = isCurrent; }
   public LocalDateTime getCreatedAt() { return createdAt; }
   public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
   public LocalDateTime getUpdatedAt() { return updatedAt; }

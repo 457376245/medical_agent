@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.medical.agent.application.AgentDiseaseProfileContextService;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileContextResponse;
+import com.medical.agent.domain.dto.response.AgentContextEvidence;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileSummary;
 import com.medical.agent.domain.dto.response.AgentRecordContextData;
 import com.medical.agent.domain.dto.response.AgentRecordContextSummary;
@@ -59,15 +60,23 @@ class AgentContextControllerTest {
         List.of(new PatientCareRiskOverviewResponseData.RiskSignal("watch", "血压波动", "建议持续监测", "如头晕加重请提前就医")),
         List.of(new PatientCareRiskOverviewResponseData.EvidenceItem("rule_engine", "高血压随访", "近期存在波动", "门诊检验", "medium", "RULE_CONCLUSION")),
         List.of(),
+        List.of(),
         "READY",
-        List.of());
+        List.of(),
+        "revision-1",
+        "2026-07-10T00:00:00Z",
+        List.of(new AgentContextEvidence(
+            "E-alt", "REPORT_FIELD", "ALT=85", "RECORD", "record-1",
+            "2026-03-01", "2026-03-01", "VERIFIED")));
     when(contextService.fetchProfileContext("profile-1", "record-1")).thenReturn(payload);
 
     ResponseEntity<?> response = controller.fetchProfileContext("profile-1", "record-1", request);
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
     assertEquals("READY", ((AgentDiseaseProfileContextResponse) response.getBody()).contextStatus());
-    verify(internalAgentApiGuard).verify(request);
+    assertEquals("revision-1", ((AgentDiseaseProfileContextResponse) response.getBody()).contextRevision());
+    assertEquals("E-alt", ((AgentDiseaseProfileContextResponse) response.getBody()).evidenceLedger().get(0).evidenceId());
+    verify(internalAgentApiGuard).verifyAndApplyScope(request);
   }
 
   @Test

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 class AgentTraceEvent(BaseModel):
     """一次助手轮次的单个持久化 Agent 追踪事件。"""
 
-    event: Literal["tool_call", "tool_result", "error"]
+    event: Literal["tool_call", "tool_result", "error", "evaluation", "diagnostics"]
     tool: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -21,6 +21,7 @@ class AgentSessionRecord(BaseModel):
     """Agent 工作台侧边栏使用的会话索引行。"""
 
     thread_id: str
+    owner_key: str
     disease_profile_id: str | None = None
     disease_name: str | None = None
     record_id: str | None = None
@@ -43,6 +44,7 @@ class AgentSessionTurn(BaseModel):
 
     turn_id: str | None = None
     thread_id: str
+    owner_key: str
     turn_index: int
     user_message: str
     assistant_message: str = ""

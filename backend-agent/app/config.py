@@ -30,8 +30,14 @@ DEFAULT_AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "4096"))
 # Agent 行为配置
 # ---------------------------------------------------------------------------
 MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
-CONVERSATION_WINDOW_MAX_TOKENS: int = read_int_env(
-    "CONVERSATION_WINDOW_MAX_TOKENS", 100_000, 1000
+AGENT_HISTORY_MAX_ITEMS: int = read_int_env("AGENT_HISTORY_MAX_ITEMS", 40, 2)
+AGENT_HISTORY_MAX_TOKENS: int = read_int_env("AGENT_HISTORY_MAX_TOKENS", 12_000, 500)
+AGENT_CONTEXT_MAX_CHARS: int = read_int_env("AGENT_CONTEXT_MAX_CHARS", 24_000, 1000)
+AGENT_CONTEXT_CACHE_TTL_SECONDS: float = read_float_env(
+    "AGENT_CONTEXT_CACHE_TTL_SECONDS", 0.0, 0.0
+)
+ANSWER_EVALUATOR_TIMEOUT_SECONDS: float = read_float_env(
+    "ANSWER_EVALUATOR_TIMEOUT_SECONDS", 8.0, 0.1
 )
 
 # ---------------------------------------------------------------------------

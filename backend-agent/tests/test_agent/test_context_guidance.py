@@ -162,8 +162,28 @@ def test_red_flags_and_evidence_render_in_context() -> None:
     bundle["evidence_refs"] = [
         {"type": "rule_engine", "title": "肝功能联动", "detail": "规则触发", "confidence": "high", "nature": "RULE_CONCLUSION"},
     ]
+    bundle["evidence_ledger"] = [
+        {
+            "evidence_id": "E-alt",
+            "category": "REPORT_FIELD",
+            "summary": "ALT=85U/L",
+            "source_type": "RECORD",
+            "source_ref": "record-1",
+            "observed_at": "2026-03-01",
+            "verification_status": "VERIFIED",
+        },
+        {
+            "evidence_id": "E-pending",
+            "category": "MEMORY",
+            "summary": "待确认信息",
+            "verification_status": "PENDING",
+        },
+    ]
     result = build_context_system_message(active_context_bundle=bundle, active_context_status="ready")
     assert result is not None
     assert "红旗信号" in result
     assert "证据来源" in result
+    assert "[E-alt]" in result
+    assert "E-pending" not in result
+    assert "evidence_id" in result
     assert "已知事实 / 可能解释 / 建议动作" in result

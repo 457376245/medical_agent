@@ -65,3 +65,42 @@ def test_agents_tool_invokes_handler_and_tracks_repeated_failures() -> None:
     assert second.startswith("Error:")
     assert "相同参数已失败" in second
     assert calls["count"] == 1
+
+
+def test_parse_document_requires_authorized_attachment_key() -> None:
+    calls = {"count": 0}
+
+    def parse_document(object_key: str) -> str:
+        calls["count"] += 1
+        return object_key
+
+    tool = to_agents_tools([
+        ToolSpec(
+            name="parse_document",
+            description="parse",
+            parameters={"type": "object", "properties": {"object_key": {"type": "string"}}},
+            handler=parse_document,
+        )
+    ])[0]
+    denied_context = ToolContext(
+        context=SimpleNamespace(failed_tool_keys=set(), allowed_attachment_keys=frozenset({"allowed.pdf"}), diagnostics={}),
+        tool_name="parse_document",
+        tool_call_id="call-denied",
+        tool_arguments='{"object_key":"other.pdf"}',
+    )
+    allowed_run_context = SimpleNamespace(failed_tool_keys=set(), allowed_attachment_keys=frozenset({"allowed.pdf"}), diagnostics={})
+    allowed_context = ToolContext(
+        context=allowed_run_context,
+        tool_name="parse_document",
+        tool_call_id="call-allowed",
+        tool_arguments='{"object_key":"allowed.pdf"}',
+    )
+
+    denied = asyncio.run(tool.on_invoke_tool(denied_context, '{"object_key":"other.pdf"}'))
+    allowed = asyncio.run(tool.on_invoke_tool(allowed_context, '{"object_key":"allowed.pdf"}'))
+
+    assert denied.startswith("Error: 未授权")
+    assert allowed == "allowed.pdf"
+    assert calls["count"] == 1
+    assert allowed_run_context.diagnostics["tools"][0]["status"] == "ok"
+    assert "latency_ms" in allowed_run_context.diagnostics["tools"][0]

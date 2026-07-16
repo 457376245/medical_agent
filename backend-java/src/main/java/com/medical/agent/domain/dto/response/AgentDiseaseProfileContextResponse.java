@@ -15,7 +15,11 @@ public record AgentDiseaseProfileContextResponse(
     List<PatientCareFollowUpTaskListResponseData.TaskSummary> followUpTasks,
     List<PatientCareRiskOverviewResponseData.RiskSignal> redFlagSignals,
     List<PatientCareRiskOverviewResponseData.EvidenceItem> evidenceRefs,
+    List<PatientMemoryEntryResponseData> confirmedMemories,
     List<PatientMemoryEntryResponseData> pendingMemories,
     String contextStatus,
-    List<String> warnings) {}
+    List<String> warnings,
+    String contextRevision,
+    String generatedAt,
+    List<AgentContextEvidence> evidenceLedger) {}
 

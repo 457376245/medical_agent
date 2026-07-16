@@ -6,6 +6,7 @@ import json
 import logging
 
 from app.services.disease_profile_context import DiseaseProfileContextClient
+from app.auth import AgentScope
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ def configure(client: DiseaseProfileContextClient) -> None:
 def fetch_disease_profile_context(
     disease_profile_id: str,
     record_id: str | None = None,
-    patient_id: str | None = None,
+    scope: AgentScope | None = None,
 ) -> str:
     """获取当前对话的紧凑疾病档案上下文。
 
@@ -31,7 +32,7 @@ def fetch_disease_profile_context(
     Args:
         disease_profile_id: 必需的疾病档案标识符。
         record_id: 可选的该档案下聚焦报告标识符。
-        patient_id: 可选的患者标识符，用于访问范围限定。
+        scope: Java 已验证的本轮身份范围。
 
     Returns:
         JSON 文本，包含 context_status、档案摘要、选中记录摘要、
@@ -55,36 +56,24 @@ def fetch_disease_profile_context(
             ensure_ascii=False,
         )
 
-    LOGGER.info(
-        "context_fetch_started profile_id=%s record_id=%s",
-        profile_id,
-        (record_id or "").strip() or None,
-    )
+    LOGGER.info("context_fetch_started")
 
     bundle = _client.fetch_context_bundle(
         disease_profile_id=profile_id,
         record_id=(record_id or "").strip() or None,
-        patient_id=(patient_id or "").strip() or None,
+        scope=scope,
     )
     status = str(bundle.get("context_status", "unavailable")).lower()
     if status == "ready":
-        LOGGER.info(
-            "context_fetch_succeeded profile_id=%s record_id=%s",
-            profile_id,
-            (record_id or "").strip() or None,
-        )
+        LOGGER.info("context_fetch_succeeded")
     elif status == "partial":
         LOGGER.info(
-            "context_fetch_partial profile_id=%s record_id=%s warnings=%s",
-            profile_id,
-            (record_id or "").strip() or None,
+            "context_fetch_partial warnings=%s",
             bundle.get("warnings", []),
         )
     else:
         LOGGER.warning(
-            "context_fetch_failed profile_id=%s record_id=%s warnings=%s",
-            profile_id,
-            (record_id or "").strip() or None,
+            "context_fetch_failed warnings=%s",
             bundle.get("warnings", []),
         )
 

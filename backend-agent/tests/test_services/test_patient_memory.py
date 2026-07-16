@@ -52,3 +52,23 @@ def test_normalize_entry_accepts_personal_context() -> None:
     assert entry is not None
     assert entry["memoryType"] == "PERSONAL_CONTEXT"
     assert entry["riskLevel"] == "LOW"
+
+
+def test_model_cannot_downgrade_symptom_or_red_flag_risk() -> None:
+    symptom = _normalize_entry({
+        "fieldPath": "patientBaseline.recentSymptoms",
+        "valueText": "胸闷",
+        "evidenceText": "用户说胸闷",
+        "confidence": 0.9,
+        "riskLevel": "LOW",
+    })
+    red_flag = _normalize_entry({
+        "fieldPath": "redFlagNotes",
+        "valueText": "胸痛",
+        "evidenceText": "用户说胸痛",
+        "confidence": 0.9,
+        "riskLevel": "LOW",
+    })
+
+    assert symptom is not None and symptom["riskLevel"] == "MEDIUM"
+    assert red_flag is not None and red_flag["riskLevel"] == "HIGH"

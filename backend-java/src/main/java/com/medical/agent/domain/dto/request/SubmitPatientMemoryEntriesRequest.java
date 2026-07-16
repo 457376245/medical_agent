@@ -18,5 +18,6 @@ public record SubmitPatientMemoryEntriesRequest(
       String evidenceText,
       Double confidence,
       String riskLevel,
-      String sourceRef) {}
+      String sourceRef,
+      String supersedesMemoryId) {}
 }

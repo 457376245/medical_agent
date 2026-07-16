@@ -12,17 +12,32 @@ from app.api.chat import router as chat_router
 from app.api.sessions import router as sessions_router
 from app.agent.state import AgentRuntimeState
 from app.memory.store import SqliteMemoryStore
+from app.auth import AgentScope
+
+_SCOPE = AgentScope(tenant_id="tenant-1", user_id="user-1", patient_id="patient-1")
+_OTHER_SCOPE = AgentScope(tenant_id="tenant-1", user_id="user-2", patient_id="patient-2")
+_AUTH = {"Authorization": "Bearer test-token", "X-Patient-Id": "patient-1"}
+
+
+class _StubScopeClient:
+    def verify(self, **kwargs):
+        return _OTHER_SCOPE if kwargs["authorization"].endswith("other-token") else _SCOPE
+
+    def authorize_attachments(self, **kwargs):
+        return frozenset(key for key in kwargs["object_keys"] if key != "forbidden.pdf")
 
 
 class _StubRuntime:
     def __init__(self) -> None:
         self.cleared_thread_id = None
 
-    async def stream(self, *, thread_id, user_message, metadata):  # noqa: ANN001
+    async def stream(self, *, thread_id, user_message, metadata, scope):  # noqa: ANN001
         del user_message
+        assert scope == _SCOPE
         self.last_thread_id = thread_id
         self.last_state = AgentRuntimeState(
             thread_id=thread_id,
+            owner_key=_SCOPE.owner_key,
             active_context_signature="profile-1:record-1"
             if metadata.get("disease_profile_id") == "profile-1"
             else metadata.get("disease_profile_id"),
@@ -41,7 +56,8 @@ class _StubRuntime:
         yield AgentStreamEvent(type="token", content="第一段回答。")
         yield AgentStreamEvent(type="token", content="第二段回答。")
 
-    async def get_state(self, thread_id):  # noqa: ANN001
+    async def get_state(self, thread_id, owner_key):  # noqa: ANN001
+        assert owner_key == _SCOPE.owner_key
         if getattr(self, "last_thread_id", None) == thread_id:
             return self.last_state
         return None
@@ -50,7 +66,8 @@ class _StubRuntime:
         del thread_id
         return []
 
-    async def clear_session(self, thread_id):  # noqa: ANN001
+    async def clear_session(self, thread_id, owner_key):  # noqa: ANN001
+        assert owner_key == _SCOPE.owner_key
         self.cleared_thread_id = thread_id
 
 
@@ -60,9 +77,12 @@ def _create_client(db_path: Path) -> tuple[TestClient, SqliteMemoryStore]:
     asyncio.run(memory_store.initialize())
     app.state.memory_store = memory_store
     app.state.agent_runtime = _StubRuntime()
+    app.state.agent_scope_client = _StubScopeClient()
     app.include_router(chat_router)
     app.include_router(sessions_router)
-    return TestClient(app), memory_store
+    client = TestClient(app)
+    client.headers.update(_AUTH)
+    return client, memory_store
 
 
 def test_chat_stream_persists_session_index_and_turn_trace(tmp_path: Path) -> None:
@@ -160,7 +180,7 @@ def test_create_session_returns_uuid7_thread_id(tmp_path: Path) -> None:
         asyncio.run(memory_store.close())
 
 
-def test_session_detail_falls_back_to_sdk_session_items(tmp_path: Path) -> None:
+def test_unowned_sdk_session_items_are_not_visible(tmp_path: Path) -> None:
     app = FastAPI()
     memory_store = SqliteMemoryStore(str(tmp_path / "fallback-memory.db"))
     asyncio.run(memory_store.initialize())
@@ -179,18 +199,60 @@ def test_session_detail_falls_back_to_sdk_session_items(tmp_path: Path) -> None:
 
     app.state.memory_store = memory_store
     app.state.agent_runtime = RuntimeWithItems()
+    app.state.agent_scope_client = _StubScopeClient()
     app.include_router(sessions_router)
     client = TestClient(app)
     try:
-        response = client.get("/api/v1/sessions/thread-1")
+        response = client.get("/api/v1/sessions/thread-1", headers=_AUTH)
 
         payload = response.json()
-        assert payload["found"] is True
-        assert payload["message_count"] == 2
-        assert payload["messages"] == [
-            {"role": "user", "content": "你好"},
-            {"role": "assistant", "content": "请问哪里不舒服？"},
-        ]
+        assert payload == {"thread_id": "thread-1", "messages": [], "found": False}
+    finally:
+        client.close()
+        asyncio.run(memory_store.close())
+
+
+def test_session_scope_rejects_missing_token_cross_owner_and_unowned_rows(tmp_path: Path) -> None:
+    client, memory_store = _create_client(tmp_path / "scope-memory.db")
+    try:
+        assert client.get("/api/v1/sessions", headers={"Authorization": ""}).status_code == 401
+        thread_id = client.post("/api/v1/sessions").json()["thread_id"]
+        other_headers = {"Authorization": "Bearer other-token", "X-Patient-Id": "patient-2"}
+        assert client.get(f"/api/v1/sessions/{thread_id}", headers=other_headers).json()["found"] is False
+        assert client.patch(f"/api/v1/sessions/{thread_id}", headers=other_headers, json={"title": "x"}).status_code == 404
+        assert client.delete(f"/api/v1/sessions/{thread_id}", headers=other_headers).status_code == 404
+        assert client.post(
+            "/api/v1/chat",
+            headers=other_headers,
+            json={"thread_id": thread_id, "message": "cross owner"},
+        ).status_code == 404
+
+        async def insert_legacy_row() -> None:
+            await memory_store._conn.execute(  # noqa: SLF001
+                "INSERT INTO agent_sessions (thread_id, created_at, updated_at) VALUES (?, ?, ?)",
+                ("legacy-thread", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            )
+            await memory_store._conn.commit()  # noqa: SLF001
+
+        asyncio.run(insert_legacy_row())
+        assert client.get("/api/v1/sessions").json()["count"] == 1
+        assert client.get("/api/v1/sessions/legacy-thread").json()["found"] is False
+    finally:
+        client.close()
+        asyncio.run(memory_store.close())
+
+
+def test_chat_rejects_attachment_not_authorized_by_java_scope(tmp_path: Path) -> None:
+    client, memory_store = _create_client(tmp_path / "attachment-memory.db")
+    try:
+        response = client.post(
+            "/api/v1/chat",
+            json={
+                "message": "parse",
+                "attachments": [{"object_key": "forbidden.pdf", "file_type": "PDF"}],
+            },
+        )
+        assert response.status_code == 403
     finally:
         client.close()
         asyncio.run(memory_store.close())

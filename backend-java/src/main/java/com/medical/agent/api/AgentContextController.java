@@ -36,7 +36,7 @@ public class AgentContextController {
       @Parameter(description = "可选报告 ID（UUID）")
       @RequestParam(name = "recordId", required = false) String recordId,
       HttpServletRequest request) {
-    internalAgentApiGuard.verify(request);
+    internalAgentApiGuard.verifyAndApplyScope(request);
     try {
       AgentDiseaseProfileContextResponse response = profileContextService.fetchProfileContext(profileId, recordId);
       return ResponseEntity.ok(response);

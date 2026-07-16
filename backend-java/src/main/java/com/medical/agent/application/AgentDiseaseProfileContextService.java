@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medical.agent.application.service.RecordService;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileContextResponse;
+import com.medical.agent.domain.dto.response.AgentContextEvidence;
 import com.medical.agent.domain.dto.response.AgentDiseaseProfileSummary;
 import com.medical.agent.domain.dto.response.AgentKeyFieldSummary;
 import com.medical.agent.domain.dto.response.AgentRecordContextData;
@@ -31,6 +32,9 @@ import com.medical.agent.infrastructure.persistence.mapper.StructuredResultMappe
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
+import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -156,6 +160,13 @@ public class AgentDiseaseProfileContextService {
     }
     PatientCareRiskOverviewResponseData riskOverview = patientCareService.getRiskOverview(profileId, riskRecordId, careProfile);
     var pendingMemories = patientMemoryService.listPendingForAgent(profileId, riskRecordId, 5);
+    var confirmedMemories = patientMemoryService.listCurrentForAgent(profileId, riskRecordId, 10);
+    List<AgentContextEvidence> evidenceLedger = buildEvidenceLedger(
+        profileSummary, selectedRecord, recordSummary, trendSummary, careProfile, riskOverview,
+        confirmedMemories, pendingMemories);
+    String contextRevision = contextRevision(java.util.Arrays.asList(
+        profileSummary, selectedRecord, recordSummary, trendSummary, careProfile,
+        followUpTasks, riskOverview, confirmedMemories, pendingMemories));
 
     return new AgentDiseaseProfileContextResponse(
         profileSummary,
@@ -170,9 +181,95 @@ public class AgentDiseaseProfileContextService {
         followUpTasks.tasks(),
         riskOverview.signals(),
         riskOverview.evidenceRefs(),
+        confirmedMemories,
         pendingMemories,
         partial ? "PARTIAL" : "READY",
-        warnings);
+        warnings,
+        contextRevision,
+        Instant.now().toString(),
+        evidenceLedger);
+  }
+
+  private List<AgentContextEvidence> buildEvidenceLedger(
+      AgentDiseaseProfileSummary profile,
+      AgentRecordContextSummary selectedRecord,
+      AgentRecordContextData recordSummary,
+      List<AgentTrendSnapshotSummary> trends,
+      PatientCareProfileResponseData careProfile,
+      PatientCareRiskOverviewResponseData risks,
+      List<com.medical.agent.domain.dto.response.PatientMemoryEntryResponseData> confirmedMemories,
+      List<com.medical.agent.domain.dto.response.PatientMemoryEntryResponseData> pendingMemories) {
+    List<AgentContextEvidence> result = new ArrayList<>();
+    String recordRef = selectedRecord == null ? profile.id() : selectedRecord.id();
+    String observedAt = selectedRecord == null ? profile.latestRecordAt() : selectedRecord.recordDate();
+    if (recordSummary != null) {
+      for (AgentKeyFieldSummary field : recordSummary.keyFields()) {
+        addEvidence(result, "REPORT_FIELD", field.name() + "=" + field.value(), "RECORD",
+            recordRef, observedAt, observedAt, "VERIFIED");
+      }
+    }
+    for (AgentTrendSnapshotSummary trend : trends) {
+      addEvidence(result, "TREND", trend.summary(), "RECORD", trend.recordId(),
+          trend.recordDate(), trend.recordDate(), "VERIFIED");
+    }
+    String careUpdatedAt = careProfile.updatedAt();
+    for (String allergy : careProfile.patientBaseline().allergies()) {
+      addEvidence(result, "ALLERGY", allergy, "CARE_PROFILE", "patient-care-profile",
+          careUpdatedAt, careUpdatedAt, "CONFIRMED");
+    }
+    for (PatientCareProfileResponseData.MedicationItem medication : careProfile.currentMedications()) {
+      addEvidence(result, "MEDICATION", medication.name(), "CARE_PROFILE", "patient-care-profile",
+          careUpdatedAt, careUpdatedAt, "CONFIRMED");
+    }
+    for (PatientCareRiskOverviewResponseData.RiskSignal risk : risks.signals()) {
+      addEvidence(result, "RED_FLAG", risk.title(), "RULE_ENGINE", "risk-overview",
+          careUpdatedAt, careUpdatedAt, "VERIFIED");
+    }
+    for (var memory : confirmedMemories) {
+      addEvidence(result, "MEMORY", memory.fieldPath() + ":" + memory.valueText(),
+          memory.sourceType(), memory.id(), memory.validFrom(), memory.updatedAt(), "CONFIRMED");
+    }
+    for (var memory : pendingMemories) {
+      addEvidence(result, "MEMORY", memory.fieldPath() + ":" + memory.valueText(),
+          memory.sourceType(), memory.id(), memory.createdAt(), memory.updatedAt(), "PENDING");
+    }
+    return result;
+  }
+
+  private void addEvidence(
+      List<AgentContextEvidence> target,
+      String category,
+      String summary,
+      String sourceType,
+      String sourceRef,
+      String observedAt,
+      String updatedAt,
+      String verificationStatus) {
+    if (!hasText(summary)) {
+      return;
+    }
+    String seed = String.join("|", category, String.valueOf(sourceRef), summary);
+    target.add(new AgentContextEvidence(
+        "E-" + sha256(seed).substring(0, 12), category, summary, sourceType, sourceRef,
+        observedAt, updatedAt, verificationStatus));
+  }
+
+  private String contextRevision(Object value) {
+    try {
+      return sha256(objectMapper.writeValueAsString(value));
+    } catch (Exception error) {
+      return sha256(String.valueOf(value));
+    }
+  }
+
+  static String sha256(String value) {
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256")
+          .digest(value.getBytes(StandardCharsets.UTF_8));
+      return java.util.HexFormat.of().formatHex(digest);
+    } catch (Exception error) {
+      throw new IllegalStateException("SHA-256 unavailable", error);
+    }
   }
 
   private DiseaseProfileEntity getProfileOrThrow(UUID profileUuid) {

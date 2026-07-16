@@ -31,7 +31,7 @@ public class AgentPatientMemoryController {
   public ApiResponse<PatientMemoryEntryListResponseData> submitMemories(
       @RequestBody SubmitPatientMemoryEntriesRequest request,
       HttpServletRequest httpRequest) {
-    internalAgentApiGuard.verify(httpRequest);
+    internalAgentApiGuard.verifyAndApplyScope(httpRequest);
     return new ApiResponse<>(
         "OK",
         "created",
