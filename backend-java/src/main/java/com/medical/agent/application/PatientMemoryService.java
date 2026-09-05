@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -44,6 +45,8 @@ public class PatientMemoryService {
   private final PatientCareService patientCareService;
   private final TenantContextProvider tenantContextProvider;
   private final ObjectMapper objectMapper;
+  @Value("${app.agent.memory-auto-confirm-confidence:0.85}")
+  private double autoConfirmConfidence = 0.85;
 
   public PatientMemoryService(
       PatientMemoryEntryMapper memoryMapper,
@@ -69,10 +72,11 @@ public class PatientMemoryService {
       if (entity == null) {
         continue;
       }
+      if (isDuplicate(entity)) {
+        continue;
+      }
       if (shouldAutoConfirm(entity)) {
-        entity.setStatus("CONFIRMED");
-        entity.setConfirmedAt(LocalDateTime.now());
-        applyConfirmedMemory(entity);
+        confirmEntity(entity);
       }
       memoryMapper.insert(entity);
       saved.add(toResponse(entity));
@@ -98,6 +102,7 @@ public class PatientMemoryService {
     UUID recordUuid = parseOptionalUuid(recordId, "INVALID_RECORD_ID", "recordId is invalid");
     LambdaQueryWrapper<PatientMemoryEntryEntity> query = scopedQuery()
         .eq(PatientMemoryEntryEntity::getStatus, "PROPOSED")
+        .eq(PatientMemoryEntryEntity::getIsCurrent, true)
         .orderByDesc(PatientMemoryEntryEntity::getUpdatedAt)
         .last("limit " + Math.max(1, Math.min(limit, 10)));
     if (profileUuid != null) {
@@ -118,10 +123,7 @@ public class PatientMemoryService {
       throw new BusinessException("MEMORY_ALREADY_REJECTED", "patient memory has already been rejected");
     }
     if (!"CONFIRMED".equals(entity.getStatus())) {
-      applyConfirmedMemory(entity);
-      entity.setStatus("CONFIRMED");
-      entity.setConfirmedAt(LocalDateTime.now());
-      entity.setUpdatedAt(LocalDateTime.now());
+      confirmEntity(entity);
       memoryMapper.updateById(entity);
     }
     return toResponse(entity);
@@ -134,6 +136,8 @@ public class PatientMemoryService {
       throw new BusinessException("MEMORY_ALREADY_CONFIRMED", "confirmed patient memory cannot be rejected");
     }
     entity.setStatus("REJECTED");
+    entity.setIsCurrent(false);
+    entity.setValidTo(LocalDateTime.now());
     entity.setRejectionReason(TextUtils.trimToNull(reason));
     entity.setUpdatedAt(LocalDateTime.now());
     memoryMapper.updateById(entity);
@@ -177,12 +181,83 @@ public class PatientMemoryService {
     entity.setConfidence(normalizeConfidence(input.confidence()));
     entity.setRiskLevel(normalizeRisk(input.riskLevel(), fieldPath));
     entity.setStatus("PROPOSED");
+    entity.setSupersedesMemoryId(parseOptionalUuid(
+        input.supersedesMemoryId(), "INVALID_SUPERSEDED_MEMORY_ID", "supersedesMemoryId is invalid"));
+    entity.setIsCurrent(true);
     entity.setCreatedAt(now);
     entity.setUpdatedAt(now);
     return entity;
   }
 
-  private void applyConfirmedMemory(PatientMemoryEntryEntity entity) {
+  public List<PatientMemoryEntryResponseData> listCurrentForAgent(String profileId, String recordId, int limit) {
+    UUID profileUuid = parseOptionalUuid(profileId, "INVALID_PROFILE_ID", "profileId is invalid");
+    UUID recordUuid = parseOptionalUuid(recordId, "INVALID_RECORD_ID", "recordId is invalid");
+    LambdaQueryWrapper<PatientMemoryEntryEntity> query = scopedQuery()
+        .eq(PatientMemoryEntryEntity::getStatus, "CONFIRMED")
+        .eq(PatientMemoryEntryEntity::getIsCurrent, true)
+        .orderByDesc(PatientMemoryEntryEntity::getUpdatedAt)
+        .last("limit " + Math.max(1, Math.min(limit, 20)));
+    if (profileUuid != null) {
+      query.eq(PatientMemoryEntryEntity::getDiseaseProfileId, profileUuid);
+    }
+    if (recordUuid != null) {
+      query.eq(PatientMemoryEntryEntity::getRecordId, recordUuid);
+    }
+    return memoryMapper.selectList(query).stream().map(this::toResponse).toList();
+  }
+
+  private void confirmEntity(PatientMemoryEntryEntity entity) {
+    LocalDateTime now = LocalDateTime.now();
+    PatientMemoryEntryEntity superseded = resolveSuperseded(entity);
+    if (superseded != null) {
+      superseded.setStatus("SUPERSEDED");
+      superseded.setIsCurrent(false);
+      superseded.setValidTo(now);
+      superseded.setUpdatedAt(now);
+      memoryMapper.updateById(superseded);
+    }
+    applyConfirmedMemory(entity, superseded);
+    entity.setStatus("CONFIRMED");
+    entity.setConfirmedAt(now);
+    entity.setValidFrom(now);
+    entity.setValidTo(null);
+    entity.setIsCurrent(true);
+    entity.setUpdatedAt(now);
+  }
+
+  private PatientMemoryEntryEntity resolveSuperseded(PatientMemoryEntryEntity entity) {
+    if (entity.getSupersedesMemoryId() == null) {
+      return null;
+    }
+    PatientMemoryEntryEntity existing = getScopedMemory(entity.getSupersedesMemoryId().toString());
+    if (!"CONFIRMED".equals(existing.getStatus())
+        || Boolean.FALSE.equals(existing.getIsCurrent())
+        || !entity.getFieldPath().equals(existing.getFieldPath())) {
+      throw new BusinessException("INVALID_MEMORY_SUPERSEDE", "only a current confirmed memory in the same field can be superseded");
+    }
+    return existing;
+  }
+
+  private boolean isDuplicate(PatientMemoryEntryEntity entity) {
+    LambdaQueryWrapper<PatientMemoryEntryEntity> query = scopedQuery()
+        .eq(PatientMemoryEntryEntity::getFieldPath, entity.getFieldPath())
+        .eq(PatientMemoryEntryEntity::getIsCurrent, true)
+        .in(PatientMemoryEntryEntity::getStatus, List.of("PROPOSED", "CONFIRMED"))
+        .last("limit 1");
+    if (entity.getValueText() == null) {
+      query.isNull(PatientMemoryEntryEntity::getValueText);
+    } else {
+      query.eq(PatientMemoryEntryEntity::getValueText, entity.getValueText());
+    }
+    if (entity.getValueJson() == null) {
+      query.isNull(PatientMemoryEntryEntity::getValueJson);
+    } else {
+      query.eq(PatientMemoryEntryEntity::getValueJson, entity.getValueJson());
+    }
+    return memoryMapper.selectCount(query) > 0;
+  }
+
+  private void applyConfirmedMemory(PatientMemoryEntryEntity entity, PatientMemoryEntryEntity superseded) {
     String fieldPath = entity.getFieldPath();
     if ("patientBaseline.recentSymptoms".equals(fieldPath)) {
       createSymptomFromMemory(entity);
@@ -192,10 +267,10 @@ public class PatientMemoryService {
       createTaskFromMemory(entity);
       return;
     }
-    mergeCareProfileMemory(entity);
+    mergeCareProfileMemory(entity, superseded);
   }
 
-  private void mergeCareProfileMemory(PatientMemoryEntryEntity entity) {
+  private void mergeCareProfileMemory(PatientMemoryEntryEntity entity, PatientMemoryEntryEntity superseded) {
     PatientCareProfileResponseData profile = patientCareService.getProfile();
     PatientCareProfileResponseData.BaselineSummary baseline = profile.patientBaseline();
     List<String> diagnosed = new ArrayList<>(baseline.diagnosedConditions());
@@ -210,6 +285,20 @@ public class PatientMemoryService {
         .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     String doctorInstructions = baseline.doctorInstructions();
     String value = memoryValueText(entity);
+    String oldValue = superseded == null ? null : memoryValueText(superseded);
+
+    if (oldValue != null) {
+      removeValue(diagnosed, oldValue);
+      removeValue(allergies, oldValue);
+      removeValue(abnormal, oldValue);
+      removeValue(goals, oldValue);
+      removeValue(redFlags, oldValue);
+      removeValue(personalContext, oldValue);
+      medications.removeIf(item -> item.name() != null && item.name().equalsIgnoreCase(oldValue));
+      if (doctorInstructions != null && doctorInstructions.equalsIgnoreCase(oldValue)) {
+        doctorInstructions = null;
+      }
+    }
 
     switch (entity.getFieldPath()) {
       case "patientBaseline.diagnosedConditions" -> addUnique(diagnosed, value);
@@ -312,12 +401,13 @@ public class PatientMemoryService {
   }
 
   private boolean shouldAutoConfirm(PatientMemoryEntryEntity entity) {
-    if (!"LOW".equals(entity.getRiskLevel())) {
+    if (!"LOW".equals(entity.getRiskLevel())
+        || entity.getConfidence() == null
+        || entity.getConfidence() < autoConfirmConfidence
+        || TextUtils.trimToNull(entity.getEvidenceText()) == null) {
       return false;
     }
-    return "careGoals".equals(entity.getFieldPath())
-        || "redFlagNotes".equals(entity.getFieldPath())
-        || "patientBaseline.recentSymptoms".equals(entity.getFieldPath());
+    return "personalContext".equals(entity.getFieldPath());
   }
 
   private PatientMemoryEntryResponseData toResponse(PatientMemoryEntryEntity entity) {
@@ -338,6 +428,10 @@ public class PatientMemoryService {
         entity.getConversationThreadId(),
         entity.getTurnId(),
         entity.getRejectionReason(),
+        entity.getSupersedesMemoryId() == null ? null : entity.getSupersedesMemoryId().toString(),
+        entity.getValidFrom() == null ? null : String.valueOf(entity.getValidFrom()),
+        entity.getValidTo() == null ? null : String.valueOf(entity.getValidTo()),
+        entity.getIsCurrent(),
         entity.getConfirmedAt() == null ? null : String.valueOf(entity.getConfirmedAt()),
         entity.getCreatedAt() == null ? null : String.valueOf(entity.getCreatedAt()),
         entity.getUpdatedAt() == null ? null : String.valueOf(entity.getUpdatedAt()));
@@ -424,19 +518,29 @@ public class PatientMemoryService {
   }
 
   private String normalizeRisk(String rawRisk, String fieldPath) {
+    String floor = switch (fieldPath) {
+      case "patientBaseline.diagnosedConditions", "patientBaseline.allergies", "currentMedications",
+           "patientBaseline.doctorInstructions", "redFlagNotes" -> "HIGH";
+      case "followUpTasks", "patientBaseline.abnormalBaseline", "patientBaseline.recentSymptoms",
+           "careGoals" -> "MEDIUM";
+      default -> "LOW";
+    };
     String risk = TextUtils.trimToNull(rawRisk);
     if (risk != null) {
       String upper = risk.trim().toUpperCase(Locale.ROOT);
       if (List.of("LOW", "MEDIUM", "HIGH").contains(upper)) {
-        return upper;
+        return riskRank(upper) < riskRank(floor) ? floor : upper;
       }
     }
-    return switch (fieldPath) {
-      case "patientBaseline.diagnosedConditions", "patientBaseline.allergies", "currentMedications",
-           "patientBaseline.doctorInstructions" -> "HIGH";
-      case "followUpTasks", "patientBaseline.abnormalBaseline" -> "MEDIUM";
-      default -> "LOW";
-    };
+    return floor;
+  }
+
+  private void removeValue(List<String> values, String value) {
+    values.removeIf(item -> item != null && item.equalsIgnoreCase(value));
+  }
+
+  private int riskRank(String value) {
+    return "HIGH".equals(value) ? 3 : "MEDIUM".equals(value) ? 2 : 1;
   }
 
   private String normalizeStatusFilter(String rawStatus) {
@@ -445,8 +549,8 @@ public class PatientMemoryService {
       return null;
     }
     String upper = status.toUpperCase(Locale.ROOT);
-    if (!List.of("PROPOSED", "CONFIRMED", "REJECTED").contains(upper)) {
-      throw new BusinessException("INVALID_MEMORY_STATUS", "status must be PROPOSED, CONFIRMED, or REJECTED");
+    if (!List.of("PROPOSED", "CONFIRMED", "REJECTED", "SUPERSEDED").contains(upper)) {
+      throw new BusinessException("INVALID_MEMORY_STATUS", "invalid memory status");
     }
     return upper;
   }

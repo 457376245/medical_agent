@@ -69,6 +69,7 @@ def build_context_system_message(
     follow_up_tasks = active_context_bundle.get("follow_up_tasks")
     red_flag_signals = active_context_bundle.get("red_flag_signals")
     evidence_refs = active_context_bundle.get("evidence_refs")
+    evidence_ledger = active_context_bundle.get("evidence_ledger")
     pending_memories = active_context_bundle.get("pending_memories")
     warnings = active_context_bundle.get("warnings")
 
@@ -386,6 +387,28 @@ def build_context_system_message(
             has_evidence_refs = True
             lines.append(f"- 证据来源：{'；'.join(rendered_evidence)}")
 
+    if isinstance(evidence_ledger, list):
+        rendered_ledger: list[str] = []
+        for item in evidence_ledger[:24]:
+            if not isinstance(item, Mapping):
+                continue
+            verification = str(item.get("verification_status") or "").strip().upper()
+            if verification not in {"VERIFIED", "CONFIRMED", "CURRENT"}:
+                continue
+            evidence_id = str(item.get("evidence_id") or "").strip()
+            summary = str(item.get("summary") or "").strip()
+            source_type = str(item.get("source_type") or "").strip()
+            source_ref = str(item.get("source_ref") or "").strip()
+            observed_at = str(item.get("observed_at") or "").strip()
+            updated_at = str(item.get("updated_at") or "").strip()
+            if not evidence_id or not summary:
+                continue
+            meta = [value for value in (source_type, source_ref, observed_at or updated_at, verification) if value]
+            rendered_ledger.append(f"[{evidence_id}] {summary}（{' / '.join(meta)}）")
+        if rendered_ledger:
+            has_evidence_refs = True
+            lines.append("- 可引用证据：" + "；".join(rendered_ledger))
+
     if isinstance(pending_memories, list):
         rendered_memories: list[str] = []
         for item in pending_memories[:3]:
@@ -496,6 +519,7 @@ def build_context_system_message(
     if has_evidence_refs:
         guidance.append(
             "[提示] 回答中请主动区分规则结论、趋势推断和长期画像记忆，"
+            "关键医学事实必须引用上方稳定 evidence_id（例如 [E-xxxx]），"
             "并用“已知事实 / 可能解释 / 建议动作”的结构组织内容。"
         )
 

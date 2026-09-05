@@ -8,6 +8,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from app.auth import AgentScope
+
 ContextStatus = Literal["ready", "partial", "unavailable"]
 
 
@@ -23,7 +25,8 @@ def _txt(value: Any) -> str:
 
 
 def _opt(value: Any) -> str | None:
-    return _txt(value) or None
+    text = _txt(value)
+    return (text[:2000] + "…" if len(text) > 2000 else text) or None
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -175,6 +178,22 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "nature": _opt(item.get("nature")),
         }
 
+    def map_ledger_evidence(item: dict[str, Any]) -> dict[str, Any] | None:
+        evidence_id = _opt(item.get("evidenceId"))
+        summary_text = _opt(item.get("summary"))
+        if not evidence_id or not summary_text:
+            return None
+        return {
+            "evidence_id": evidence_id,
+            "category": _opt(item.get("category")),
+            "summary": summary_text,
+            "source_type": _opt(item.get("sourceType")),
+            "source_ref": _opt(item.get("sourceRef")),
+            "observed_at": _opt(item.get("observedAt")),
+            "updated_at": _opt(item.get("updatedAt")),
+            "verification_status": _opt(item.get("verificationStatus")),
+        }
+
     def map_ultrasound_evidence(item: dict[str, Any]) -> dict[str, Any] | None:
         text = _opt(item.get("text"))
         if not text:
@@ -249,10 +268,19 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
             "evidence_text": _opt(item.get("evidenceText")),
             "risk_level": _opt(item.get("riskLevel")),
             "confidence": item.get("confidence"),
+            "status": _opt(item.get("status")),
+            "source_type": _opt(item.get("sourceType")),
+            "source_ref": _opt(item.get("sourceRef")),
+            "valid_from": _opt(item.get("validFrom")),
+            "valid_to": _opt(item.get("validTo")),
+            "is_current": item.get("isCurrent"),
+            "supersedes_memory_id": _opt(item.get("supersedesMemoryId")),
         }
 
     return {
         "context_status": _status(payload.get("contextStatus")),
+        "context_revision": _opt(payload.get("contextRevision")),
+        "generated_at": _opt(payload.get("generatedAt")),
         "disease_profile": {
             "id": _opt(profile.get("id")) or profile_id,
             "name": _opt(profile.get("name")),
@@ -339,6 +367,12 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
         "follow_up_tasks": _map_slice(_dict_list(payload.get("followUpTasks")), limit=5, mapper=map_task),
         "red_flag_signals": _map_slice(_dict_list(payload.get("redFlagSignals")), limit=4, mapper=map_risk_signal),
         "evidence_refs": _map_slice(_dict_list(payload.get("evidenceRefs")), limit=6, mapper=map_evidence),
+        "evidence_ledger": _map_slice(
+            _dict_list(payload.get("evidenceLedger")), limit=32, mapper=map_ledger_evidence
+        ),
+        "confirmed_memories": _map_slice(
+            _dict_list(payload.get("confirmedMemories")), limit=10, mapper=map_pending_memory
+        ),
         "pending_memories": _map_slice(_dict_list(payload.get("pendingMemories")), limit=5, mapper=map_pending_memory),
         "warnings": [_txt(item) for item in payload.get("warnings", []) if _txt(item)],
     }
@@ -347,6 +381,8 @@ def _normalize_bundle(payload: dict[str, Any], *, profile_id: str) -> dict[str, 
 def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict[str, Any]:
     return {
         "context_status": "unavailable",
+        "context_revision": None,
+        "generated_at": None,
         "disease_profile": {"id": profile_id, "name": None, "record_count": 0, "latest_record_at": None},
         "selected_record": None,
         "recent_records": [],
@@ -365,6 +401,8 @@ def _unavailable(profile_id: str, message: str, code: str | None = None) -> dict
         "follow_up_tasks": [],
         "red_flag_signals": [],
         "evidence_refs": [],
+        "evidence_ledger": [],
+        "confirmed_memories": [],
         "pending_memories": [],
         "warnings": [message],
         "error": {"code": code, "message": message},
@@ -394,7 +432,7 @@ class DiseaseProfileContextClient:
         *,
         disease_profile_id: str,
         record_id: str | None = None,
-        patient_id: str | None = None,
+        scope: AgentScope | None = None,
     ) -> dict[str, Any]:
         profile_id = _txt(disease_profile_id)
         query = f"?{urllib.parse.urlencode({'recordId': _txt(record_id)})}" if _txt(record_id) else ""
@@ -405,8 +443,8 @@ class DiseaseProfileContextClient:
         headers = {"Accept": "application/json"}
         if self._api_key:
             headers[self._api_key_header] = self._api_key
-        if patient_id and _txt(patient_id):
-            headers["X-Patient-Id"] = _txt(patient_id)
+        if scope is not None:
+            headers.update(scope.internal_headers())
 
         try:
             payload = _http_get_json(url, headers=headers, timeout_seconds=self._timeout_seconds)

@@ -10,6 +10,7 @@ import urllib.request
 from typing import Any
 
 from app.utils import normalize_openai_base_url
+from app.auth import AgentScope
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
                         "evidenceText": {"type": ["string", "null"]},
                         "confidence": {"type": "number"},
                         "riskLevel": {"type": "string"},
+                        "supersedesMemoryId": {"type": ["string", "null"]},
                     },
                     "required": [
                         "memoryType",
@@ -58,6 +60,7 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
                         "evidenceText",
                         "confidence",
                         "riskLevel",
+                        "supersedesMemoryId",
                     ],
                     "additionalProperties": False,
                 },
@@ -114,8 +117,10 @@ class PatientMemoryExtractionService:
         user_message: str,
         assistant_message: str,
         metadata: dict[str, Any],
+        scope: AgentScope,
     ) -> int:
         """抽取并提交画像候选；返回提交条数。失败由调用方记录，不抛给聊天流。"""
+        del assistant_message
         if not self.configured:
             return 0
         disease_profile_id = _text(metadata.get("disease_profile_id"))
@@ -123,7 +128,6 @@ class PatientMemoryExtractionService:
             return 0
         entries = self._extract_entries(
             user_message=user_message,
-            assistant_message=assistant_message,
             metadata=metadata,
         )
         if not entries:
@@ -135,18 +139,16 @@ class PatientMemoryExtractionService:
             "recordId": _text(metadata.get("record_id")) or None,
             "entries": entries,
         }
-        return self._submit_payload(payload, patient_id=_text(metadata.get("patient_id")))
+        return self._submit_payload(payload, scope=scope)
 
     def _extract_entries(
         self,
         *,
         user_message: str,
-        assistant_message: str,
         metadata: dict[str, Any],
     ) -> list[dict[str, Any]]:
         prompt = {
             "userMessage": user_message,
-            "assistantMessage": assistant_message,
             "metadata": {
                 "diseaseProfileId": _text(metadata.get("disease_profile_id")),
                 "recordId": _text(metadata.get("record_id")),
@@ -159,9 +161,9 @@ class PatientMemoryExtractionService:
                 "content": (
                     "你是医疗长期画像记忆抽取器。只抽取用户明确提供或明确确认的信息，"
                     "不要把助手建议、推测、教育性解释当成患者事实。"
-                    "诊断、过敏、当前用药、医生交代事项属于 HIGH 风险；"
-                    "随访任务和异常基线属于 MEDIUM；症状、健康目标、红旗提醒、生活方式、照护情况、"
-                    "表达偏好等 personalContext 可为 LOW。"
+                    "诊断、过敏、当前用药、医生交代事项、红旗提醒属于 HIGH 风险；"
+                    "随访任务、异常基线、症状和健康目标属于 MEDIUM；"
+                    "只有生活方式、照护情况、表达偏好等 personalContext 可为 LOW。"
                     "fieldPath 只能使用允许集合："
                     + "、".join(sorted(_SUPPORTED_FIELD_PATHS))
                     + "。如果没有可靠候选，返回空 entries。"
@@ -204,12 +206,11 @@ class PatientMemoryExtractionService:
         with urllib.request.urlopen(request, timeout=self._timeout_seconds) as response:
             return _extract_chat_content(response.read().decode("utf-8") or "{}")
 
-    def _submit_payload(self, payload: dict[str, Any], *, patient_id: str | None) -> int:
+    def _submit_payload(self, payload: dict[str, Any], *, scope: AgentScope) -> int:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if self._java_api_key:
             headers[self._java_api_key_header] = self._java_api_key
-        if patient_id:
-            headers["X-Patient-Id"] = patient_id
+        headers.update(scope.internal_headers())
         request = urllib.request.Request(
             url=self._submit_url,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -245,6 +246,7 @@ def _normalize_entry(raw: Any) -> dict[str, Any] | None:
         "evidenceText": _text(raw.get("evidenceText")),
         "confidence": _confidence(raw.get("confidence")),
         "riskLevel": _risk(raw.get("riskLevel"), field_path),
+        "supersedesMemoryId": _text(raw.get("supersedesMemoryId")) or None,
     }
 
 
@@ -262,18 +264,25 @@ def _default_type(field_path: str) -> str:
 
 def _risk(value: Any, field_path: str) -> str:
     normalized = _text(value).upper()
-    if normalized in {"LOW", "MEDIUM", "HIGH"}:
-        return normalized
     if field_path in {
         "patientBaseline.diagnosedConditions",
         "patientBaseline.allergies",
         "currentMedications",
         "patientBaseline.doctorInstructions",
+        "redFlagNotes",
     }:
-        return "HIGH"
-    if field_path in {"followUpTasks", "patientBaseline.abnormalBaseline"}:
-        return "MEDIUM"
-    return "LOW"
+        floor = "HIGH"
+    elif field_path in {
+        "followUpTasks",
+        "patientBaseline.abnormalBaseline",
+        "patientBaseline.recentSymptoms",
+        "careGoals",
+    }:
+        floor = "MEDIUM"
+    else:
+        floor = "LOW"
+    ranks = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+    return normalized if ranks.get(normalized, 0) >= ranks[floor] else floor
 
 
 def _confidence(value: Any) -> float:

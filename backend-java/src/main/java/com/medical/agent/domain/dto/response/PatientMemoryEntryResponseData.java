@@ -17,6 +17,10 @@ public record PatientMemoryEntryResponseData(
     String conversationThreadId,
     String turnId,
     String rejectionReason,
+    String supersedesMemoryId,
+    String validFrom,
+    String validTo,
+    Boolean isCurrent,
     String confirmedAt,
     String createdAt,
     String updatedAt) {

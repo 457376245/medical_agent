@@ -41,6 +41,7 @@ from app.providers.llm import LLMService
 from app.providers.storage import OSSStorageService
 from app.services.disease_profile_context import DiseaseProfileContextClient
 from app.services.patient_memory import PatientMemoryExtractionService
+from app.auth import AgentScopeClient
 from app.utils import configure_llm_proxy_env, extract_error_codes, read_int_env, to_bool
 from app.workers.generate_worker import GenerateWorker
 from app.workers.parse_worker import ParseWorker
@@ -170,6 +171,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         timeout_seconds=PATIENT_MEMORY_EXTRACTION_TIMEOUT_SECONDS,
         java_api_key=JAVA_AGENT_API_KEY,
         java_api_key_header=JAVA_AGENT_API_KEY_HEADER,
+    )
+    app.state.agent_scope_client = AgentScopeClient(
+        base_url=JAVA_API_BASE_URL,
+        context_path=JAVA_AGENT_CONTEXT_PATH,
+        timeout_seconds=JAVA_AGENT_CONTEXT_TIMEOUT_SECONDS,
+        api_key=JAVA_AGENT_API_KEY,
+        api_key_header=JAVA_AGENT_API_KEY_HEADER,
     )
 
     LOGGER.info("Agent runtime and memory stores initialised")

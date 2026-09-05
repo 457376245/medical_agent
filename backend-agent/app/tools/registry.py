@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -117,6 +118,14 @@ def _to_agents_tool(tool: ToolSpec) -> FunctionTool:
         if isinstance(failed_keys, set) and key in failed_keys:
             return "Error: 该工具使用相同参数已失败，请向用户说明情况并提供替代建议。"
 
+        if tool.name == "parse_document":
+            allowed = getattr(run_context, "allowed_attachment_keys", frozenset())
+            object_key = str(args.get("object_key") or "").strip()
+            if object_key not in allowed:
+                _record_tool_diagnostic(run_context, tool.name, "denied", 0.0)
+                return "Error: 未授权访问该附件。只能解析用户本轮明确提供的附件。"
+
+        started = time.perf_counter()
         try:
             result = await asyncio.to_thread(tool.handler, **args)
         except TypeError as exc:
@@ -125,9 +134,16 @@ def _to_agents_tool(tool: ToolSpec) -> FunctionTool:
             result = f"Error: 工具执行失败 — {exc}"
 
         content = str(result)
+        status = "error" if content.strip().startswith("Error:") else "ok"
+        _record_tool_diagnostic(
+            run_context,
+            tool.name,
+            status,
+            (time.perf_counter() - started) * 1000,
+        )
         if content.strip().startswith("Error:") and isinstance(failed_keys, set):
             failed_keys.add(key)
-        return content
+        return content if len(content) <= 12_000 else content[:12_000] + "\n[工具输出已截断]"
 
     return FunctionTool(
         name=tool.name,
@@ -154,3 +170,12 @@ def _hash_tool_args(value: dict[str, Any]) -> str:
     import hashlib
 
     return hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:12]
+
+
+def _record_tool_diagnostic(run_context: Any, name: str, status: str, latency_ms: float) -> None:
+    diagnostics = getattr(run_context, "diagnostics", None)
+    if not isinstance(diagnostics, dict):
+        return
+    tools = diagnostics.setdefault("tools", [])
+    if isinstance(tools, list):
+        tools.append({"name": name, "status": status, "latency_ms": round(latency_ms, 3)})

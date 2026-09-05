@@ -9,15 +9,20 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn
+from app.auth import AgentScope, require_agent_scope
 
 LOGGER = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
+router = APIRouter(
+    prefix="/api/v1/sessions",
+    tags=["sessions"],
+    dependencies=[Depends(require_agent_scope)],
+)
 
 
 class SessionUpdateRequest(BaseModel):
@@ -100,10 +105,12 @@ async def list_sessions(
 ) -> dict[str, Any]:
     """列出已索引的会话，可按疾病档案筛选。"""
     memory_store = getattr(request.app.state, "memory_store", None)
+    scope: AgentScope = request.state.agent_scope
     if memory_store is None:
         return {"sessions": [], "count": 0}
 
     sessions = await memory_store.list_agent_sessions(
+        owner_key=scope.owner_key,
         disease_profile_id=disease_profile_id,
         limit=50,
     )
@@ -117,6 +124,12 @@ async def list_sessions(
 async def create_session(request: Request) -> dict[str, Any]:
     """创建新的对话会话并返回其 thread_id。"""
     thread_id = new_ordered_id()
+    scope: AgentScope = request.state.agent_scope
+    memory_store = getattr(request.app.state, "memory_store", None)
+    if memory_store is not None:
+        await memory_store.upsert_agent_session(
+            AgentSessionRecord(thread_id=thread_id, owner_key=scope.owner_key)
+        )
     LOGGER.info("Session created: %s", thread_id)
     return {"thread_id": thread_id}
 
@@ -128,10 +141,11 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
     优先从会话索引读取；索引缺失时尝试读取 SDK session 状态。
     """
     memory_store = getattr(request.app.state, "memory_store", None)
+    scope: AgentScope = request.state.agent_scope
     if memory_store is not None:
-        indexed = await memory_store.get_agent_session(thread_id)
+        indexed = await memory_store.get_agent_session(thread_id, scope.owner_key)
         if indexed is not None:
-            turns = await memory_store.list_agent_turns(thread_id)
+            turns = await memory_store.list_agent_turns(thread_id, scope.owner_key)
             messages = _flatten_turn_messages(turns)
             return {
                 **_serialise_session(indexed),
@@ -142,40 +156,20 @@ async def get_session(thread_id: str, request: Request) -> dict[str, Any]:
                 "found": True,
             }
 
-    try:
-        runtime = getattr(request.app.state, "agent_runtime", None)
-        items = await runtime.get_session_items(thread_id) if runtime is not None else []
-        if not items:
-            return {"thread_id": thread_id, "messages": [], "found": False}
-
-        serialised = []
-        for item in items:
-            role = str(item.get("role") or "").strip()
-            if role not in {"user", "assistant"}:
-                continue
-            content = _session_item_content(item.get("content"))
-            if content:
-                serialised.append({"role": role, "content": content})
-
-        return {
-            "thread_id": thread_id,
-            "messages": serialised,
-            "message_count": len(serialised),
-            "found": True,
-        }
-    except Exception as exc:
-        LOGGER.warning("Failed to load session %s: %s", thread_id, exc)
-        return {"thread_id": thread_id, "messages": [], "found": False}
+    return {"thread_id": thread_id, "messages": [], "found": False}
 
 
 @router.patch("/{thread_id}")
 async def update_session(thread_id: str, body: SessionUpdateRequest, request: Request) -> dict[str, Any]:
     """更新会话元数据（如标题）。"""
     memory_store = getattr(request.app.state, "memory_store", None)
+    scope: AgentScope = request.state.agent_scope
     if memory_store is None:
         return {"thread_id": thread_id, "updated": False, "error": "memory store unavailable"}
 
-    await memory_store.update_agent_session_title(thread_id, body.title)
+    if await memory_store.get_agent_session(thread_id, scope.owner_key) is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    await memory_store.update_agent_session_title(thread_id, scope.owner_key, body.title)
     LOGGER.info("Session renamed: %s -> %s", thread_id, body.title)
     return {"thread_id": thread_id, "title": body.title, "updated": True}
 
@@ -189,15 +183,15 @@ async def delete_session(thread_id: str, request: Request) -> dict[str, Any]:
     """
     LOGGER.info("Session delete requested: %s", thread_id)
     memory_store = getattr(request.app.state, "memory_store", None)
+    scope: AgentScope = request.state.agent_scope
     if memory_store is not None:
-        try:
-            await memory_store.delete_agent_session(thread_id)
-        except Exception as exc:
-            LOGGER.warning("Failed to purge indexed session %s: %s", thread_id, exc)
+        if await memory_store.get_agent_session(thread_id, scope.owner_key) is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        await memory_store.delete_agent_session(thread_id, scope.owner_key)
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is not None:
         try:
-            await runtime.clear_session(thread_id)
+            await runtime.clear_session(thread_id, scope.owner_key)
         except Exception as exc:
             LOGGER.warning("Failed to purge SDK session %s: %s", thread_id, exc)
     return {"thread_id": thread_id, "deleted": True}

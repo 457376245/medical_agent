@@ -317,7 +317,7 @@ export function useAgentWorkbench({
           return;
         }
 
-        if (event.event === "tool_call" || event.event === "tool_result" || event.event === "error") {
+        if (event.event === "tool_call" || event.event === "tool_result" || event.event === "error" || event.event === "evaluation") {
           const traceEvent: AgentTraceEvent = {
             event: event.event as AgentTraceEvent["event"],
             tool: typeof event.data.tool === "string" ? event.data.tool : undefined,

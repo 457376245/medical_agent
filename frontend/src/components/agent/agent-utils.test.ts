@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMessagesFromTurns,
   createSseEventParser,
+  normalizeAnswerEvaluation,
   getSessionDisplayTitle,
   normalizeSessionDetail,
   toRequestMetadata,

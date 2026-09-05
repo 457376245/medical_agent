@@ -15,12 +15,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.agent.context import context_signature_from_metadata
+from app.agent.evaluator import build_grounded_evaluation_context, evaluate_answer
 from app.agent.events import AgentStreamEvent
 from app.api.tool_events import sanitize_tool_input, sanitize_tool_output
+from app.auth import AgentScope, require_agent_scope
 from app.ids import new_ordered_id
 from app.memory.models import AgentSessionRecord, AgentSessionTurn, AgentTraceEvent
 from app.schemas.chat import ChatRequest
@@ -114,7 +116,11 @@ async def _next_event(aiter: Any) -> Any:
     except StopAsyncIteration:
         return _STREAM_END
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(
+    prefix="/api/v1/chat",
+    tags=["chat"],
+    dependencies=[Depends(require_agent_scope)],
+)
 
 
 def _sse_event(event: str, data: dict[str, Any]) -> str:
@@ -174,6 +180,7 @@ def _public_turn_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 def _session_from_metadata(
     *,
     thread_id: str,
+    owner_key: str,
     existing: AgentSessionRecord | None,
     user_message: str,
     assistant_message: str,
@@ -200,6 +207,7 @@ def _session_from_metadata(
 
     return AgentSessionRecord(
         thread_id=thread_id,
+        owner_key=owner_key,
         disease_profile_id=pick("disease_profile_id", existing.disease_profile_id if existing else None),
         disease_name=pick("disease_name", existing.disease_name if existing else None),
         record_id=pick("record_id", existing.record_id if existing else None),
@@ -221,6 +229,7 @@ def _session_from_metadata(
 @dataclass
 class ChatTurnContext:
     thread_id: str
+    scope: AgentScope
     turn_metadata: dict[str, Any]
     turn_index: int
 
@@ -230,6 +239,7 @@ class ChatStreamState:
     full_content: list[str] = field(default_factory=list)
     trace_events: list[AgentTraceEvent] = field(default_factory=list)
     error_message: str | None = None
+    evaluation_payload: dict[str, Any] | None = None
     pending_next: asyncio.Task[Any] | None = None
     stream_aiter: AsyncIterator[Any] | None = None
 
@@ -240,37 +250,45 @@ async def _prepare_chat_context(
     request: Request,
     memory_store: Any,
     thread_id: str,
+    scope: AgentScope,
 ) -> ChatTurnContext:
     turn_metadata: dict[str, Any] = body.metadata.to_runtime_metadata()
+    for identity_key in ("tenant_id", "user_id", "patient_id", "owner_key"):
+        turn_metadata.pop(identity_key, None)
     if body.attachments:
+        requested_keys = [attachment.object_key for attachment in body.attachments]
+        authorized_keys = await asyncio.to_thread(
+            request.app.state.agent_scope_client.authorize_attachments,
+            scope=scope,
+            object_keys=requested_keys,
+        )
+        if any(key not in authorized_keys for key in requested_keys):
+            raise HTTPException(status_code=403, detail="attachment is not authorized for this patient")
         turn_metadata["attachments"] = [
             attachment.model_dump(exclude_none=True) for attachment in body.attachments
         ]
 
-    patient_id_header = request.headers.get("X-Patient-Id", "").strip()
-    if patient_id_header and not turn_metadata.get("patient_id"):
-        turn_metadata["patient_id"] = patient_id_header
-
     existing_session: AgentSessionRecord | None = None
     turn_index = 1
     if memory_store is not None:
-        try:
-            existing_session = await memory_store.get_agent_session(thread_id)
-            turn_index = (existing_session.turn_count if existing_session is not None else 0) + 1
-            await memory_store.upsert_agent_session(
-                _session_from_metadata(
-                    thread_id=thread_id,
-                    existing=existing_session,
-                    user_message=body.message,
-                    assistant_message="",
-                    metadata=turn_metadata,
-                )
+        existing_session = await memory_store.get_agent_session(thread_id, scope.owner_key)
+        if body.thread_id and existing_session is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        turn_index = (existing_session.turn_count if existing_session is not None else 0) + 1
+        await memory_store.upsert_agent_session(
+            _session_from_metadata(
+                thread_id=thread_id,
+                owner_key=scope.owner_key,
+                existing=existing_session,
+                user_message=body.message,
+                assistant_message="",
+                metadata=turn_metadata,
             )
-        except Exception as exc:
-            LOGGER.warning("Failed to initialise session index for %s: %s", thread_id, exc)
+        )
 
     return ChatTurnContext(
         thread_id=thread_id,
+        scope=scope,
         turn_metadata=turn_metadata,
         turn_index=turn_index,
     )
@@ -280,10 +298,13 @@ async def _enrich_metadata_from_runtime_state(
     *,
     runtime: Any,
     thread_id: str,
+    owner_key: str,
     turn_metadata: dict[str, Any],
+    trace_events: list[AgentTraceEvent],
+    evaluation_payload: dict[str, Any] | None,
 ) -> None:
     try:
-        latest_state = await runtime.get_state(thread_id)
+        latest_state = await runtime.get_state(thread_id, owner_key)
         if latest_state is None:
             return
         state_signature = latest_state.active_context_signature
@@ -294,6 +315,14 @@ async def _enrich_metadata_from_runtime_state(
             turn_metadata["context_signature"] = context_signature_from_metadata(turn_metadata)
         if state_status is not None and str(state_status).strip():
             turn_metadata["context_status"] = str(state_status).strip().lower()
+        if latest_state.last_diagnostics:
+            diagnostics = dict(latest_state.last_diagnostics)
+            diagnostics["evaluator"] = {
+                "status": (evaluation_payload or {}).get("status", "unavailable"),
+                "rubric_version": (evaluation_payload or {}).get("rubric_version"),
+                "latency_ms": (evaluation_payload or {}).get("latency_ms", 0.0),
+            }
+            trace_events.append(AgentTraceEvent(event="diagnostics", data=diagnostics))
     except Exception as exc:
         LOGGER.debug("Failed to read final agent state for %s: %s", thread_id, exc)
 
@@ -357,6 +386,7 @@ async def _submit_patient_memory_extraction(
     thread_id: str,
     saved_turn: AgentSessionTurn,
     turn_metadata: dict[str, Any],
+    scope: AgentScope,
 ) -> None:
     patient_memory_extractor = getattr(request.app.state, "patient_memory_extractor", None)
     if patient_memory_extractor is None or not saved_turn.assistant_message.strip():
@@ -369,6 +399,7 @@ async def _submit_patient_memory_extraction(
             user_message=saved_turn.user_message,
             assistant_message=saved_turn.assistant_message,
             metadata=turn_metadata,
+            scope=scope,
         )
         if submitted_count:
             LOGGER.info(
@@ -390,6 +421,7 @@ async def _persist_stream_result(
     user_message: str,
     stream_state: ChatStreamState,
     turn_metadata: dict[str, Any],
+    scope: AgentScope,
 ) -> None:
     assistant_message = "".join(stream_state.full_content)
     should_persist = memory_store is not None and (
@@ -401,12 +433,16 @@ async def _persist_stream_result(
         await _enrich_metadata_from_runtime_state(
             runtime=runtime,
             thread_id=thread_id,
+            owner_key=scope.owner_key,
             turn_metadata=turn_metadata,
+            trace_events=stream_state.trace_events,
+            evaluation_payload=stream_state.evaluation_payload,
         )
-        saved_existing = await memory_store.get_agent_session(thread_id)
+        saved_existing = await memory_store.get_agent_session(thread_id, scope.owner_key)
         saved_turn = await memory_store.save_agent_turn(
             AgentSessionTurn(
                 thread_id=thread_id,
+                owner_key=scope.owner_key,
                 turn_index=turn_index,
                 user_message=user_message,
                 assistant_message=assistant_message,
@@ -417,6 +453,7 @@ async def _persist_stream_result(
         )
         updated_session = _session_from_metadata(
             thread_id=thread_id,
+            owner_key=scope.owner_key,
             existing=saved_existing,
             user_message=saved_turn.user_message,
             assistant_message=saved_turn.assistant_message,
@@ -429,6 +466,7 @@ async def _persist_stream_result(
             thread_id=thread_id,
             saved_turn=saved_turn,
             turn_metadata=turn_metadata,
+            scope=scope,
         )
     except Exception as exc:
         LOGGER.warning("Failed to persist turn for %s: %s", thread_id, exc)
@@ -457,19 +495,20 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
     """
     runtime = request.app.state.agent_runtime
     memory_store = getattr(request.app.state, "memory_store", None)
+    scope: AgentScope = request.state.agent_scope
     thread_id = body.thread_id or new_ordered_id()
+    turn_context = await _prepare_chat_context(
+        body=body,
+        request=request,
+        memory_store=memory_store,
+        thread_id=thread_id,
+        scope=scope,
+    )
+    turn_metadata = turn_context.turn_metadata
+    turn_index = turn_context.turn_index
 
     async def event_stream() -> AsyncGenerator[str, None]:
         async with _thread_stream_lock(request, thread_id):
-            turn_context = await _prepare_chat_context(
-                body=body,
-                request=request,
-                memory_store=memory_store,
-                thread_id=thread_id,
-            )
-            turn_metadata = turn_context.turn_metadata
-            turn_index = turn_context.turn_index
-
             yield _sse_event("session", {"thread_id": thread_id})
 
             stream_state = ChatStreamState()
@@ -479,6 +518,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                     thread_id=thread_id,
                     user_message=body.message,
                     metadata=turn_metadata,
+                    scope=scope,
                 ).__aiter__()
 
                 while True:
@@ -509,11 +549,30 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                     ):
                         yield chunk
 
+                assistant_message = "".join(stream_state.full_content)
+                evaluation_state = await runtime.get_state(thread_id, scope.owner_key)
+                stream_state.evaluation_payload = await evaluate_answer(
+                    user_message=body.message,
+                    assistant_answer=assistant_message,
+                    metadata=turn_metadata,
+                    grounded_context=build_grounded_evaluation_context(
+                        evaluation_state.active_context_bundle if evaluation_state else None,
+                        evaluation_state.active_context_status if evaluation_state else None,
+                    ),
+                )
+                stream_state.trace_events.append(
+                    AgentTraceEvent(
+                        event="evaluation",
+                        data=stream_state.evaluation_payload,
+                    )
+                )
+                yield _sse_event("evaluation", stream_state.evaluation_payload)
+
                 yield _sse_event(
                     "done",
                     {
                         "thread_id": thread_id,
-                        "content": "".join(stream_state.full_content),
+                        "content": assistant_message,
                     },
                 )
 
@@ -545,6 +604,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                     user_message=body.message,
                     stream_state=stream_state,
                     turn_metadata=turn_metadata,
+                    scope=scope,
                 )
 
     return StreamingResponse(

@@ -159,7 +159,9 @@ class PatientCareControllerTest {
     PatientMemoryEntryResponseData memory = new PatientMemoryEntryResponseData(
         "memory-1", "MEDICATION", "currentMedications", "二甲双胍", null,
         "用户说一直服用二甲双胍", "CONVERSATION", null, 0.9, "HIGH", "PROPOSED",
-        "profile-1", null, "thread-1", "turn-1", null, null, "2026-05-16T10:00:00", "2026-05-16T10:00:00");
+        "profile-1", null, "thread-1", "turn-1", null,
+        null, null, null, true,
+        null, "2026-05-16T10:00:00", "2026-05-16T10:00:00");
     when(patientMemoryService.listMemories("PROPOSED", 10)).thenReturn(new PatientMemoryEntryListResponseData(List.of(memory)));
 
     ApiResponse<PatientMemoryEntryListResponseData> response = controller.listMemories("PROPOSED", 10);
@@ -173,7 +175,9 @@ class PatientCareControllerTest {
     PatientMemoryEntryResponseData memory = new PatientMemoryEntryResponseData(
         "memory-1", "CARE_PROFILE", "careGoals", "每周运动三次", null,
         "用户确认目标", "CONVERSATION", null, 0.8, "LOW", "CONFIRMED",
-        null, null, "thread-1", "turn-1", null, "2026-05-16T10:00:00", "2026-05-16T10:00:00", "2026-05-16T10:00:00");
+        null, null, "thread-1", "turn-1", null,
+        null, "2026-05-16T10:00:00", null, true,
+        "2026-05-16T10:00:00", "2026-05-16T10:00:00", "2026-05-16T10:00:00");
     when(patientMemoryService.confirmMemory("memory-1")).thenReturn(memory);
 
     ApiResponse<PatientMemoryEntryResponseData> response = controller.confirmMemory("memory-1");

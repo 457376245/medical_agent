@@ -44,7 +44,7 @@ class AgentPatientMemoryControllerTest {
     ApiResponse<PatientMemoryEntryListResponseData> response = controller.submitMemories(request, httpRequest);
 
     assertEquals("created", response.message());
-    verify(internalAgentApiGuard).verify(httpRequest);
+    verify(internalAgentApiGuard).verifyAndApplyScope(httpRequest);
     verify(patientMemoryService).submitAgentMemories(request);
   }
 }
